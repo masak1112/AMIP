@@ -1,0 +1,72 @@
+model:
+    model_name: sfno
+    lr: 5.0e-4
+    sfno:
+        spectral_transform: 'sht'
+        filter_type: 'linear'
+        operator_type: 'dhconv'
+        scale_factor: 1
+        in_chans: 81
+        out_chans: 73
+        img_shape: [64, 128]
+        embed_dim: 256
+        num_layers: 12
+        use_mlp: True
+        mlp_ratio: 2.0
+        activation_function: "gelu"
+        encoder_layers: 1
+        pos_embed: True
+        drop_rate: 0.0
+        drop_path_rate: 0.0
+        num_blocks: 16
+        sparsity_threshold: 0.0
+        normalization_layer: 'instance_norm'
+        hard_thresholding_fraction: 1.0
+        use_complex_kernels: True
+        big_skip: True
+
+data:
+    dataset:
+        # local paths
+        #train_data_path: /mnt/am/ayz2/new/PLASIM_train_146096.h5
+        #val_data_path: /mnt/am/ayz2/new/PLASIM_valid_1460.h5
+        #train_times_path: /mnt/am/ayz2/new/PLASIM_train_146096_times.pkl
+        #val_times_path: /mnt/am/ayz2/new/PLASIM_valid_1460_times.pkl
+        #boundary_path: /mnt/am/ayz2/new/boundary_vars.h5
+        #bias_path: /home/ayz2/data/bias
+
+        train_data_path: /home/anthonyz/data/PLASIM/PLASIM_train_146096.h5
+        val_data_path: /home/anthonyz/data/PLASIM/PLASIM_valid_1460.h5
+        train_times_path: /home/anthonyz/data/PLASIM/PLASIM_train_146096_times.pkl
+        val_times_path: /home/anthonyz/data/PLASIM/PLASIM_valid_1460_times.pkl
+        boundary_path: /home/anthonyz/data/PLASIM/boundary_vars.h5
+        bias_path: /home/anthonyz/data/PLASIM/bias
+        
+        training_nsteps: 1 
+        val_nsteps: 40 
+        bias_horizon: 7308 # 5year
+    normalizer:
+        norm_stats_path: /home/anthonyz/data/PLASIM/norm_stats.npz
+
+    nlat: 64
+    nlon: 128
+    with_poles: False
+    load_into_memory: False
+    normalize: True
+    batch_size: 16
+    num_workers: 4
+    pde: climate
+    ae: False
+
+training:
+    seed: 42
+    devices: 1
+    accelerator: gpu
+    strategy: auto
+    check_val_every_n_epoch: 1
+    log_every_n_steps: 100
+    max_epochs: 50
+    log_dir: logs/
+    project: plasim_v2
+    wandb_mode: online
+    checkpoint: null
