@@ -10,10 +10,10 @@ from timm.layers.mlp import SwiGLU
 
 from modules.layers.arches_layers import (
     CondBasicLayer,
-    DownSample,
+    DCDownSample,
     LinVert,
     Mlp,
-    UpSample,
+    DCUpSample,
     ICNR_init,
     TimestepEmbedder
 )
@@ -207,8 +207,9 @@ class ArchesDiT(nn.Module):
             **layer_args,
             **kwargs,
         )
-        self.downsample = DownSample(
+        self.downsample = DCDownSample(
             in_dim=emb_dim,
+            out_dim=emb_dim * 2,
             input_resolution=(self.zdim, *self.layer1_shape),
             output_resolution=(self.zdim, *self.layer2_shape),
         )
@@ -230,7 +231,7 @@ class ArchesDiT(nn.Module):
             **layer_args,
             **kwargs,
         )
-        self.upsample = UpSample(
+        self.upsample = DCUpSample(
             emb_dim * 2, emb_dim, (self.zdim, *self.layer2_shape), (self.zdim, *self.layer1_shape)
         )
         out_dim = emb_dim if not self.use_skip else 2 * emb_dim

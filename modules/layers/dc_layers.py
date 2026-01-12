@@ -11,6 +11,14 @@ def get_same_padding(kernel_size: int | tuple[int, ...]) -> int | tuple[int, ...
     else:
         assert kernel_size % 2 > 0, "kernel size should be odd number"
         return kernel_size // 2
+    
+class LayerNorm2d(nn.LayerNorm):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out = x - torch.mean(x, dim=1, keepdim=True)
+        out = out / torch.sqrt(torch.square(out).mean(dim=1, keepdim=True) + self.eps)
+        if self.elementwise_affine:
+            out = out * self.weight.view(1, -1, 1, 1) + self.bias.view(1, -1, 1, 1)
+        return out
 
 class ConvLayer(nn.Module):
     def __init__(
@@ -41,7 +49,7 @@ class ConvLayer(nn.Module):
             bias=use_bias,
         )
 
-        self.norm = nn.LayerNorm(out_channels)
+        self.norm = LayerNorm2d(out_channels)
         self.act = nn.GELU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -72,8 +80,6 @@ class PixelUnshuffleDownSampleLayer(nn.Module):
             out_channels=out_channels // out_ratio,
             kernel_size=kernel_size,
             use_bias=True,
-            norm=None,
-            act_func=None,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -119,8 +125,6 @@ class PixelShuffleUpSampleLayer(nn.Module):
             out_channels=out_channels * out_ratio,
             kernel_size=kernel_size,
             use_bias=True,
-            norm=None,
-            act_func=None,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
