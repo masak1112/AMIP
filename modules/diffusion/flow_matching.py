@@ -3,52 +3,74 @@ import torch.nn as nn
 
 class ODEIntegrator:
     def __init__(self,
-                 method='euler',  # 'euler' or 'heun' or 'midpoint'
+                 method='euler',  # 'euler' or 'heun' 
                  ):
         self.method = method
-        assert method in ['euler', 'heun', 'midpoint'], 'Method not implemented'
+        assert method in ['euler', 'heun'], 'Method not implemented'
 
-    def step_fn(self, x, fn, dt, ts, model_kwargs):
+    def step_fn(self, surface_input, multilevel_input, forcing_input, invariant_input, scalar_in,
+                     surface_noised, multilevel_noised, diagnostic_noised, 
+                     model, dt, ts_next):
         method = self.method
-        if ts[1] == 0 and self.method == 'heun': # prevent irregularity at last time
+        if ts_next == 0 and self.method == 'heun': # prevent irregularity at last time
             method = 'euler'
-        if method == 'euler':
-            return x + dt * fn(x, ts[0], model_kwargs)
-        elif method == 'heun':
-            dx = fn(x, ts[0], model_kwargs)
-            x1 = x + dt * dx
-            return x + 0.5 * dt * (dx + fn(x1, ts[1], model_kwargs))
-        elif method == 'midpoint':
-            x1 = x + 0.5 * dt * fn(x, ts[0], model_kwargs)
-            return x + dt * fn(x1, ts[1], model_kwargs)
 
-    def integrate(self, x, y, model,
-                  stencils, timesteps,
-                  **kwargs):
-        model_wrapper_fn = lambda y, t, model_kwargs: \
-            model(torch.cat((x, y), dim=-1), t.expand(x.shape[0]).unsqueeze(-1), **model_kwargs)
+        if method == 'euler':
+            surface_pred, multi_pred, diag_pred = model(surface_input, multilevel_input, forcing_input, invariant_input, scalar_in,
+                        surface_noised, multilevel_noised, diagnostic_noised)
+            
+            surface_next = surface_noised + dt * surface_pred
+            multilevel_next = multilevel_noised + dt * multi_pred
+            diagnostic_next = diagnostic_noised + dt * diag_pred
+
+            return surface_next, multilevel_next, diagnostic_next
+        
+        elif method == 'heun':
+            surface_pred, multi_pred, diag_pred = model(surface_input, multilevel_input, forcing_input, invariant_input, scalar_in,
+                        surface_noised, multilevel_noised, diagnostic_noised)
+            
+            surface_next = surface_noised + dt * surface_pred
+            multilevel_next = multilevel_noised + dt * multi_pred
+            diagnostic_next = diagnostic_noised + dt * diag_pred
+            scalar_in_next = torch.cat([scalar_in[:, :-1], ts_next.float().view(-1, 1)], dim=-1)
+
+            surface_pred1, multi_pred1, diag_pred1 = model(surface_input, multilevel_input, forcing_input, invariant_input, scalar_in_next,
+                                                           surface_next, multilevel_next, diagnostic_next)
+
+            surface_out = surface_noised + 0.5 * dt * (surface_pred + surface_pred1)
+            multilevel_out = multilevel_noised + 0.5 * dt * (multi_pred + multi_pred1)
+            diagnostic_out = diagnostic_noised + 0.5 * dt * (diag_pred + diag_pred1)
+
+            return surface_out, multilevel_out, diagnostic_out
+
+    def integrate(self, surface_input, multilevel_input, forcing_input, invariant_input, scalar_input,
+                surface_noised, multilevel_noised, diagnostic_noised,
+                model, stencils, timesteps,):
 
         for i_t in range(len(stencils)-1):
             t_current = stencils[i_t] # sigma_t
             t_next = stencils[i_t+1] # sigma_t+1
             dt = t_next - t_current # (sigma_t+1 - sigma_t)
-            if self.method != 'midpoint':
-                y = self.step_fn(y, model_wrapper_fn, dt,
-                                 [timesteps[i_t], timesteps[i_t+1]],
-                                 kwargs)
-            else:
-                y = self.step_fn(y, model_wrapper_fn, dt,
-                                 [timesteps[i_t], (timesteps[i_t+1] + timesteps[i_t]) / 2],
-                                 kwargs)
-        return y
 
-class LinearScheduler(nn.Module):
+            ts = timesteps[i_t]
+            ts_next = timesteps[i_t+1]
+
+            scalar_in = torch.cat([scalar_input, ts.float().view(-1, 1)], dim=-1) 
+
+            surface_noised, multilevel_noised, diagnostic_noised = self.step_fn(
+                     surface_input, multilevel_input, forcing_input, invariant_input, scalar_in,
+                     surface_noised, multilevel_noised, diagnostic_noised, 
+                     model, dt, ts_next)
+
+        return surface_noised, multilevel_noised, diagnostic_noised
+
+class FlowScheduler(nn.Module):
     def __init__(self,
                  num_refinement_steps,  # this corresponds to physical time steps
                  num_train_steps=None,  # number of training steps
                  integrator='euler',  # 'euler' or 'heun' or 'midpoint', worth noting that this only available for flow
                  ):
-        super(LinearScheduler, self).__init__()
+        super(FlowScheduler, self).__init__()
 
         # for flow matching, the min_noise_std is not used
         self.num_train_timesteps = num_train_steps if num_train_steps is not None else num_refinement_steps + 1
@@ -63,57 +85,102 @@ class LinearScheduler(nn.Module):
 
         print(f"Using LinearScheduler with {self.num_train_timesteps} training steps and {self.num_refinement_steps} refinement steps.")
 
-    def get_noise(self, size, device):
-        return torch.randn(size, device=device)
+    def get_noise(self, x):
+        return torch.randn(x.shape, device=x.device, dtype=x.dtype)
+    
+    def interpolant(self, x, noise, alpha, sigma):
+        alpha = alpha.view(-1, *[1 for _ in range(x.ndim - 1)])
+        sigma = sigma.view(-1, *[1 for _ in range(x.ndim - 1)])
 
-    def compute_loss(self, x, y, model, eval=False, **kwargs):
+        return alpha * x + sigma * noise
+
+    def compute_loss(self, model, 
+                     surface_input,
+                    multilevel_input,
+                    forcing_input,
+                    invariant_input,
+                    scalar_input,
+                    surface_target,
+                    multilevel_target,
+                    diagnostic_target):
         # x: [b nx ny d], conditioning. For PDEs this is u(t)
         # y: [b nx ny d], label. For PDEs this is u(t+dt)
         # cond: [b cond_dim]
         
-        noise = self.get_noise(size=y.shape, device=y.device).to(y.dtype)
+        noise_surface = self.get_noise(surface_target)
+        noise_multilevel = self.get_noise(multilevel_target)
+        noise_diagnostic = self.get_noise(diagnostic_target)
 
-        # no need to train on k=0
-        k = torch.randint(1, self.num_train_timesteps, device=x.device, size=(x.shape[0],)).long()
+        # sample timestep (shape (b, )) no need to train on k=0
+        k = torch.randint(1, self.num_train_timesteps, device=surface_input.device, size=(surface_input.shape[0],)).long()
 
         # retrieve from the scheduler
-        sigma_t = self.sigmas.to(x.device)[k] # noise coeff
-        alpha_t = (1 - sigma_t) # signal coeff
-        alpha_t = alpha_t.view(-1, *[1 for _ in range(y.ndim - 1)])
-        sigma_t = sigma_t.view(-1, *[1 for _ in range(y.ndim - 1)])
-        # Noise the label y
-        y_noised = alpha_t * y + sigma_t * noise # y_t = alpha_t * y_0 + sigma_t * eps
+        sigma_t = self.sigmas.to(surface_input.device)[k] # noise coeff, shape b
+        alpha_t = (1 - sigma_t) # signal coeff, shape b
 
-        # conditional prediction. Concat condition (x) and noised input (y_noised)
-        u_in = torch.cat([x, y_noised], dim=-1)  # input both condition and noised prediction, [b nx ny 2d]
-        pred = model(u_in, k.float().view(-1, 1), **kwargs) # pred in shape [b nx ny d]
-        target = noise - y # predict eps - y
-        loss = self.training_criterion(pred, target)
-        if eval:
-            return loss, pred, target
-        return loss
+        # Noise the labels
+        surface_noised = self.interpolant(surface_target, noise_surface, alpha_t, sigma_t)
+        multilevel_noised = self.interpolant(multilevel_target, noise_multilevel, alpha_t, sigma_t)
+        diagnostic_noised = self.interpolant(diagnostic_target, noise_diagnostic, alpha_t, sigma_t)
 
-    def sample(self, x, model, refinement_steps=None, **kwargs):
+        scalar_in = torch.cat([scalar_input, k.float().view(-1, 1)], dim=-1)  # [b cond_dim + 1]
+
+        surface_pred, multi_pred, diag_pred = model(surface_input, multilevel_input, forcing_input, invariant_input, scalar_in,
+                     surface_noised, multilevel_noised, diagnostic_noised)
+        
+        surface_target = noise_surface - surface_target # predict eps - y
+        multi_target = noise_multilevel - multilevel_target
+        diag_target = noise_diagnostic - diagnostic_target
+
+        surface_loss = self.training_criterion(surface_pred, surface_target)
+        multi_loss = self.training_criterion(multi_pred, multi_target)
+        diag_loss = self.training_criterion(diag_pred, diag_target)
+
+        return surface_loss + multi_loss + diag_loss
+
+    def sample(self, model, surface_input,
+                    multilevel_input,
+                    forcing_input,
+                    invariant_input,
+                    scalar_input,
+                    diagnostic_channels,
+                    refinement_steps=None):
         
         if refinement_steps is None:
             refinement_steps = self.num_refinement_steps
 
         # x: [b nlat nlon d]
-        y_noised = self.get_noise(
-            x.shape, device=x.device
-        ).to(x.dtype)
+        surface_noised = self.get_noise(surface_input)
+        multilevel_noised = self.get_noise(multilevel_input)
 
-        timesteps = torch.arange(self.num_train_timesteps - 1, -1, -1, device=x.device).long()
+        # diagnostic inputs not provided, so need to manually get its shape 
+        diagnostic_noised = torch.randn((surface_input.shape[0], surface_input.shape[1], surface_input.shape[2], diagnostic_channels), 
+                                       device = surface_input.device, dtype = surface_input.dtype)
+
+        timesteps = torch.arange(self.num_train_timesteps - 1, -1, -1, device=surface_input.device).long()
         # trailing timesteps
         timesteps = timesteps[::((self.num_train_timesteps - 1) // refinement_steps)]
-        sigmas = self.sigmas.to(x.device)[timesteps]
+        sigmas = self.sigmas.to(surface_input.device)[timesteps]
 
-        # currently does not support noising input
         integrator = self.ode_integrator
-        y_noised = integrator.integrate(x, y_noised, model, sigmas, timesteps, **kwargs)
+        surface_pred, multi_pred, diag_pred = integrator.integrate(surface_input, multilevel_input, forcing_input, invariant_input, scalar_input,
+                                        surface_noised, multilevel_noised, diagnostic_noised, 
+                                        model, sigmas, timesteps)
 
-        y = y_noised
-        return y
+        return surface_pred, multi_pred, diag_pred
 
-    def forward(self, x, y, model, **kwargs):
-        return self.compute_loss(x, y, model, **kwargs)
+    def forward(self, model, surface_input,
+                    multilevel_input,
+                    forcing_input,
+                    invariant_input,
+                    scalar_input,
+                    diagnostic_channels,
+                    refinement_steps=None):
+        
+        return self.sample(model, surface_input,
+                    multilevel_input,
+                    forcing_input,
+                    invariant_input,
+                    scalar_input,
+                    diagnostic_channels,
+                    refinement_steps)

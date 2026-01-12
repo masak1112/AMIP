@@ -8,20 +8,20 @@ class Normalizer:
         self.stat_dict = np.load(stat_path, allow_pickle=True).item()
 
         # load stats
-        self.surface_means = torch.tensor(self.stat_dict['surface']['mean'], dtype=torch.float32)  # shape (surface_channels,)
-        self.surface_stds = torch.tensor(self.stat_dict['surface']['std'], dtype=torch.float32)    # shape (surface_channels,)
+        self.surface_means = torch.tensor(self.stat_dict['surface_mean'], dtype=torch.float32)  # shape (surface_channels,)
+        self.surface_stds = torch.tensor(self.stat_dict['surface_std'], dtype=torch.float32)    # shape (surface_channels,)
         
-        self.multilevel_means = torch.tensor(self.stat_dict['multilevel']['mean'], dtype=torch.float32)  # shape (nlevels, multi_level_channels)
-        self.multilevel_stds = torch.tensor(self.stat_dict['multilevel']['std'], dtype=torch.float32)    # shape (nlevels, multi_level_channels)
+        self.multilevel_means = torch.tensor(self.stat_dict['multil_mean'], dtype=torch.float32)  # shape (nlevels, multi_level_channels)
+        self.multilevel_stds = torch.tensor(self.stat_dict['multi_std'], dtype=torch.float32)    # shape (nlevels, multi_level_channels)
 
-        self.forcing_means = torch.tensor(self.stat_dict['forcing']['mean'], dtype=torch.float32)  # shape (forcing_channels,)
-        self.forcing_stds = torch.tensor(self.stat_dict['forcing']['std'], dtype=torch.float32)    # shape (forcing_channels,)
+        self.forcing_means = torch.tensor(self.stat_dict['forcing_mean'], dtype=torch.float32)  # shape (forcing_channels,)
+        self.forcing_stds = torch.tensor(self.stat_dict['forcing_std'], dtype=torch.float32)    # shape (forcing_channels,)
 
-        self.invariant_means = torch.tensor(self.stat_dict['invariant']['mean'], dtype=torch.float32)  # shape (invariant_channels,)
-        self.invariant_stds = torch.tensor(self.stat_dict['invariant']['std'], dtype=torch.float32)    # shape (invariant_channels,)
+        self.invariant_means = torch.tensor(self.stat_dict['invariant_mean'], dtype=torch.float32)  # shape (invariant_channels,)
+        self.invariant_stds = torch.tensor(self.stat_dict['invariant_std'], dtype=torch.float32)    # shape (invariant_channels,)
 
-        self.diagnostic_means = torch.tensor(self.stat_dict['diagnostic']['mean'], dtype=torch.float32)  # shape (diagnostic_channels,)
-        self.diagnostic_stds = torch.tensor(self.stat_dict['diagnostic']['std'], dtype=torch.float32)    # shape (diagnostic_channels,)
+        self.diagnostic_means = torch.tensor(self.stat_dict['diag_mean'], dtype=torch.float32)  # shape (diagnostic_channels,)
+        self.diagnostic_stds = torch.tensor(self.stat_dict['diag_std'], dtype=torch.float32)    # shape (diagnostic_channels,)
 
         # reshape stats
         self.surface_means = rearrange(self.surface_means, 'c -> 1 1 1 c') # nt nlat nlon c

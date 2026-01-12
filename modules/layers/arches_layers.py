@@ -3,6 +3,7 @@
 import torch
 from timm.models.layers import DropPath, trunc_normal_
 from torch import nn
+import math 
 
 from .weatherlearn_utils.crop import crop3d
 from .weatherlearn_utils.earth_position_index import get_earth_position_index
@@ -11,58 +12,8 @@ from .weatherlearn_utils.shift_window_mask import (
     window_partition,
     window_reverse,
 )
-
-
-class Conv3dSimple(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride):
-        """
-        a simple reimplementation of 3d convolution to be compatible with mps
-        """
-        super().__init__()
-        self.kernel_size = kernel_size
-        assert stride == kernel_size, "stride must be equal to kernel size"
-        scale = (in_channels * kernel_size[0] * kernel_size[1] * kernel_size[2]) ** -0.5 / 2
-        self.weight = nn.Parameter(torch.randn(out_channels, in_channels, *kernel_size) * scale)
-        self.bias = nn.Parameter(torch.randn(out_channels) * scale)
-
-    def forward(self, x):
-        """
-        reshape x to be able to apply 3d convolution based on reshape and matmul
-        """
-        x = x.view(
-            x.shape[0],
-            x.shape[1],
-            x.shape[2] // self.kernel_size[0],
-            self.kernel_size[0],
-            x.shape[3] // self.kernel_size[1],
-            self.kernel_size[1],
-            x.shape[4] // self.kernel_size[2],
-            self.kernel_size[2],
-        )
-        x = x.permute(0, 2, 4, 6, 3, 5, 7, 1)[..., None]  # matmul will append on dim -2
-        x = (x * self.weight.permute(2, 3, 4, 1, 0)).sum(dim=(-5, -4, -3, -2))
-        x = x + self.bias
-        x = x.movedim(-1, 1)
-        return x
-
-
-# first, here is an implementation for subpixel convolution
-
-
-# borrowed from
-# https://gist.github.com/A03ki/2305398458cb8e2155e8e81333f0a965
-# def ICNR(tensor, initializer, upscale_factor=2, *args, **kwargs):
-#     "tensor: the 2-dimensional Tensor or more"
-#     upscale_factor_squared = upscale_factor * upscale_factor
-#     assert tensor.shape[0] % upscale_factor_squared == 0, (
-#         "The size of the first dimension: "
-#         f"tensor.shape[0] = {tensor.shape[0]}"
-#         " is not divisible by square of upscale_factor: "
-#         f"upscale_factor = {upscale_factor}"
-#     )
-#     sub_kernel = torch.empty(tensor.shape[0] // upscale_factor_squared, *tensor.shape[1:])
-#     sub_kernel = initializer(sub_kernel, *args, **kwargs)
-#     return sub_kernel.repeat_interleave(upscale_factor_squared, dim=0)
+from .dc_layers import PixelUnshuffleDownSampleLayer, ChannelAveragingDownSampleLayer, \
+    PixelShuffleUpSampleLayer, ChannelDuplicatingUpSampleLayer
 
 
 def ICNR_init(tensor, initializer, upscale_factor=2, *args, **kwargs):  # noqa N802
@@ -79,6 +30,49 @@ def ICNR_init(tensor, initializer, upscale_factor=2, *args, **kwargs):  # noqa N
     new_tensor = sub_kernel.repeat_interleave(upscale_factor_squared, dim=0)
     tensor.data.copy_(new_tensor)
 
+class DCUpSample(nn.Module):
+    """
+    Up-sampling operation.
+
+    Args:
+        in_dim (int): Number of input channels.
+        out_dim (int): Number of output channels.
+        input_resolution (tuple[int]): [pressure levels, latitude, longitude]
+        output_resolution (tuple[int]): [pressure levels, latitude, longitude]
+    """
+
+    def __init__(self, in_dim, out_dim, input_resolution, output_resolution, factor=2):
+        super().__init__()
+        self.conv_block = PixelShuffleUpSampleLayer(
+            in_channels=in_dim, out_channels=out_dim, kernel_size=3, factor=factor
+        )
+        self.shortcut_block = ChannelDuplicatingUpSampleLayer(
+            in_channels=in_dim, out_channels=out_dim, factor=factor
+        )
+
+        self.input_resolution = input_resolution
+        self.output_resolution = output_resolution
+        self.out_dim = out_dim
+
+
+    def forward(self, x: torch.Tensor):
+        """
+        Args:
+            x (torch.Tensor): (B, N, C)
+        """
+        B, N, C = x.shape
+        in_pl, in_lat, in_lon = self.input_resolution
+        out_pl, out_lat, out_lon = self.output_resolution
+
+        x = x.reshape(B, in_pl, in_lat, in_lon, C)
+        x = x.reshape(B * in_pl, C, in_lat, in_lon) # do not upsample over pressure levels
+
+        x = self.conv_block(x) + self.shortcut_block(x)
+
+        x = x.reshape(B, out_pl, self.out_dim, out_lat, out_lon).permute(0, 1, 3, 4, 2)
+        x = x.reshape(B, out_pl * out_lat * out_lon, self.out_dim)
+
+        return x
 
 class UpSample(nn.Module):
     """
@@ -127,6 +121,50 @@ class UpSample(nn.Module):
         x = x.reshape(x.shape[0], x.shape[1] * x.shape[2] * x.shape[3], x.shape[4])
         x = self.norm(x)
         x = self.linear2(x)
+        return x
+    
+class DCDownSample(nn.Module):
+    """
+    Down-sampling operation.
+
+    Args:
+        in_dim (int): Number of input channels.
+        out_dim (int): Number of output channels.
+        input_resolution (tuple[int]): [pressure levels, latitude, longitude]
+        output_resolution (tuple[int]): [pressure levels, latitude, longitude]
+    """
+
+    def __init__(self, in_dim, out_dim, input_resolution, output_resolution, factor=2):
+        super().__init__()
+
+        self.conv_block = PixelUnshuffleDownSampleLayer(
+            in_channels=in_dim, out_channels=out_dim, kernel_size=3, factor=factor
+        )
+        self.shortcut_block = ChannelAveragingDownSampleLayer(
+            in_channels=in_dim, out_channels=out_dim, factor=factor
+        )
+
+        self.input_resolution = input_resolution
+        self.output_resolution = output_resolution
+        self.out_dim = out_dim
+
+    def forward(self, x: torch.Tensor):
+        """
+        Args:
+            x (torch.Tensor): (B, N, C)
+        """
+        B, N, C = x.shape
+        in_pl, in_lat, in_lon = self.input_resolution
+        out_pl, out_lat, out_lon = self.output_resolution
+
+        x = x.reshape(B, in_pl, in_lat, in_lon, C)
+        x = x.reshape(B * in_pl, C, in_lat, in_lon) # do not downsample over pressure levels
+
+        x = self.conv_block(x) + self.shortcut_block(x)
+
+        x = x.reshape(B, out_pl, self.out_dim, out_lat, out_lon).permute(0, 1, 3, 4, 2)
+        x = x.reshape(B, out_pl * out_lat * out_lon, self.out_dim)
+
         return x
 
 
@@ -273,16 +311,16 @@ class EarthAttention3D(nn.Module):
             x: input features with shape of (B * num_lon, num_pl*num_lat, N, C)
             mask: (0/-inf) mask with shape of (num_lon, num_pl*num_lat, Wpl*Wlat*Wlon, Wpl*Wlat*Wlon)
         """
-        B_, nW_, N, C = x.shape
+        B_, nW_, N, C = x.shape # N = Wpl*Wlat*Wlon
         qkv = (
             self.qkv(x)
             .reshape(B_, nW_, N, 3, self.num_heads, C // self.num_heads)
-            .permute(3, 0, 4, 1, 2, 5)
+            .permute(3, 0, 4, 1, 2, 5) # 3, B_, nH, nW_, N, head_dim
         )
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = qkv[0], qkv[1], qkv[2] # B_, nH, nW_, N, head_dim
 
-        q = q * self.scale
-        attn = q @ k.transpose(-2, -1)
+        q = q * self.scale # B_, nH, nW_, N, head_dim
+        attn = q @ k.transpose(-2, -1) # B_, nH, nW_, N, N
 
         earth_position_bias = self.earth_position_bias_table[
             self.earth_position_index.view(-1)
@@ -352,6 +390,7 @@ class EarthSpecificBlock(nn.Module):
         act_layer=nn.GELU,
         mlp_layer=Mlp,
         norm_layer=nn.LayerNorm,
+        num_pl = 14, 
     ):
         super().__init__()
         window_size = (2, 6, 12) if window_size is None else window_size
@@ -406,9 +445,9 @@ class EarthSpecificBlock(nn.Module):
         attn_mask = None
 
         if axis_attn:
-            from axial_attention import AxialAttention, AxialPositionalEmbedding
+            from .axial_attention import AxialAttention, AxialPositionalEmbedding
 
-            self.axis_pos = AxialPositionalEmbedding(dim=dim, shape=(8,), emb_dim_index=-1)
+            self.axis_pos = AxialPositionalEmbedding(dim=dim, shape=(num_pl,), emb_dim_index=-1)
             self.axis_attn = AxialAttention(
                 dim=dim,  # embedding dimension
                 dim_index=-1,  # where is the embedding dimension
@@ -416,6 +455,7 @@ class EarthSpecificBlock(nn.Module):
                 num_dimensions=1,  # number of axial dimensions (images is 2, video is 3, or more)
                 sum_axial_out=True,  # whether to sum the contributions of attention on each axis, or to run the input through them sequentially. defaults to true
             )
+
 
         self.register_buffer("attn_mask", attn_mask)
 
@@ -476,7 +516,6 @@ class EarthSpecificBlock(nn.Module):
 
         x = x.reshape(B, Pl * Lat * Lon, C)
 
-        # try axial attention here ?
         if hasattr(self, "axis_attn"):
             x2 = x.reshape(B, Pl, Lat * Lon, C).movedim(2, 1).flatten(0, 1)  # B*Lat*Lon, Pl, C
             x2 = self.axis_pos(x2)
@@ -485,6 +524,7 @@ class EarthSpecificBlock(nn.Module):
 
         if isinstance(dt, torch.Tensor):
             dt = dt[:, :, None]
+
         if c is None:
             x = shortcut + dt * self.drop_path(x)
             if hasattr(self, "axis_attn"):
@@ -593,20 +633,62 @@ class LinVert(nn.Module):
     a modification of Mlp that takes the full column
     """
 
-    def __init__(self, in_features, drop=0.0, **kwargs):
+    def __init__(self, in_features, n_cols=14):
         super().__init__()
-        self.fc1 = nn.Linear(8 * in_features, 8 * in_features)
+        self.fc1 = nn.Linear(n_cols * in_features, n_cols * in_features)
+        self.n_cols = n_cols
 
     def forward(self, x: torch.Tensor):
         shortcut = x
         x2 = (
-            shortcut.reshape((shortcut.shape[0], 8, -1, shortcut.shape[-1]))
+            shortcut.reshape((shortcut.shape[0], self.n_cols, -1, shortcut.shape[-1]))
             .movedim(1, -2)
             .flatten(-2, -1)
-        )  # B, lat*lon, 8*C
+        )  # B, lat*lon, ncols_*C
         x2 = self.fc1(x2)
         x2 = (
-            x2.reshape((x2.shape[0], -1, 8, shortcut.shape[-1])).movedim(-2, 1).flatten(1, 2)
-        )  # B, 8*lat*lon, C
+            x2.reshape((x2.shape[0], -1, self.n_cols, shortcut.shape[-1])).movedim(-2, 1).flatten(1, 2)
+        )  # B, ncols*lat*lon, C
 
         return shortcut + x2
+
+
+class TimestepEmbedder(nn.Module):
+    """
+    Embeds scalar timesteps into vector representations.
+    """
+
+    def __init__(self, hidden_size, frequency_embedding_size=256):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(frequency_embedding_size, hidden_size, bias=True),
+            nn.SiLU(),
+            nn.Linear(hidden_size, hidden_size, bias=True),
+        )
+        self.frequency_embedding_size = frequency_embedding_size
+
+    @staticmethod
+    def timestep_embedding(t, dim, max_period=10000):
+        """
+        Create sinusoidal timestep embeddings.
+        :param t: a 1-D Tensor of N indices, one per batch element.
+                          These may be fractional.
+        :param dim: the dimension of the output.
+        :param max_period: controls the minimum frequency of the embeddings.
+        :return: an (N, D) Tensor of positional embeddings.
+        """
+        # https://github.com/openai/glide-text2im/blob/main/glide_text2im/nn.py
+        half = dim // 2
+        freqs = torch.exp(
+            -math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half
+        ).to(device=t.device)
+        args = t[:, None].float() * freqs[None]
+        embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+        if dim % 2:
+            embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
+        return embedding
+
+    def forward(self, t):
+        t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
+        t_emb = self.mlp(t_freq)
+        return t_emb

@@ -1,12 +1,12 @@
 import lightning as L
 import torch
-from einops import rearrange
 from tqdm import tqdm
 
 from modules.models.SFNO import SphericalFourierNeuralOperatorNet
+from modules.models.DiT import ArchesDiT
+from modules.diffusion.flow_matching import FlowScheduler
 from common.loss import latitude_weighted_rmse
 from common.plotting import plot_result, plot_spectrum, plot_bias
-from common.utils import assemble_scalar_params, assemble_grid_params, assemble_input, disassemble_input
 from data.amip import BiasLoader, SURFACE_VARIABLES, MULTILEVEL_VARIABLES, DIAGNOSTIC_VARIABLES
 from data.normalizer import Normalizer
 
@@ -44,8 +44,13 @@ class TrainModule(L.LightningModule):
         if self.model_name == "sfno":
             self.model = SphericalFourierNeuralOperatorNet(params={},
                                                            **self.modelconfig["sfno"])
+            self.diffusion=False 
+        elif self.model_name == 'flow':
+            self.model = ArchesDiT(**self.modelconfig["dit"])
+            self.scheduler = FlowScheduler(**self.modelconfig["flow"])
+            self.diagnostic_channels = self.modelconfig["dit"]['diagnostic_channels']
+            self.diffusion=True 
         else:
-            self.model = None
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
         if config['training']['strategy'] == 'ddp' or config['training']['strategy'] == 'ddp_find_unused_parameters_true':
@@ -56,7 +61,12 @@ class TrainModule(L.LightningModule):
         self.save_hyperparameters()
 
     def forward(self, surface, multilevel, forcing, invariant, scalars):
-        surface_pred, multilevel_pred, diagnostic_pred = self.model(surface, multilevel, forcing, invariant, scalars)
+        if self.diffusion:
+            surface_pred, multilevel_pred, diagnostic_pred = self.scheduler.sample(self.model, surface, multilevel, forcing, invariant, 
+                                                                                   scalars, self.diagnostic_channels)
+        else: # directly predict
+            surface_pred, multilevel_pred, diagnostic_pred = self.model(surface, multilevel, forcing, invariant, scalars)
+
         return surface_pred, multilevel_pred, diagnostic_pred
     
     def compute_loss(self, 
@@ -89,17 +99,28 @@ class TrainModule(L.LightningModule):
         multilevel_target = multilevel_data[:, 1] # b nlat nlon nlevel c
         diagnostic_target = diagnostic_data[:, 1] # b nlat nlon c
 
-        surface_pred, multilevel_pred, diagnostic_pred \
-            = self.forward(surface_input,
-                        multilevel_input,
-                        forcing_input,
-                        invariant_input,
-                        scalar_input,) 
-        
+        if self.diffusion:
+            loss = self.scheduler.compute_loss(self.model,
+                                               surface_input,
+                                               multilevel_input,
+                                               forcing_input,
+                                               invariant_input,
+                                               scalar_input,
+                                               surface_target,
+                                               multilevel_target,
+                                               diagnostic_target)   
+        else:
+            surface_pred, multilevel_pred, diagnostic_pred \
+                = self.forward(surface_input,
+                            multilevel_input,
+                            forcing_input,
+                            invariant_input,
+                            scalar_input,) 
 
-        loss = self.compute_loss(surface_pred, surface_target,
-                                 multilevel_pred, multilevel_target,
-                                 diagnostic_pred, diagnostic_target)
+
+            loss = self.compute_loss(surface_pred, surface_target,
+                                    multilevel_pred, multilevel_target,
+                                    diagnostic_pred, diagnostic_target)
 
         self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
 
@@ -241,7 +262,7 @@ class TrainModule(L.LightningModule):
         for c, diagnostic_feat_name in enumerate(DIAGNOSTIC_VARIABLES):
             pred_feat_dict[diagnostic_feat_name] = diagnostic_bias[..., c] # b nlat nlon 
 
-        bias_key_list = ['2m_temperature', 'precipitation', 'geopotential', 'temperature', 'u_component_of_wind', 'specific_humidity']
+        bias_key_list = ['2m_temperature', 'PRATEsfc', 'geopotential', 'temperature', 'u_component_of_wind', 'specific_humidity']
         result_dict = {}
 
         for var_name in bias_key_list:
@@ -271,7 +292,7 @@ class TrainModule(L.LightningModule):
             plot_bias(pred_k[0].cpu(), bias[0].cpu(), save_path=f"{self.log_dir}/{var_name}_bias_{self.current_epoch}.png")
 
         self.log('bias/t2m', result_dict['2m_temperature'], on_step=False, on_epoch=True, sync_dist=self.ddp)
-        self.log('bias/pr_6h', result_dict['precipitation'], on_step=False, on_epoch=True, sync_dist=self.ddp)
+        self.log('bias/pr_6h', result_dict['PRATEsfc'], on_step=False, on_epoch=True, sync_dist=self.ddp)
         self.log('bias/z500', result_dict['geopotential'], on_step=False, on_epoch=True, sync_dist=self.ddp)
         self.log('bias/u250', result_dict['u_component_of_wind'], on_step=False, on_epoch=True, sync_dist=self.ddp)
         self.log('bias/t850', result_dict['temperature'], on_step=False, on_epoch=True, sync_dist=self.ddp)
@@ -285,8 +306,8 @@ class TrainModule(L.LightningModule):
         t2m_target = target_feat_dict['2m_temperature'][0].cpu().numpy()
         z500_pred = pred_feat_dict['geopotential'][0, ..., 10].cpu().numpy()
         z500_target = target_feat_dict['geopotential'][0, ..., 10].cpu().numpy()
-        pr_6h_pred = pred_feat_dict['precipitation'][0].cpu().numpy()
-        pr_6h_target = target_feat_dict['precipitation'][0].cpu().numpy()
+        pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu().numpy()
+        pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu().numpy()
         u250_pred = pred_feat_dict['u_component_of_wind'][0, ..., 13].cpu().numpy()
         u250_target = target_feat_dict['u_component_of_wind'][0, ..., 13].cpu().numpy()
         t850_pred = pred_feat_dict['temperature'][0, ..., 6].cpu().numpy()
@@ -302,7 +323,7 @@ class TrainModule(L.LightningModule):
                     f'{self.log_dir}/z500_{self.current_epoch}.png')
         plot_result(pr_6h_pred,
                     pr_6h_target,
-                    f'{self.log_dir}/precipitation_{self.current_epoch}.png')
+                    f'{self.log_dir}/PRATEsfc_{self.current_epoch}.png')
         plot_result(u250_pred,
                     u250_target,
                     f'{self.log_dir}/u250_{self.current_epoch}.png')
@@ -321,7 +342,7 @@ class TrainModule(L.LightningModule):
                         f'{self.log_dir}/z500_spectrum_{self.current_epoch}.png')
         plot_spectrum(pr_6h_pred,
                         pr_6h_target,
-                        f'{self.log_dir}/precipitation_spectrum_{self.current_epoch}.png')
+                        f'{self.log_dir}/PRATEsfc_spectrum_{self.current_epoch}.png')
         plot_spectrum(u250_pred,
                         u250_target,
                         f'{self.log_dir}/u250_spectrum_{self.current_epoch}.png')
@@ -335,7 +356,7 @@ class TrainModule(L.LightningModule):
     def log_losses(self, loss_dict):
         # calculate the mean loss across batch, shape b t for each key, b t l for multilevel keys
         t2m_loss = loss_dict['2m_temperature'].mean(0) # surface temp, mean across batch dim
-        pr_6h_loss = loss_dict['precipitation'].mean(0) # 6-hour accumulated precipitation
+        pr_6h_loss = loss_dict['PRATEsfc'].mean(0) # 6-hour accumulated PRATEsfc
         z500_loss = loss_dict['geopotential'][..., 10].mean(0) # geopotential at level=10
         u250_loss = loss_dict['u_component_of_wind'][..., 13].mean(0) # u wind at level=13
         t850_loss = loss_dict['temperature'][..., 6].mean(0) # temp at level=6

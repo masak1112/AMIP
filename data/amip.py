@@ -20,15 +20,20 @@ MULTILEVEL_VARIABLES = ["temperature",
                   "specific_cloud_ice_water_content",
                   "fraction_of_cloud_cover"]
 
-FORCING_VARIABLES = ["DSWRFtoa", "sea_surface_temperature", "sea_ice_cover"] 
-INVARIANT_VARIABLES = ["geopotential_at_surface", "land_sea_mask"]
+FORCING_VARIABLES = ["DSWRFtoa", 
+                     "sea_surface_temperature", # has nans
+                     "sea_ice_cover"]  # has nans
+
+INVARIANT_VARIABLES = ["geopotential_at_surface", 
+                       "land_sea_mask"]
+
 DIAGNOSTIC_VARIABLES = ["USWRFtoa",
                         "ULWRFtoa", 
                        "USWRFsfc",
                        "ULWRFsfc",
                        "DSWRFsfc",
                        "DLWRFsfc",
-                       "precipitation",
+                       "PRATEsfc",
                        "LHTFLsfc",
                        "SHTFLsfc"]
 

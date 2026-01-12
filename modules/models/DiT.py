@@ -14,7 +14,8 @@ from modules.layers.arches_layers import (
     LinVert,
     Mlp,
     UpSample,
-    ICNR_init
+    ICNR_init,
+    TimestepEmbedder
 )
 
 
@@ -34,6 +35,7 @@ class WeatherEncodeDecodeLayer(nn.Module):
         forcing_ch=3,
         invariant_ch=2,
         diagnostic_ch=9,
+        encode_noise=True
     ) -> None:
         super().__init__()
         
@@ -45,9 +47,14 @@ class WeatherEncodeDecodeLayer(nn.Module):
         self.forcing_ch = forcing_ch
         self.invariant_ch = invariant_ch
         self.diagnostic_ch = diagnostic_ch
+        self.encode_noise = encode_noise
 
         surface_ch_in = surface_ch + forcing_ch + invariant_ch
         level_ch_in = level_ch 
+
+        if self.encode_noise:
+            surface_ch_in += diagnostic_ch + surface_ch
+            level_ch_in += level_ch
 
         self.level_proj = nn.Conv3d(
             level_ch_in, emb_dim, kernel_size=patch_size, stride=patch_size
@@ -55,13 +62,6 @@ class WeatherEncodeDecodeLayer(nn.Module):
         self.surface_proj = nn.Conv2d(
             surface_ch_in, emb_dim, kernel_size=patch_size[1:], stride=patch_size[1:]
         )
-
-        #l_pad = patch_size[0] - img_size[0] % patch_size[0]
-        #level_pads = [l_pad // 2, l_pad - l_pad // 2]
-
-        #self.level_padder = nn.ZeroPad3d((0, 0, 0, 0, *level_pads))
-
-        # decode layers
 
         self.surface_deconv = nn.Conv2d(
             out_emb_dim,
@@ -91,22 +91,31 @@ class WeatherEncodeDecodeLayer(nn.Module):
             upscale_factor=patch_size[-1],
         )
 
-    def encode(self, surface, multilevel, forcing, invariants):
+    def encode(self, surface, multilevel, forcing, invariants,
+               surface_noised=None, multi_noised=None, diag_noised=None):
         """
         surface: B, nlat, nlon, surface_ch
         multilevel: B, nlevel, nlat, nlon, level_ch
         forcing: B, nlat, nlon, forcing_ch
         invariants: B, nlat, nlon, invariant_ch
         """
+
         surface = rearrange(surface, "b nlat nlon c -> b c nlat nlon")
         multilevel = rearrange(
             multilevel, "b nlevel nlat nlon c -> b c nlevel nlat nlon"
         )
         forcing = rearrange(forcing, "b nlat nlon c -> b c nlat nlon")
         invariants = rearrange(invariants, "b nlat nlon c -> b c nlat nlon")
+        
+        surface = torch.cat([surface, forcing, invariants], dim=1) # b (surface_ch + forcing_ch + invariant_ch) nlat nlon
+        
+        if self.encode_noise:
+            surface_noised = rearrange(surface_noised, "b nlat nlon c -> b c nlat nlon")
+            diag_noised = rearrange(diag_noised, "b nlat nlon c -> b c nlat nlon")
+            multi_noised = rearrange(multi_noised, "b nlevel nlat nlon c -> b c nlevel nlat nlon")
 
-
-        surface = torch.cat([surface, forcing, invariants], dim=1) # b c nlat nlon
+            surface = torch.cat([surface, surface_noised, diag_noised], dim=1) # b (surface_ch + forcing_ch + invariant_ch + surface_noised_ch + diagnostic_ch) nlat nlon
+            multilevel = torch.cat([multilevel, multi_noised], dim=1) # b (level_ch + multi_noised_ch) nlevel nlat nlon
 
         # patchify
         surface = self.surface_proj(surface) # b emb_dim zlat zlon
@@ -137,38 +146,44 @@ class WeatherEncodeDecodeLayer(nn.Module):
         return output_surface, output_level, output_diagnostic
 
 
-class ArchesWeatherCondBackbone(nn.Module):
+class ArchesDiT(nn.Module):
     def __init__(
         self,
-        tensor_size=(8, 60, 120),
+        encode_decode_params: dict,
+        tensor_size=(14, 90, 180),
         emb_dim=192,
         cond_dim=256,  # dim of the conditioning
         num_heads=(6, 12, 12, 6),
         window_size=(1, 6, 10),
-        droppath_coeff=0.2,
+        droppath_coeff=0.0,
         depth_multiplier=2,
         dropout=0.0,
         mlp_ratio=4.0,
         use_skip=True,
         first_interaction_layer="linear",
         gradient_checkpointing=False,
-        mlp_layer="mlp",
+        mlp_layer="swiglu",
         **kwargs,
     ):
         super().__init__()
-        self.__dict__.update(locals())
-        drop_path = np.linspace(
-            0, droppath_coeff / depth_multiplier, 8 * depth_multiplier
-        ).tolist()
-        # In addition, three constant masks(the topography mask, land-sea mask and soil type mask)
+        self.use_skip = use_skip
+        self.gradient_checkpointing = gradient_checkpointing
+        self.first_interaction_layer = first_interaction_layer
+
+        self.encode_decode = WeatherEncodeDecodeLayer(**encode_decode_params)
         self.zdim = tensor_size[0]
+        
+        drop_path = np.linspace(
+            0, droppath_coeff / depth_multiplier, self.zdim * depth_multiplier
+        ).tolist()
 
         self.layer1_shape = tensor_size[1:]
 
         self.layer2_shape = (self.layer1_shape[0] // 2, self.layer1_shape[1] // 2)
 
         if first_interaction_layer == "linear":
-            self.interaction_layer = LinVert(in_features=emb_dim)
+            self.interaction_layer = LinVert(in_features=emb_dim,
+                                             n_cols = self.zdim)
 
         layer_args = dict(
             cond_dim=cond_dim,
@@ -229,9 +244,25 @@ class ArchesWeatherCondBackbone(nn.Module):
             **kwargs,
         )
 
-    def forward(self, x, cond_emb, **kwargs):
+        self.cond_embedders = nn.ModuleList([
+            TimestepEmbedder(cond_dim),
+            TimestepEmbedder(cond_dim),
+            TimestepEmbedder(cond_dim),
+        ])
+
+    def forward(self, surface, multi, forcing, invariant, cond_emb, 
+                surface_noised=None, multi_noised=None, diag_noised=None):
+        
+        # cond_emb in shape (b, 3)
+        cond_emb = [emb(cond_emb[:, i]) for i, emb in enumerate(self.cond_embedders)]
+        cond_emb = torch.stack(cond_emb, dim=0) # 3, b, cond_dim
+        cond_emb = torch.sum(cond_emb, dim=0) # b, cond_dim
+        
+        x = self.encode_decode.encode(surface, multi, forcing, invariant,
+                                      surface_noised, multi_noised, diag_noised) 
+
         B, C, Pl, Lat, Lon = x.shape
-        x = x.reshape(B, C, -1).transpose(1, 2)
+        x = x.reshape(B, C, -1).transpose(1, 2) # B, N, C
 
         if self.first_interaction_layer:
             x = self.interaction_layer(x)
@@ -254,6 +285,8 @@ class ArchesWeatherCondBackbone(nn.Module):
         x = self.layer4(x, cond_emb)
 
         output = x
-        output = output.transpose(1, 2).reshape(output.shape[0], -1, 8, *self.layer1_shape)
+        output = output.transpose(1, 2).reshape(output.shape[0], -1, self.zdim, *self.layer1_shape)
 
-        return output
+        output_surface, output_level, output_diagnostic = self.encode_decode.decode(output)
+
+        return output_surface, output_level, output_diagnostic
