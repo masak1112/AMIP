@@ -109,13 +109,12 @@ class ClimatologyLoader:
                  climatology_path,
                  horizon=7308,
                  start_time = 16072,
-                 split="train",
                  normalize=True,
                  ):
 
         # loads one initial frame and {horizon} timesteps of forcing data. Also returns true biases
 
-        self.split = split 
+        self.split = "train"
         self.data_path = data_path 
         self.climatology_path = climatology_path
         self.norm_stats_path = norm_stats_path
@@ -124,7 +123,7 @@ class ClimatologyLoader:
         self.start_time = start_time # 0 is Jan 1st, 1979. 16072 is Jan 1st, 1990
 
         self.file = h5f.File(self.data_path, 'r') 
-        self.data = self.file[split] 
+        self.data = self.file[self.split] 
 
         self.n = Normalizer(norm_stats_path)
 
@@ -132,7 +131,7 @@ class ClimatologyLoader:
         self.surface = torch.tensor(np.array(self.data['surface'][start_time]), dtype=torch.float32).unsqueeze(0) # 1 nlat nlon nsurface_channels
         self.multilevel = torch.tensor(np.array(self.data['multilevel'][start_time]), dtype=torch.float32).unsqueeze(0) # 1 nlat nlon nlevels nmulti_channels
         self.forcing = torch.tensor(np.array(self.data['forcing'][start_time:start_time + horizon]), dtype=torch.float32).unsqueeze(0) # 1 horizon nlat nlon nforcing_channels
-        self.invariants = torch.tensor(np.array(self.data['forcing_invariant'][:]), dtype=torch.float32).unsqueeze(0) # 1 nlat nlon n_invariant
+        self.invariants = torch.tensor(np.array(self.data['invariant'][:]), dtype=torch.float32).unsqueeze(0) # 1 nlat nlon n_invariant
         self.diagnostic = torch.tensor(np.array(self.data['diagnostic'][start_time]), dtype=torch.float32).unsqueeze(0) # 1 nlat nlon ndiagnostic_channels
         self.hour = torch.from_numpy(self.data['hour'][start_time:start_time + horizon]) # horizon
         self.day = torch.from_numpy(self.data['day'][start_time:start_time + horizon]) # horizon
@@ -147,8 +146,9 @@ class ClimatologyLoader:
 
         with open(climatology_path, 'rb') as file:
             self.climatology_dict = pickle.load(file) # unnormalized
+            self.climatology_dict = {k: torch.tensor(v, dtype=torch.float32) for k, v in self.climatology_dict.items()}
 
-        print(f"Loaded {horizon} time stamps for {split} split")
+        print(f"Loaded {horizon} time stamps for climatology")
     
     def get_data(self, device='cpu'):
         
@@ -159,7 +159,7 @@ class ClimatologyLoader:
             "invariants": self.invariants.to(device),
             "diagnostic": self.diagnostic.to(device),
             "scalars": self.scalars.to(device),
-            "biases": {k: v.to(device) for k, v in self.bias_dict.items()}
+            "climatology": {k: v.to(device) for k, v in self.climatology_dict.items()}
         }
 
         return return_dict

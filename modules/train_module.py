@@ -221,7 +221,7 @@ class TrainModule(L.LightningModule):
         invariant_input = batch['invariant'] # b nlat nlon c
         diagnostic_data = batch['diagnostic'] # b nlat nlon c
         scalar_data = batch['scalars'] # b t 2
-        bias_dict = batch['bias_dict'] # dict of nlat nlon or nlat nlon nlevel tensors
+        bias_dict = batch['climatology'] # dict of nlat nlon or nlat nlon nlevel tensors
 
         horizon = forcing_data.shape[1]
 
