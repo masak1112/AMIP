@@ -45,7 +45,7 @@ class TrainModule(L.LightningModule):
         elif self.model_name == 'flow':
             self.model = ArchesDiT(**self.modelconfig["dit"])
             self.scheduler = FlowScheduler(**self.modelconfig["flow"])
-            self.diagnostic_channels = self.modelconfig["dit"]['diagnostic_ch']
+            self.diagnostic_channels = self.modelconfig["dit"]['encode_decode_params']['diagnostic_ch']
             self.diffusion=True 
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
