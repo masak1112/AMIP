@@ -37,7 +37,7 @@ data:
     climatology_start: 16072 # 1990-01-01
 
     batch_size: 16
-    num_workers: 0
+    num_workers: 1
 
 training:
     seed: 42

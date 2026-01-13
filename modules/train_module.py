@@ -142,7 +142,7 @@ class TrainModule(L.LightningModule):
         surface_data = batch['surface'] # b t nlat nlon c
         multilevel_data = batch['multilevel'] # b t nlat nlon nlevel c
         forcing_data = batch['forcing'] # b t nlat nlon c
-        invariant_input = batch['invariant'] # b nlat nlon c
+        invariant_input = batch['invariants'] # b nlat nlon c
         scalar_data = batch['scalars'] # b t 2
         diagnostic_data = batch['diagnostic'] # b t nlat nlon c
                 
@@ -217,7 +217,7 @@ class TrainModule(L.LightningModule):
         surface_input = batch['surface'] # b nlat nlon c
         multilevel_input = batch['multilevel'] # b nlat nlon nlevel c
         forcing_data = batch['forcing'] # b t nlat nlon c
-        invariant_input = batch['invariant'] # b nlat nlon c
+        invariant_input = batch['invariants'] # b nlat nlon c
         diagnostic_data = batch['diagnostic'] # b nlat nlon c
         scalar_data = batch['scalars'] # b t 2
         bias_dict = batch['climatology'] # dict of nlat nlon or nlat nlon nlevel tensors
