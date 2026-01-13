@@ -30,13 +30,11 @@ class TrainModule(L.LightningModule):
         self.normalizer = normalizer
 
         dataconfig = config['data'] 
-        self.dataset_config = dataconfig["dataset"]
-        self.normalizer_config = dataconfig["normalizer"]
-        self.climatology_loader = ClimatologyLoader(data_path=self.dataset_config["train_data_path"],
-                                    norm_stats_path=self.normalizer_config["norm_stats_path"],
-                                    climatology_path = self.dataset_config["bias_path"],
-                                    horizon=self.dataset_config['bias_horizon'],
-                                    start_time=self.dataset_config['bias_start_time'],)
+        self.climatology_loader = ClimatologyLoader(data_path=dataconfig["train_data_path"],
+                                    norm_stats_path=dataconfig["norm_stats_path"],
+                                    climatology_path = dataconfig["bias_path"],
+                                    horizon=dataconfig['climatology_horizon'],
+                                    start_time=dataconfig['climatology_start'],)
 
         self.criterion = torch.nn.MSELoss()
         self.n = Normalizer(self.normalizer_config["norm_stats_path"])
