@@ -30,7 +30,7 @@ class TrainModule(L.LightningModule):
         dataconfig = config['data'] 
         self.climatology_loader = ClimatologyLoader(data_path=dataconfig["train_data_path"],
                                     norm_stats_path=dataconfig["norm_stats_path"],
-                                    climatology_path = dataconfig["bias_path"],
+                                    climatology_path = dataconfig["climatology_path"],
                                     horizon=dataconfig['climatology_horizon'],
                                     start_time=dataconfig['climatology_start'],)
 
