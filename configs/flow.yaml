@@ -32,7 +32,7 @@ data:
     norm_stats_path: /glade/derecho/scratch/ayz/norm_stats_dict.pkl
         
     training_nsteps: 2
-    val_nsteps: 41
+    val_nsteps: 21 # 5 days
     climatology_horizon: 1460 # 1 year
     climatology_start: 16072 # 1990-01-01
 
