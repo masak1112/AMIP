@@ -91,13 +91,12 @@ class AMIPData(Dataset):
             multilevel = self.n.normalize_multilevel(multilevel)
             diagnostic = self.n.normalize_diagnostic(diagnostic)
             forcing = self.n.normalize_forcing(forcing)
-            invariants = self.n.normalize_invariant(self.invariants)
 
         return_dict = {"surface": surface,
                        "multilevel": multilevel,
                        "diagnostic": diagnostic,
                        "forcing": forcing,
-                       "invariants": invariants,
+                       "invariants": self.invariants,
                        "scalars": scalars
                        }
         
