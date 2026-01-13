@@ -20,7 +20,7 @@ model:
         tensor_size: [14, 90, 180]
         emb_dim: 256
         cond_dim: 256 
-        num_heads: [6, 12, 12, 6]
+        num_heads: [8, 16, 16, 8ß]
         window_size: [1, 5, 10]
         droppath_coeff: 0.0
         depth_multiplier: 2
