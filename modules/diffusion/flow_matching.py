@@ -18,7 +18,7 @@ class ODEIntegrator:
         if method == 'euler':
             surface_pred, multi_pred, diag_pred = model(surface_input, multilevel_input, forcing_input, invariant_input, scalar_in,
                         surface_noised, multilevel_noised, diagnostic_noised)
-            
+
             surface_next = surface_noised + dt * surface_pred
             multilevel_next = multilevel_noised + dt * multi_pred
             diagnostic_next = diagnostic_noised + dt * diag_pred

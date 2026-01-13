@@ -143,6 +143,10 @@ class WeatherEncodeDecodeLayer(nn.Module):
             1, -3
         ) # b, level_ch, nlevel, lat, lon
 
+        output_surface = rearrange(output_surface, "b c nlat nlon -> b nlat nlon c")
+        output_level = rearrange(output_level, "b c nlevel nlat nlon -> b nlevel nlat nlon c")
+        output_diagnostic = rearrange(output_diagnostic, "b c nlat nlon -> b nlat nlon c")
+
         return output_surface, output_level, output_diagnostic
 
 
