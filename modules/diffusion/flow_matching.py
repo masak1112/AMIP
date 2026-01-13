@@ -55,7 +55,7 @@ class ODEIntegrator:
             ts = timesteps[i_t]
             ts_next = timesteps[i_t+1]
 
-            scalar_in = torch.cat([scalar_input, ts.float().view(-1, 1)], dim=-1) 
+            scalar_in = torch.cat([scalar_input, ts.expand(scalar_input.shape[0]).unsqueeze(-1)], dim=-1) 
 
             surface_noised, multilevel_noised, diagnostic_noised = self.step_fn(
                      surface_input, multilevel_input, forcing_input, invariant_input, scalar_in,
