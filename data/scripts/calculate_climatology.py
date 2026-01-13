@@ -4,6 +4,34 @@ from tqdm.auto import tqdm
 import numpy as np
 import pickle
 
+surface_variables = ["skin_temperature",
+                     "surface_pressure",
+                     "2m_temperature",
+                     "2m_specific_humidity", 
+                     "10m_u_component_of_wind", 
+                     "10m_v_component_of_wind"]
+
+multi_variables = ["temperature",
+                  "u_component_of_wind",
+                  "v_component_of_wind",
+                  "geopotential",
+                  "specific_humidity",
+                  "specific_cloud_liquid_water_content",
+                  "specific_cloud_ice_water_content",
+                  "fraction_of_cloud_cover"]
+
+forcing_variables = ["DSWRFtoa", "sea_surface_temperature", "sea_ice_cover"] # in the diagnostic dir
+invariant_variables = ["geopotential_at_surface", "land_sea_mask"]   
+diagnostic_variables = ["USWRFtoa",
+                        "ULWRFtoa", 
+                       "USWRFsfc",
+                       "ULWRFsfc",
+                       "DSWRFsfc",
+                       "DLWRFsfc",
+                       "PRATEsfc",
+                       "LHTFLsfc",
+                       "SHTFLsfc"]
+
 def calculate_climatologies(f, year_start = 1990, year_end = 1995):
     surface = f['surface'] # nt nlat nlon c
     multi = f['multilevel'] # nt nlevel nlat nlon c
