@@ -183,12 +183,16 @@ def latitude_weighted_rmse(pred,
     if with_time:
         if len(pred.shape) == 5:
             lat_weight = lat_weight.view(1, 1, nlat, 1, 1)
+            pred = rearrange(pred, 'b t l nlat nlon -> b t nlat nlon l')
+            target = rearrange(target, 'b t l nlat nlon -> b t nlat nlon l')
         else:
             lat_weight = lat_weight.view(1, 1, nlat, 1)
         return torch.sqrt((((pred - target)**2) * lat_weight).mean(dim=(2, 3)))   # spatial averaging
     else:
         if len(pred.shape) == 4:
             lat_weight = lat_weight.view(1, nlat, 1, 1)
+            pred = rearrange(pred, 'b l nlat nlon -> b nlat nlon l')
+            target = rearrange(target, 'b l nlat nlon -> b nlat nlon l')
         else:
             lat_weight = lat_weight.view(1, nlat, 1)
         return torch.sqrt((((pred - target)**2) * lat_weight).mean(dim=(1, 2)))   # spatial averaging
