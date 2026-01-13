@@ -2,7 +2,6 @@ import lightning as L
 import torch
 from tqdm import tqdm
 
-from modules.models.SFNO import SphericalFourierNeuralOperatorNet
 from modules.models.DiT import ArchesDiT
 from modules.diffusion.flow_matching import FlowScheduler
 from common.loss import latitude_weighted_rmse
@@ -40,6 +39,7 @@ class TrainModule(L.LightningModule):
         self.n = Normalizer(self.normalizer_config["norm_stats_path"])
 
         if self.model_name == "sfno":
+            from modules.models.SFNO import SphericalFourierNeuralOperatorNet
             self.model = SphericalFourierNeuralOperatorNet(params={},
                                                            **self.modelconfig["sfno"])
             self.diffusion=False 

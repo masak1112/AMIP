@@ -9,4 +9,5 @@ conda install lightning matplotlib wandb h5py timm einops
 To run SFNO:
 ```
 conda install torch-harmonics
+pip install -U tensorly tensorly-torch
 ```
