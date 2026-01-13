@@ -16,7 +16,7 @@ class Normalizer:
         self.multilevel_means = torch.tensor(self.stat_dict['multil_mean'], dtype=torch.float32)  # shape (nlevels, multi_level_channels)
         self.multilevel_stds = torch.tensor(self.stat_dict['multi_std'], dtype=torch.float32)    # shape (nlevels, multi_level_channels)
 
-        # Some multilevel variables have zero mean/std, since they are nearly constant (upper atmosphere cloud cover) 
+        # Some multilevel variables have zero mean/std, since they are constantly zero (upper atmosphere cloud cover) 
         eps = 1e-7
         zero_std_mask = (self.multilevel_stds < eps)
         zero_mean_mask = (self.multilevel_means.abs() < eps)
