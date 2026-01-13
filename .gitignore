@@ -16,3 +16,4 @@ __pycache__/
 **.bash_history
 **/.cache
 **/.config
+**/.ipynb_checkpoints
