@@ -1,7 +1,6 @@
 import lightning as L
 from torch.utils.data import DataLoader
-import os 
-from data.plasim import PLASIMData
+from data.amip import AMIPData
 
 class ClimateDataModule(L.LightningDataModule):
     def __init__(self, 
@@ -12,28 +11,19 @@ class ClimateDataModule(L.LightningDataModule):
         self.dataset_config = dataconfig["dataset"]
         self.batch_size = dataconfig["batch_size"]
         self.num_workers = dataconfig["num_workers"]
-        self.normalizer_config = dataconfig["normalizer"]
-        self.ae = dataconfig.get("ae", False)
+        self.norm_stats_path = dataconfig['norm_stats_path']
 
-        self.train_dataset = PLASIMData(data_path=self.dataset_config["train_data_path"],
-                                        norm_stats_path=self.normalizer_config["norm_stats_path"],
-                                        boundary_path=self.dataset_config["boundary_path"],
-                                        time_path=self.dataset_config["train_times_path"],
-                                        nsteps=self.dataset_config["training_nsteps"],   
-                                        normalize_feature=True,
-                                        ae = dataconfig["ae"],
+        self.train_dataset = AMIPData(data_path=dataconfig["train_data_path"],
+                                        norm_stats_path=self.norm_stats_path,
+                                        nsteps=dataconfig["training_nsteps"],  
                                         split='train')
         
-        self.val_dataset = PLASIMData(data_path=self.dataset_config["val_data_path"],
-                                        norm_stats_path=self.normalizer_config["norm_stats_path"],
-                                        boundary_path=self.dataset_config["boundary_path"],
-                                        time_path=self.dataset_config["val_times_path"],
-                                        nsteps=self.dataset_config["val_nsteps"],   
-                                        normalize_feature=True,
-                                        ae = dataconfig["ae"],
-                                        split="valid")
+        self.val_dataset = AMIPData(data_path=dataconfig["val_data_path"],
+                                        norm_stats_path=self.norm_stats_path,
+                                        nsteps=dataconfig["val_nsteps"],  
+                                        split='valid')
     
-        self.normalizer = self.val_dataset.normalizer
+        self.normalizer = self.train_dataset.n
 
     def prepare_data(self):
         # download, split, etc...

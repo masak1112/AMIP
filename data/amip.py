@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from torch.utils.data import Dataset
 import h5py as h5f
+import pickle 
 from data.normalizer import Normalizer
 
 SURFACE_VARIABLES = ["skin_temperature",
@@ -90,23 +91,23 @@ class AMIPData(Dataset):
             multilevel = self.n.normalize_multilevel(multilevel)
             diagnostic = self.n.normalize_diagnostic(diagnostic)
             forcing = self.n.normalize_forcing(forcing)
-            # invariants are already normalized 
+            invariants = self.n.normalize_invariant(self.invariants)
 
         return_dict = {"surface": surface,
                        "multilevel": multilevel,
                        "diagnostic": diagnostic,
                        "forcing": forcing,
-                       "invariants": self.invariants,
+                       "invariants": invariants,
                        "scalars": scalars
                        }
         
         return return_dict
 
-class BiasLoader:
+class ClimatologyLoader:
     def __init__(self,
                  data_path,
                  norm_stats_path,
-                 bias_path,
+                 climatology_path,
                  horizon=7308,
                  start_time = 32120,
                  split="train",
@@ -117,7 +118,7 @@ class BiasLoader:
 
         self.split = split 
         self.data_path = data_path 
-        self.bias_path = bias_path
+        self.climatology_path = climatology_path
         self.norm_stats_path = norm_stats_path
         self.normalize = normalize 
         self.horizon = horizon
@@ -143,13 +144,12 @@ class BiasLoader:
             self.surface = self.n.normalize_surface(self.surface)
             self.multilevel = self.n.normalize_multilevel(self.multilevel)
             self.forcing = self.n.normalize_forcing(self.forcing)
+            self.diagnostic = self.n.normalize_diagnostic(self.diagnostic)
 
-        self.bias_dict = self.load_biases()
+        with open(climatology_path, 'rb') as file:
+            self.climatology_dict = pickle.load(file) # unnormalized
+
         print(f"Loaded {horizon} time stamps for {split} split")
-
-    def load_biases(self):
-        bias_dict = {}
-        return bias_dict    
     
     def get_data(self, device='cpu'):
         

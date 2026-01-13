@@ -1,11 +1,13 @@
 import torch
 import numpy as np
 from einops import rearrange
+import pickle 
 
 class Normalizer:
     def __init__(self, stat_path):
         
-        self.stat_dict = np.load(stat_path, allow_pickle=True).item()
+        with open(stat_path, 'rb') as file:
+            self.stat_dict = pickle.load(file)
 
         # load stats
         self.surface_means = torch.tensor(self.stat_dict['surface_mean'], dtype=torch.float32)  # shape (surface_channels,)
@@ -14,8 +16,17 @@ class Normalizer:
         self.multilevel_means = torch.tensor(self.stat_dict['multil_mean'], dtype=torch.float32)  # shape (nlevels, multi_level_channels)
         self.multilevel_stds = torch.tensor(self.stat_dict['multi_std'], dtype=torch.float32)    # shape (nlevels, multi_level_channels)
 
+        # Some multilevel variables have zero mean/std, since they are nearly constant (upper atmosphere cloud cover) 
+        eps = 1e-7
+        zero_std_mask = (self.multilevel_stds < eps)
+        zero_mean_mask = (self.multilevel_means.abs() < eps)
+        self.multilevel_stds[zero_std_mask] = 1.0
+        self.multilevel_means[zero_mean_mask] = 0.0
+
         self.forcing_means = torch.tensor(self.stat_dict['forcing_mean'], dtype=torch.float32)  # shape (forcing_channels,)
         self.forcing_stds = torch.tensor(self.stat_dict['forcing_std'], dtype=torch.float32)    # shape (forcing_channels,)
+        # SST and SIC have nans in the raw data
+        self.forcing_nans = [1, 2]
 
         self.invariant_means = torch.tensor(self.stat_dict['invariant_mean'], dtype=torch.float32)  # shape (invariant_channels,)
         self.invariant_stds = torch.tensor(self.stat_dict['invariant_std'], dtype=torch.float32)    # shape (invariant_channels,)
@@ -56,6 +67,11 @@ class Normalizer:
         return x
     
     def normalize_forcing(self, x):
+        # needs logic to handle NaNs in forcing data (SST, SIC)
+        for nan_idx in self.forcing_nans:
+            # replace nan w/ mean of the feature
+            x[..., nan_idx] = torch.nan_to_num(x[..., nan_idx], nan=self.forcing_means[..., nan_idx].item())
+
         # x in shape (nt, nlat, nlon, forcing_channels) or (b, nt, nlat, nlon, forcing_channels)
         if len(x.shape) == 5:
             x = (x - self.forcing_means.unsqueeze(0).to(x.device)) / self.forcing_stds.unsqueeze(0).to(x.device)

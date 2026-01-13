@@ -7,7 +7,7 @@ from modules.models.DiT import ArchesDiT
 from modules.diffusion.flow_matching import FlowScheduler
 from common.loss import latitude_weighted_rmse
 from common.plotting import plot_result, plot_spectrum, plot_bias
-from data.amip import BiasLoader, SURFACE_VARIABLES, MULTILEVEL_VARIABLES, DIAGNOSTIC_VARIABLES
+from data.amip import ClimatologyLoader, SURFACE_VARIABLES, MULTILEVEL_VARIABLES, DIAGNOSTIC_VARIABLES
 from data.normalizer import Normalizer
 
 class TrainModule(L.LightningModule):
@@ -32,9 +32,9 @@ class TrainModule(L.LightningModule):
         dataconfig = config['data'] 
         self.dataset_config = dataconfig["dataset"]
         self.normalizer_config = dataconfig["normalizer"]
-        self.bias_loader = BiasLoader(data_path=self.dataset_config["train_data_path"],
+        self.climatology_loader = ClimatologyLoader(data_path=self.dataset_config["train_data_path"],
                                     norm_stats_path=self.normalizer_config["norm_stats_path"],
-                                    bias_path = self.dataset_config["bias_path"],
+                                    climatology_path = self.dataset_config["bias_path"],
                                     horizon=self.dataset_config['bias_horizon'],
                                     start_time=self.dataset_config['bias_start_time'],)
 
@@ -137,8 +137,8 @@ class TrainModule(L.LightningModule):
                 pass
             else: 
                 self.plot_predicitons(pred_feat_dict, target_feat_dict)
-                bias_batch = self.bias_loader.get_data(device=batch['surface'].device)   
-                bias_loss_dict, pred_bias = self.predict_bias(bias_batch)
+                batch_climatology = self.climatology_loader.get_data(device=batch['surface'].device)   
+                bias_loss_dict, pred_bias = self.predict_bias(batch_climatology)
     
     @torch.no_grad()
     def predict(self, batch):
@@ -186,6 +186,9 @@ class TrainModule(L.LightningModule):
         surface_pred_all = self.n.denormalize_surface(surface_pred_all)
         multilevel_pred_all = self.n.denormalize_multilevel(multilevel_pred_all)
         diagnostic_pred_all = self.n.denormalize_diagnostic(diagnostic_pred_all)
+        surface_target = self.n.denormalize_surface(surface_target)
+        multilevel_target = self.n.denormalize_multilevel(multilevel_target)
+        diagnostic_target = self.n.denormalize_diagnostic(diagnostic_target)
 
         pred_feat_dict = {}
         target_feat_dict = {}
@@ -213,6 +216,7 @@ class TrainModule(L.LightningModule):
     @torch.no_grad()
     def predict_bias(self, batch):
         # b = 1 
+        # assume these are normalized
         surface_input = batch['surface'] # b nlat nlon c
         multilevel_input = batch['multilevel'] # b nlat nlon nlevel c
         forcing_data = batch['forcing'] # b t nlat nlon c
@@ -223,9 +227,10 @@ class TrainModule(L.LightningModule):
 
         horizon = forcing_data.shape[1]
 
-        running_total_surface = surface_input.clone()
-        running_total_multilevel = multilevel_input.clone()
-        running_total_diagnostic = diagnostic_data
+        # keep track of unnormalized running totals
+        running_total_surface = self.n.denormalize_surface(surface_input.clone())
+        running_total_multilevel = self.n.denormalize_surface(multilevel_input.clone())
+        running_total_diagnostic = self.n.denormalize_surface(diagnostic_data)
 
         num = 1
 
