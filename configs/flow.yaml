@@ -33,7 +33,7 @@ data:
         
     training_nsteps: 2
     val_nsteps: 41
-    climatology_horizon: 1460 # 1 year
+    climatology_horizon: 100 # 1 year
     climatology_start: 16072 # 1990-01-01
 
     batch_size: 16
