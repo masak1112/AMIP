@@ -26,7 +26,6 @@ class TrainModule(L.LightningModule):
         self.model_name = self.modelconfig["model_name"]
         self.lr = self.modelconfig["lr"]
         self.log_dir = config['training']['log_dir']
-        self.normalizer = normalizer
 
         dataconfig = config['data'] 
         self.climatology_loader = ClimatologyLoader(data_path=dataconfig["train_data_path"],
@@ -36,7 +35,7 @@ class TrainModule(L.LightningModule):
                                     start_time=dataconfig['climatology_start'],)
 
         self.criterion = torch.nn.MSELoss()
-        self.n = Normalizer(self.normalizer_config["norm_stats_path"])
+        self.n = normalizer
 
         if self.model_name == "sfno":
             from modules.models.SFNO import SphericalFourierNeuralOperatorNet
