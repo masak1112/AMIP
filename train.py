@@ -58,7 +58,7 @@ def main(args):
 
     monitor = "bias/z500"
 
-    checkpoint_callback = ModelCheckpoint(
+    checkpoint_callback  = ModelCheckpoint(
         monitor=monitor,
         filename= "model_{epoch:02d}_best",
         mode='min',

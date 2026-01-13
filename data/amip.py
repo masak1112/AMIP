@@ -109,7 +109,7 @@ class ClimatologyLoader:
                  norm_stats_path,
                  climatology_path,
                  horizon=7308,
-                 start_time = 32120,
+                 start_time = 16072,
                  split="train",
                  normalize=True,
                  ):
@@ -122,7 +122,7 @@ class ClimatologyLoader:
         self.norm_stats_path = norm_stats_path
         self.normalize = normalize 
         self.horizon = horizon
-        self.start_time = start_time # 0 is Jan 1st, 1979. 32120 is ~Jan 1st, 2020
+        self.start_time = start_time # 0 is Jan 1st, 1979. 16072 is Jan 1st, 1990
 
         self.file = h5f.File(self.data_path, 'r') 
         self.data = self.file[split] 

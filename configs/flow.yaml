@@ -2,6 +2,10 @@ model:
     model_name: flow
     lr: 5.0e-4
     flow:
+        num_refinement_steps: 5
+        num_train_steps: 21
+        integrator: euler
+    dit:
         
 
 data:
@@ -10,20 +14,13 @@ data:
     climatology_path: /glade/derecho/scratch/ayz/climatology_1990_1996.pkl
     norm_stats_path: /glade/derecho/scratch/ayz/norm_stats_dict.pkl
         
-        training_nsteps: 2
-        val_nsteps: 41
-        bias_horizon: 7308 # 5year
-    normalizer:
+    training_nsteps: 2
+    val_nsteps: 41
+    climatology_horizon: 7308 # 5year
+    climatology_start: 32120
 
-    nlat: 64
-    nlon: 128
-    with_poles: False
-    load_into_memory: False
-    normalize: True
     batch_size: 16
     num_workers: 4
-    pde: climate
-    ae: False
 
 training:
     seed: 42
@@ -33,7 +30,7 @@ training:
     check_val_every_n_epoch: 1
     log_every_n_steps: 100
     max_epochs: 50
-    log_dir: logs/
-    project: plasim_v2
+    log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
+    project: amip
     wandb_mode: online
     checkpoint: null
