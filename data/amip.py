@@ -77,7 +77,7 @@ class AMIPData(Dataset):
             self.horizon = len(self.hour) # t
         else:
             self.horizon = horizon
-            
+
         self.num_samples = self.horizon - nsteps + 1
         print(f"Loaded {self.horizon} snapshots for {split} split")
 
@@ -154,6 +154,8 @@ class ClimatologyLoader:
             self.climatology_dict = {k: torch.tensor(v, dtype=torch.float32) for k, v in self.climatology_dict.items()}
 
         print(f"Loaded {horizon} time stamps for climatology")
+        self.file.close()
+        self.file = None # delete h5f handle to enable pickling of this object
     
     def get_data(self, device='cpu'):
         
