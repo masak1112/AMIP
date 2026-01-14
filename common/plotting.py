@@ -35,15 +35,15 @@ def plot_result(y_pred, y, filename, num_t=6, cmap='twilight_shifted'):
 
     for i in range(num_t):
         if num_t == 1:
-            im0 = axs[0].imshow(y[i], vmin=vmin, vmax=vmax,cmap=cmap)
-            im1 = axs[1].imshow(y_pred[i], vmin=vmin, vmax=vmax, cmap=cmap)
+            im0 = axs[0].imshow(y[i], vmin=vmin, vmax=vmax,cmap=cmap, origin='lower')
+            im1 = axs[1].imshow(y_pred[i], vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
 
             # set the title
             axs[0].set_title(f"True t={(i+1)*dt}")
             axs[1].set_title(f"Pred t={(i+1)*dt}")
         else:
-            im0 = axs[0][i].imshow(y[i], vmin=vmin, vmax=vmax,cmap=cmap)
-            im1 = axs[1][i].imshow(y_pred[i], vmin=vmin, vmax=vmax, cmap=cmap)
+            im0 = axs[0][i].imshow(y[i], vmin=vmin, vmax=vmax,cmap=cmap, origin='lower')
+            im1 = axs[1][i].imshow(y_pred[i], vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
 
             # set the title
             axs[0][i].set_title(f"True t={(i+1)*dt}")
@@ -69,15 +69,15 @@ def plot_bias(pred, target, save_path=None):
 
     bias_scale = max(abs(bias_min), abs(bias_max))
 
-    im0 = axs[0].imshow(pred, cmap='twilight_shifted', vmin=vmin, vmax=vmax)
+    im0 = axs[0].imshow(pred, cmap='twilight_shifted', vmin=vmin, vmax=vmax, origin='lower')
     axs[0].set_title('Predicted')
     fig.colorbar(im0, ax=axs[0], orientation='horizontal')
 
-    im1 = axs[1].imshow(target, cmap='twilight_shifted', vmin=vmin, vmax=vmax)
+    im1 = axs[1].imshow(target, cmap='twilight_shifted', vmin=vmin, vmax=vmax, origin='lower')
     axs[1].set_title('Target')
     fig.colorbar(im1, ax=axs[1], orientation='horizontal')
 
-    im2 = axs[2].imshow(bias, cmap='bwr', vmin=-bias_scale, vmax=bias_scale)
+    im2 = axs[2].imshow(bias, cmap='bwr', vmin=-bias_scale, vmax=bias_scale, origin='lower')
     axs[2].set_title('Bias (Predicted - Target)')
     fig.colorbar(im2, ax=axs[2], orientation='horizontal')
 
