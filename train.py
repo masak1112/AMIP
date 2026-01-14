@@ -18,8 +18,8 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
 
 class EMAWeightAveraging(WeightAveraging):
-    def __init__(self):
-        super().__init__(avg_fn=get_ema_avg_fn(decay=0.995))
+    def __init__(self, decay=0.995):
+        super().__init__(avg_fn=get_ema_avg_fn(decay=decay))
 
     def should_update(self, step_idx=None, epoch_idx=None):
         # Start after 100 steps.
@@ -90,7 +90,7 @@ def main(args):
                         log_every_n_steps = trainconfig["log_every_n_steps"],
                         max_epochs = trainconfig["max_epochs"],
                         default_root_dir = path,
-                        callbacks=[checkpoint_callback, lr_monitor],
+                        callbacks=[checkpoint_callback, lr_monitor, EMAWeightAveraging(trainconfig["ema_decay"])],
                         logger=wandb_logger,
                         num_sanity_val_steps=1,
                         accumulate_grad_batches=trainconfig.get("accumulate_grad_batches", 1),)
