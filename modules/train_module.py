@@ -282,7 +282,7 @@ class TrainModule(L.LightningModule):
                 l = 6
             
             if l != -1:
-                pred_k = pred_feat_dict[..., l]
+                pred_k = pred_k[..., l]
                 bias = bias[..., l]
 
             nlat, nlon = bias.shape[1], bias.shape[2]
