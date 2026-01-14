@@ -25,6 +25,9 @@ def plot_result(y_pred, y, filename, num_t=5, cmap='twilight_shifted'):
     dt = 0
     if num_t != 1:
         dt = t_total // num_t
+        if dt == 0:
+            num_t = t_total # since t_total < num_t
+            dt = 1
         y_pred = y_pred[::dt]
         y = y[::dt]
 
