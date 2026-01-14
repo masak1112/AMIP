@@ -157,8 +157,8 @@ def plot_spectrum(pred, target, path, num_t = 6):
         plt.close()
 
 def zonal_averaged_power_spectrum(field,
-                                  nlon=128,
-                                  nlat=64):
+                                  nlon=360,
+                                  nlat=180):
     """
     This function calculates the zonal averaged power spectrum of a given field. It is designed to work with xarray DataArrays or Datasets that have 'lat', 'lon', and optionally 'time' dimensions. The function first transposes the dimensions to ensure 'lat' and 'lon' are the first two dimensions, then performs a Fast Fourier Transform (FFT) along the 'lon' axis to compute the power spectrum. The power spectrum is then averaged over 'lat' and 'time' (if present) to produce the zonal averaged power spectrum.
 
