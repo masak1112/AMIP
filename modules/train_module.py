@@ -83,7 +83,7 @@ class TrainModule(L.LightningModule):
         surface_data = batch['surface'] # b t nlat nlon c
         multilevel_data = batch['multilevel'] # b t nlevel nlat nlon c
         forcing_data = batch['forcing'] # b t nlat nlon c
-        invariant_input = batch['invariant'] # b nlat nlon c
+        invariant_input = batch['invariants'] # b nlat nlon c
         scalar_data = batch['scalars'] # b t 2
         diagnostic_data = batch['diagnostic'] # b t nlat nlon c
 
@@ -125,7 +125,7 @@ class TrainModule(L.LightningModule):
 
     def validation_step(self, batch, batch_idx): 
     
-        loss_dict, pred_feat_dict, target_feat_dict = self.predict(batch)
+        loss_dict, pred_feat_dict, target_feat_dict = self.predict_lowMem(batch)
         self.log_losses(loss_dict)
 
         # visualize the prediction for first batch and on one gpu
@@ -133,7 +133,7 @@ class TrainModule(L.LightningModule):
             if self.ddp and self.global_rank != 0:
                 pass
             else: 
-                self.plot_predicitons(pred_feat_dict, target_feat_dict)
+                self.plot_predictions(pred_feat_dict, target_feat_dict, lowMem=True)
                 batch_climatology = self.climatology_loader.get_data(device=batch['surface'].device)   
                 bias_loss_dict, pred_bias = self.predict_bias(batch_climatology)
     
@@ -152,8 +152,6 @@ class TrainModule(L.LightningModule):
         surface_target = surface_data[:, 1:] # b t nlat nlon c
         multilevel_target = multilevel_data[:, 1:] # b t nlevel nlat nlon c
         diagnostic_target = diagnostic_data[:, 1:] # b t nlat nlon c
-
-        # TODO: optimize memory usage by calculating losses on the fly. Only plot certain timesteps, levels, variables of interest.
 
         surface_pred_all = torch.zeros_like(surface_target, device=surface_data.device) # b t nlat nlon c
         multilevel_pred_all = torch.zeros_like(multilevel_target, device=multilevel_data.device) # b t nlevel nlat nlon c
@@ -304,20 +302,150 @@ class TrainModule(L.LightningModule):
 
         return result_dict, pred_feat_dict
     
-    def plot_predicitons(self, pred_feat_dict, target_feat_dict):
+    @torch.no_grad()
+    def predict_lowMem(self, batch):
+        surface_data = batch['surface'] # b t nlat nlon c
+        multilevel_data = batch['multilevel'] # b t nlevel nlat nlon c
+        forcing_data = batch['forcing'] # b t nlat nlon c
+        invariant_input = batch['invariants'] # b nlat nlon c
+        scalar_data = batch['scalars'] # b t 2
+        diagnostic_data = batch['diagnostic'] # b t nlat nlon c
+
+        b = surface_data.shape[0]
+        nt = surface_data.shape[1]
+        nlat = surface_data.shape[2]
+        nlon = surface_data.shape[3]
+        nlevel = multilevel_data.shape[2]
+                
+        surface_input = surface_data[:, 0] # b nlat nlon c
+        multilevel_input = multilevel_data[:, 0] # b nlevel nlat nlon c
+
+        surface_target = surface_data[:, 1:] # b t nlat nlon c
+        multilevel_target = multilevel_data[:, 1:] # b t nlevel nlat nlon c
+        diagnostic_target = diagnostic_data[:, 1:] # b t nlat nlon c
+
+        # optimizes memory usage by calculating losses on the fly. Only plot certain timesteps, levels, variables of interest.
+
+        loss_dict = {}
+        t_plot = [0, 3, 11, 19, 39] # 6hour, 1day, 3day, 5day, 10day
+        i_plot = 0
+        plot_keys = ['2m_temperature', 'geopotential', 'PRATEsfc', 'u_component_of_wind', 'temperature', 'specific_humidity']
+        # init plot_dict
+        pred_feat_dict = {}
+        target_feat_dict = {}
+
+        for surface_feat_name in SURFACE_VARIABLES:
+            loss_dict[surface_feat_name] = torch.zeros((b, nt), device=surface_data.device) # b t
+            if surface_feat_name in plot_keys:
+                pred_feat_dict[surface_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=surface_data.device) # b t h w
+                target_feat_dict[surface_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=surface_data.device) # b t h w
+
+        for multilevel_feat_name in MULTILEVEL_VARIABLES:
+            loss_dict[multilevel_feat_name] = torch.zeros((b, nt, nlevel), device=multilevel_data.device) # b t l
+            if multilevel_feat_name in plot_keys:
+                pred_feat_dict[multilevel_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=multilevel_data.device) # b t l h w
+                target_feat_dict[multilevel_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=multilevel_data.device) # b t l h w
+
+        for diagnostic_feat_name in DIAGNOSTIC_VARIABLES:
+            loss_dict[diagnostic_feat_name] = torch.zeros((b, nt), device=diagnostic_data.device) # b t
+            if diagnostic_feat_name in plot_keys:
+                pred_feat_dict[diagnostic_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=diagnostic_data.device) # b t h w
+                target_feat_dict[diagnostic_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=diagnostic_data.device) # b t h w
+
+        for t in range(surface_target.shape[1]):
+            # assemble forcings
+            forcing_input = forcing_data[:, t] # b nlat nlon c
+            scalar_input = scalar_data[:, t] # b 2
+            
+            # make prediction
+            surface_pred, multilevel_pred, diagnostic_pred \
+                = self.forward(surface_input,
+                            multilevel_input,
+                            forcing_input,
+                            invariant_input,
+                            scalar_input,)
+
+            surface_pred_denorm = self.n.denormalize_surface(surface_pred)
+            surface_true_denorm = self.n.denormalize_surface(surface_target[:, t])  
+            multilevel_pred_denorm = self.n.denormalize_multilevel(multilevel_pred)
+            multilevel_true_denorm = self.n.denormalize_multilevel(multilevel_target[:, t])
+            diagnostic_pred_denorm = self.n.denormalize_diagnostic(diagnostic_pred)
+            diagnostic_true_denorm = self.n.denormalize_diagnostic(diagnostic_target[:, t])
+
+            # get losses
+            for c, surface_feat_name in enumerate(SURFACE_VARIABLES):
+                loss_dict[surface_feat_name][:, t] = latitude_weighted_rmse(surface_pred_denorm[..., c], 
+                                                                           surface_true_denorm[..., c],
+                                                                           nlon=nlon,
+                                                                           nlat=nlat,
+                                                                           with_time=False)
+                if t in t_plot and surface_feat_name in plot_keys:
+                    pred_feat_dict[surface_feat_name][:, i_plot, ...] = surface_pred_denorm[..., c]
+                    target_feat_dict[surface_feat_name][:, i_plot, ...] = surface_true_denorm[..., c]
+                    
+            for c, multilevel_feat_name in enumerate(MULTILEVEL_VARIABLES):
+                loss_dict[multilevel_feat_name][:, t, :] = latitude_weighted_rmse(multilevel_pred_denorm[..., c], 
+                                                                                 multilevel_true_denorm[..., c],
+                                                                                 nlon=nlon,
+                                                                                 nlat=nlat,
+                                                                                 with_time=False)
+                if t in t_plot and multilevel_feat_name in plot_keys:
+                    if multilevel_feat_name == 'geopotential':
+                        l_plot = 10
+                    elif multilevel_feat_name == 'u_component_of_wind':
+                        l_plot = 13
+                    elif multilevel_feat_name == 'temperature' or multilevel_feat_name == 'specific_humidity':
+                        l_plot = 6
+
+                    pred_feat_dict[multilevel_feat_name][:, i_plot, ...] = multilevel_pred_denorm[:, l_plot, ..., c]
+                    target_feat_dict[multilevel_feat_name][:, i_plot, ...] = multilevel_true_denorm[:, l_plot, ..., c]
+
+            for c, diagnostic_feat_name in enumerate(DIAGNOSTIC_VARIABLES):
+                loss_dict[diagnostic_feat_name][:, t] = latitude_weighted_rmse(diagnostic_pred_denorm[..., c], 
+                                                                              diagnostic_true_denorm[..., c],
+                                                                              nlon=nlon,
+                                                                              nlat=nlat,
+                                                                              with_time=False)
+                if t in t_plot and diagnostic_feat_name in plot_keys:
+                    pred_feat_dict[diagnostic_feat_name][:, i_plot, ...] = diagnostic_pred_denorm[..., c]
+                    target_feat_dict[diagnostic_feat_name][:, i_plot, ...] = diagnostic_true_denorm[..., c]
+            
+            # update inputs
+            surface_input = surface_pred
+            multilevel_input = multilevel_pred
+
+            if t in t_plot:
+                i_plot += 1
+
+        return loss_dict, pred_feat_dict, target_feat_dict
+    
+    def plot_predictions(self, pred_feat_dict, target_feat_dict, lowMem=False):
 
         t2m_pred = pred_feat_dict['2m_temperature'][0].cpu().numpy() #b t h w -> t h w 
         t2m_target = target_feat_dict['2m_temperature'][0].cpu().numpy()
-        z500_pred = pred_feat_dict['geopotential'][0, :, 10, ...].cpu().numpy() # b t l h w -> t h w
-        z500_target = target_feat_dict['geopotential'][0, :, 10, ...].cpu().numpy()
-        pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu().numpy()
-        pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu().numpy()
-        u250_pred = pred_feat_dict['u_component_of_wind'][0, :, 13, ...].cpu().numpy()
-        u250_target = target_feat_dict['u_component_of_wind'][0, :, 13, ...].cpu().numpy()
-        t850_pred = pred_feat_dict['temperature'][0, :, 6, ...].cpu().numpy()
-        t850_target = target_feat_dict['temperature'][0, :, 6, ...].cpu().numpy()
-        q850_pred = pred_feat_dict['specific_humidity'][0, :, 6, ...].cpu().numpy()
-        q850_target = target_feat_dict['specific_humidity'][0, :, 6, ...].cpu().numpy()
+
+        if lowMem:
+            z500_pred = pred_feat_dict['geopotential'][0].cpu().numpy() # b t h w -> t h w
+            z500_target = target_feat_dict['geopotential'][0].cpu().numpy()
+            pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu().numpy()
+            pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu().numpy()
+            u250_pred = pred_feat_dict['u_component_of_wind'][0].cpu().numpy()
+            u250_target = target_feat_dict['u_component_of_wind'][0].cpu().numpy()
+            t850_pred = pred_feat_dict['temperature'][0].cpu().numpy()
+            t850_target = target_feat_dict['temperature'][0].cpu().numpy()
+            q850_pred = pred_feat_dict['specific_humidity'][0].cpu().numpy()
+            q850_target = target_feat_dict['specific_humidity'][0].cpu().numpy()
+        else:
+            z500_pred = pred_feat_dict['geopotential'][0, :, 10, ...].cpu().numpy() # b t l h w -> t h w
+            z500_target = target_feat_dict['geopotential'][0, :, 10, ...].cpu().numpy()
+            pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu().numpy()
+            pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu().numpy()
+            u250_pred = pred_feat_dict['u_component_of_wind'][0, :, 13, ...].cpu().numpy()
+            u250_target = target_feat_dict['u_component_of_wind'][0, :, 13, ...].cpu().numpy()
+            t850_pred = pred_feat_dict['temperature'][0, :, 6, ...].cpu().numpy()
+            t850_target = target_feat_dict['temperature'][0, :, 6, ...].cpu().numpy()
+            q850_pred = pred_feat_dict['specific_humidity'][0, :, 6, ...].cpu().numpy()
+            q850_target = target_feat_dict['specific_humidity'][0, :, 6, ...].cpu().numpy()
 
         plot_result(t2m_pred, # t h w
                     t2m_target,

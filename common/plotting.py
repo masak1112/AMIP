@@ -17,7 +17,7 @@ def plot_loss(losses, filename, key=None):
     plt.savefig(filename, dpi=300)
     plt.close()
 
-def plot_result(y_pred, y, filename, num_t=6, cmap='twilight_shifted'):
+def plot_result(y_pred, y, filename, num_t=5, cmap='twilight_shifted'):
     # y in shape [t h w], y_pred in shape [t h w]
 
     t_total, h, w = y_pred.shape
