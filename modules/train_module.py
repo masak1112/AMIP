@@ -447,7 +447,7 @@ class TrainModule(L.LightningModule):
             q850_pred = pred_feat_dict['specific_humidity'][0, :, 6, ...].cpu().numpy()
             q850_target = target_feat_dict['specific_humidity'][0, :, 6, ...].cpu().numpy()
 
-        print(t2m_pred.shape)
+        #print(t2m_pred.shape)
         plot_result(t2m_pred, # t h w
                     t2m_target,
                     f'{self.log_dir}/t2m_{self.current_epoch}.png')
