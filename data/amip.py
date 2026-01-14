@@ -45,6 +45,7 @@ class AMIPData(Dataset):
                  split="train",
                  normalize=True,
                  nsteps=1,   # how many steps to load
+                 horizon=-1,
                  ):
 
         self.data_path = data_path 
@@ -72,7 +73,11 @@ class AMIPData(Dataset):
         if self.normalize:
             self.invariants = self.n.normalize_invariant(self.invariants)
 
-        self.horizon = len(self.hour) # t
+        if horizon == -1: # use full dataset
+            self.horizon = len(self.hour) # t
+        else:
+            self.horizon = horizon
+            
         self.num_samples = self.horizon - nsteps + 1
         print(f"Loaded {self.horizon} snapshots for {split} split")
 
