@@ -81,19 +81,19 @@ class TrainModule(L.LightningModule):
     def training_step(self, batch, batch_idx):
 
         surface_data = batch['surface'] # b t nlat nlon c
-        multilevel_data = batch['multilevel'] # b t nlat nlon nlevel c
+        multilevel_data = batch['multilevel'] # b t nlevel nlat nlon c
         forcing_data = batch['forcing'] # b t nlat nlon c
         invariant_input = batch['invariant'] # b nlat nlon c
         scalar_data = batch['scalars'] # b t 2
         diagnostic_data = batch['diagnostic'] # b t nlat nlon c
 
         surface_input = surface_data[:, 0] # b nlat nlon c
-        multilevel_input = multilevel_data[:, 0] # b nlat nlon nlevel c
+        multilevel_input = multilevel_data[:, 0] # b nlevel nlat nlon c
         forcing_input = forcing_data[:, 0] # b nlat nlon c
         scalar_input = scalar_data[:, 0] # b 2
 
         surface_target = surface_data[:, 1] # b nlat nlon c
-        multilevel_target = multilevel_data[:, 1] # b nlat nlon nlevel c
+        multilevel_target = multilevel_data[:, 1] # b nlevel nlat nlon c
         diagnostic_target = diagnostic_data[:, 1] # b nlat nlon c
 
         if self.diffusion:
@@ -140,23 +140,23 @@ class TrainModule(L.LightningModule):
     @torch.no_grad()
     def predict(self, batch):
         surface_data = batch['surface'] # b t nlat nlon c
-        multilevel_data = batch['multilevel'] # b t nlat nlon nlevel c
+        multilevel_data = batch['multilevel'] # b t nlevel nlat nlon c
         forcing_data = batch['forcing'] # b t nlat nlon c
         invariant_input = batch['invariants'] # b nlat nlon c
         scalar_data = batch['scalars'] # b t 2
         diagnostic_data = batch['diagnostic'] # b t nlat nlon c
                 
         surface_input = surface_data[:, 0] # b nlat nlon c
-        multilevel_input = multilevel_data[:, 0] # b nlat nlon nlevel c
+        multilevel_input = multilevel_data[:, 0] # b nlevel nlat nlon c
 
         surface_target = surface_data[:, 1:] # b t nlat nlon c
-        multilevel_target = multilevel_data[:, 1:] # b t nlat nlon nlevel c
+        multilevel_target = multilevel_data[:, 1:] # b t nlevel nlat nlon c
         diagnostic_target = diagnostic_data[:, 1:] # b t nlat nlon c
 
         # TODO: optimize memory usage by calculating losses on the fly. Only plot certain timesteps, levels, variables of interest.
 
         surface_pred_all = torch.zeros_like(surface_target, device=surface_data.device) # b t nlat nlon c
-        multilevel_pred_all = torch.zeros_like(multilevel_target, device=multilevel_data.device) # b t nlat nlon nlevel c
+        multilevel_pred_all = torch.zeros_like(multilevel_target, device=multilevel_data.device) # b t nlevel nlat nlon c
         diagnostic_pred_all = torch.zeros_like(diagnostic_target, device=diagnostic_data.device) # b t nlat nlon c
 
         for t in range(surface_target.shape[1]):
@@ -217,19 +217,19 @@ class TrainModule(L.LightningModule):
         # b = 1 
         # assume these are normalized
         surface_input = batch['surface'] # b nlat nlon c
-        multilevel_input = batch['multilevel'] # b nlat nlon nlevel c
+        multilevel_input = batch['multilevel'] # b nlevel nlat nlon c
         forcing_data = batch['forcing'] # b t nlat nlon c
         invariant_input = batch['invariants'] # b nlat nlon c
         diagnostic_data = batch['diagnostic'] # b nlat nlon c
         scalar_data = batch['scalars'] # b t 2
-        bias_dict = batch['climatology'] # dict of nlat nlon or nlat nlon nlevel tensors
+        bias_dict = batch['climatology'] # dict of nlat nlon or nlevel nlat nlon tensors
 
         horizon = forcing_data.shape[1]
 
         # keep track of unnormalized running totals
         running_total_surface = self.n.denormalize_surface(surface_input.clone())
-        running_total_multilevel = self.n.denormalize_surface(multilevel_input.clone())
-        running_total_diagnostic = self.n.denormalize_surface(diagnostic_data)
+        running_total_multilevel = self.n.denormalize_multilevel(multilevel_input.clone())
+        running_total_diagnostic = self.n.denormalize_diagnostic(diagnostic_data)
 
         num = 1
 
@@ -253,7 +253,7 @@ class TrainModule(L.LightningModule):
             multilevel_input = multilevel_pred
 
         surface_bias = running_total_surface / num # b nlat nlon c
-        multilevel_bias = running_total_multilevel / num # b nlat nlon nlevel c
+        multilevel_bias = running_total_multilevel / num # b nlevel nlat nlon c
         diagnostic_bias = running_total_diagnostic / num # b nlat nlon c
 
         pred_feat_dict = {}
@@ -261,7 +261,7 @@ class TrainModule(L.LightningModule):
             pred_feat_dict[surface_feat_name] = surface_bias[..., c] # b nlat nlon 
 
         for c, multilevel_feat_name in enumerate(MULTILEVEL_VARIABLES):
-            pred_feat_dict[multilevel_feat_name] = multilevel_bias[..., c] # b nlat nlon nlevel 
+            pred_feat_dict[multilevel_feat_name] = multilevel_bias[..., c] # b nlevel nlat nlon
 
         for c, diagnostic_feat_name in enumerate(DIAGNOSTIC_VARIABLES):
             pred_feat_dict[diagnostic_feat_name] = diagnostic_bias[..., c] # b nlat nlon 
@@ -270,8 +270,8 @@ class TrainModule(L.LightningModule):
         result_dict = {}
 
         for var_name in bias_key_list:
-            bias = bias_dict[var_name].unsqueeze(0) # 1 nlat nlon or 1 nlat nlon nlevel
-            pred_k = pred_feat_dict[var_name] # 1 nlat nlon or 1 nlat nlon nlevel
+            bias = bias_dict[var_name].unsqueeze(0) # 1 nlat nlon or 1 nlevel nlat nlon
+            pred_k = pred_feat_dict[var_name] # 1 nlat nlon or 1 nlevel nlat nlon
             
             l = -1 
             if var_name == "geopotential":
