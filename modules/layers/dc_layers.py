@@ -226,8 +226,7 @@ class ConvLayer(nn.Module):
         padding *= dilation
 
         self.dropout = nn.Dropout2d(dropout, inplace=False) if dropout > 0 else None
-        # TODO: think about circular padding
-        self.conv = nn.Conv2d(
+        self.conv = SphereConv2d(
             in_channels,
             out_channels,
             kernel_size=(kernel_size, kernel_size),
@@ -264,7 +263,7 @@ class PixelUnshuffleDownSampleLayer(nn.Module):
         self.factor = factor
         out_ratio = factor**2
         assert out_channels % out_ratio == 0
-        self.conv = SphereConv2d(
+        self.conv = ConvLayer(
             in_channels=in_channels,
             out_channels=out_channels // out_ratio,
             kernel_size=kernel_size,
@@ -309,7 +308,7 @@ class PixelShuffleUpSampleLayer(nn.Module):
         super().__init__()
         self.factor = factor
         out_ratio = factor**2
-        self.conv = SphereConv2d(
+        self.conv = ConvLayer(
             in_channels=in_channels,
             out_channels=out_channels * out_ratio,
             kernel_size=kernel_size,
