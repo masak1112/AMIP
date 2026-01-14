@@ -423,6 +423,8 @@ class TrainModule(L.LightningModule):
 
         t2m_pred = pred_feat_dict['2m_temperature'][0].cpu().numpy() #b t h w -> t h w 
         t2m_target = target_feat_dict['2m_temperature'][0].cpu().numpy()
+        pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu().numpy()
+        pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu().numpy()
 
         if lowMem:
             z500_pred = pred_feat_dict['geopotential'][0].cpu().numpy() # b t h w -> t h w
@@ -438,8 +440,6 @@ class TrainModule(L.LightningModule):
         else:
             z500_pred = pred_feat_dict['geopotential'][0, :, 10, ...].cpu().numpy() # b t l h w -> t h w
             z500_target = target_feat_dict['geopotential'][0, :, 10, ...].cpu().numpy()
-            pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu().numpy()
-            pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu().numpy()
             u250_pred = pred_feat_dict['u_component_of_wind'][0, :, 13, ...].cpu().numpy()
             u250_target = target_feat_dict['u_component_of_wind'][0, :, 13, ...].cpu().numpy()
             t850_pred = pred_feat_dict['temperature'][0, :, 6, ...].cpu().numpy()
@@ -447,6 +447,7 @@ class TrainModule(L.LightningModule):
             q850_pred = pred_feat_dict['specific_humidity'][0, :, 6, ...].cpu().numpy()
             q850_target = target_feat_dict['specific_humidity'][0, :, 6, ...].cpu().numpy()
 
+        print(t2m_pred.shape)
         plot_result(t2m_pred, # t h w
                     t2m_target,
                     f'{self.log_dir}/t2m_{self.current_epoch}.png')

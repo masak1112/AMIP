@@ -2,19 +2,28 @@
 import argparse
 from datetime import datetime
 import torch
+from torch.optim.swa_utils import get_ema_avg_fn
 import os 
 
 # Custom imports
 from common.utils import get_yaml, save_yaml
-from lightning.pytorch.callbacks import LearningRateMonitor
 from modules.train_module import TrainModule
 from data.datamodule import ClimateDataModule
 
 # Lightning imports
 import lightning as L
+from lightning.pytorch.callbacks import LearningRateMonitor, WeightAveraging
 from lightning.pytorch import seed_everything
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
+
+class EMAWeightAveraging(WeightAveraging):
+    def __init__(self):
+        super().__init__(avg_fn=get_ema_avg_fn(decay=0.995))
+
+    def should_update(self, step_idx=None, epoch_idx=None):
+        # Start after 100 steps.
+        return (step_idx is not None) and (step_idx >= 100)
 
 def process_args(args, config):
     modelconfig = config['model']
