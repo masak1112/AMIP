@@ -28,7 +28,7 @@ class TrainModule(L.LightningModule):
         self.log_dir = config['training']['log_dir']
 
         self.dataconfig = config['data'] 
-        self.climatology_batch = self.initialize_climatology(self.dataconfig)
+        #self.climatology_batch = self.initialize_climatology(self.dataconfig)
 
         self.criterion = torch.nn.MSELoss()
         self.n = normalizer
@@ -138,7 +138,7 @@ class TrainModule(L.LightningModule):
                 pass
             else: 
                 self.plot_predictions(pred_feat_dict, target_feat_dict, lowMem=True)
-                bias_loss_dict, pred_bias = self.predict_bias(self.climatology_batch)
+                #bias_loss_dict, pred_bias = self.predict_bias(self.climatology_batch)
     
     @torch.no_grad()
     def predict(self, batch):
