@@ -282,8 +282,8 @@ class TrainModule(L.LightningModule):
                 l = 6
             
             if l != -1:
-                pred_k = pred_k[..., l]
-                bias = bias[..., l]
+                pred_k = pred_k[:, l, ...]
+                bias = bias[:, l, ...]
 
             nlat, nlon = bias.shape[1], bias.shape[2]
             loss = latitude_weighted_rmse(pred_k, 
