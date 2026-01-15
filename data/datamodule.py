@@ -26,7 +26,7 @@ class ClimateDataModule(L.LightningDataModule):
                                                    norm_stats_path=self.norm_stats_path,
                                                   climatology_path=dataconfig["climatology_path"],
                                                   horizon=dataconfig["climatology_horizon"],
-                                                  start_time=dataconfig["climatology_start_time"])
+                                                  start_time=dataconfig["climatology_start"])
     
         self.normalizer = self.train_dataset.n
 
