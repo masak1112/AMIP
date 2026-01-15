@@ -8,17 +8,17 @@ from modules.layers.dc_layers import SphereConv2d, LayerNorm2d, \
 class DCDownBlock2d(nn.Module):
     def __init__(
         self,
-        in_dim: int,
-        out_dim: int,
+        in_channels: int,
+        out_channels: int,
         factor: int = 2,
     ) -> None:
         super().__init__()
 
         self.conv_block = PixelUnshuffleDownSampleLayer(
-            in_channels=in_dim, out_channels=out_dim, kernel_size=3, factor=factor
+            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=factor
         )
         self.shortcut_block = ChannelAveragingDownSampleLayer(
-            in_channels=in_dim, out_channels=out_dim, factor=factor
+            in_channels=in_channels, out_channels=out_channels, factor=factor
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -28,16 +28,16 @@ class DCDownBlock2d(nn.Module):
 class DCUpBlock2d(nn.Module):
     def __init__(
         self,
-        in_dim: int,
-        out_dim: int,
+        in_channels: int,
+        out_channels: int,
         factor: int = 2,
     ) -> None:
         super().__init__()
         self.conv_block = PixelShuffleUpSampleLayer(
-            in_channels=in_dim, out_channels=out_dim, kernel_size=3, factor=factor
+            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=factor
         )
         self.shortcut_block = ChannelDuplicatingUpSampleLayer(
-            in_channels=in_dim, out_channels=out_dim, factor=factor)
+            in_channels=in_channels, out_channels=out_channels, factor=factor)
         
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
