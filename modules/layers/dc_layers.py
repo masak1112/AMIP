@@ -89,12 +89,7 @@ class SphereConv2d(nn.Conv2d):
         Returns:
             Padded tensor with spherical boundary conditions
         """
-        assert input.dim() == 4, (
-            "Input tensor must be 4D (batch, channels, height, width)"
-        )
-        assert input.shape[3] % 2 == 0, (
-            "Width of the input tensor must be even for proper shperical padding"
-        )
+
         half_width = input.shape[3] // 2
 
         top_rows = input[:, :, : padding[0], :]

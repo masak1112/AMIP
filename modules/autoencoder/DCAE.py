@@ -72,7 +72,6 @@ class Encoder(nn.Module):
         in_channels: int,
         hidden_channels = (256, 256, 512, 512),
         blocks_per_layer = (2, 2, 2, 2),
-        out_shortcut: bool = True,
     ):
         super().__init__()
 
@@ -109,12 +108,6 @@ class Encoder(nn.Module):
                                      kernel_size=3,
                                      padding=1)
 
-        self.out_shortcut = out_shortcut
-        if out_shortcut:
-            self.out_shortcut_average_group_size = (
-                hidden_channels[-1] // latent_channels
-            )
-
     def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:
         # surface in shape b nlat nlon c 
         # multilevel in shape b nlevel nlat nlon c
@@ -135,12 +128,7 @@ class Encoder(nn.Module):
         for down_block in self.down_layers:
             x = down_block(x) 
 
-        if self.out_shortcut:
-            residual = x.unflatten(1, (-1, self.out_shortcut_average_group_size))
-            residual = residual.mean(dim=2)
-            x = self.conv_out(x) + residual
-        else:
-            x = self.conv_out(x) # b latent_dim zlat zlon
+        x = self.conv_out(x) # b latent_dim zlat zlon
 
         z_surface = x[:, :n_surface, :, :] # b n_surface zlat zlon
         z_diagnostic = x[:, n_surface:n_surface + n_diagnostic, :, :] # b n_diagnostic zlat zlon
@@ -150,7 +138,7 @@ class Encoder(nn.Module):
         z_surface = rearrange(z_surface, 'b c zlat zlon -> b zlat zlon c')
         z_diagnostic = rearrange(z_diagnostic, 'b c zlat zlon -> b zlat zlon c')
 
-        return z_surface, z_diagnostic, z_multilevel
+        return z_surface, z_multilevel,  z_diagnostic
     
 class Decoder(nn.Module):
     def __init__(
@@ -158,7 +146,6 @@ class Decoder(nn.Module):
         in_channels: int,
         hidden_channels = (512, 512, 256, 256),
         blocks_per_layer = (2, 2, 2, 2),
-        in_shortcut: bool = True,
     ):
         super().__init__()
 
@@ -171,10 +158,6 @@ class Decoder(nn.Module):
             kernel_size=3,
             padding=1
         )
-
-        self.in_shortcut = in_shortcut
-        if in_shortcut:
-            self.in_shortcut_repeats = hidden_channels[0] // latent_channels
         
         self.up_layers = nn.ModuleList()
         for i, (out_channel, num_blocks) in enumerate(
@@ -217,11 +200,7 @@ class Decoder(nn.Module):
 
         x = torch.cat([surface, diagnostic, multilevel], dim=1) # b c zlat zlon
 
-        if self.in_shortcut:
-            residual = x.repeat_interleave(self.in_shortcut_repeats, dim=1)
-            x = self.conv_in(x) + residual
-        else:
-            x = self.conv_in(x) # b hidden_dim zlat zlon
+        x = self.conv_in(x) # b hidden_dim zlat zlon
 
         for up_block in self.up_layers:
             x = up_block(x) 
@@ -236,4 +215,4 @@ class Decoder(nn.Module):
         z_surface = rearrange(z_surface, 'b c nlat nlon -> b nlat nlon c')
         z_diagnostic = rearrange(z_diagnostic, 'b c nlat nlon -> b nlat nlon c')
 
-        return z_surface, z_diagnostic, z_multilevel
+        return z_surface, z_multilevel, z_diagnostic
