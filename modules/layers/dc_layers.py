@@ -331,12 +331,6 @@ class PixelShuffleUpSampleLayer(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x in shape b c x y
-        _, _, H, W = x.shape
-
-        if H % self.factor != 0:
-            x = F.pad(x, (0, 0, 0, self.factor - H % self.factor), mode="replicate")
-        if W % self.factor != 0:
-            x = F.pad(x, (0, self.factor - W % self.factor, 0, 0), mode="replicate")
 
         x = self.conv(x)
         x = F.pixel_shuffle(x, self.factor)
@@ -360,11 +354,6 @@ class ChannelDuplicatingUpSampleLayer(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         _, _, H, W = x.shape
 
-        if H % self.factor != 0:
-            x = F.pad(x, (0, 0, 0, self.factor - H % self.factor), mode="replicate")
-        if W % self.factor != 0:
-            x = F.pad(x, (0, self.factor - W % self.factor, 0, 0), mode="replicate")
-            
         x = x.repeat_interleave(self.repeats, dim=1)
         x = F.pixel_shuffle(x, self.factor)
         return x
