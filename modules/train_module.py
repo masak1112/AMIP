@@ -257,7 +257,7 @@ class TrainModule(L.LightningModule):
         self.multilevel_running_mean += self.n.denormalize_multilevel(multilevel_pred)
         self.diagnostic_running_mean += self.n.denormalize_diagnostic(diagnostic_pred)
 
-        self.n += 1
+        self.num += 1
 
     @torch.no_grad()
     def compute_biases(self):
