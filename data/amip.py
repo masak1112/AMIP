@@ -139,7 +139,7 @@ class ClimatologyData(Dataset):
         self.diagnostic = torch.tensor(np.array(self.data['diagnostic'][start_time]), dtype=torch.float32) # nlat nlon ndiagnostic_channels
         self.hour = torch.from_numpy(self.data['hour'][start_time:start_time + horizon]) # horizon
         self.day = torch.from_numpy(self.data['day'][start_time:start_time + horizon]) # horizon
-        self.scalars = torch.concat([self.day.unsqueeze(-1), self.hour.unsqueeze(-1)], dim=-1).unsqueeze(0) # horizon 2
+        self.scalars = torch.concat([self.day.unsqueeze(-1), self.hour.unsqueeze(-1)], dim=-1) # horizon 2
 
         # Each year of forcing variables is around 1 GB, so don't load it into memoery
         self.forcing = self.data['forcing']

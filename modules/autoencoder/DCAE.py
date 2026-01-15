@@ -202,38 +202,38 @@ class Decoder(nn.Module):
 
 
     def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:
-        # surface in shape b nlat nlon c 
-        # multilevel in shape b nlevel nlat nlon c
-        # diagnostic in shape b nlat nlon c
+        # surface in shape b zlat zlon c 
+        # multilevel in shape b nlevel zlat zlon c
+        # diagnostic in shape b zlat zlon c
+
         n_surface = surface.shape[-1]
         n_diagnostic = diagnostic.shape[-1]
         n_levels = multilevel.shape[1]
 
-        surface = rearrange(surface, 'b nlat nlon c -> b c nlat nlon')
-        diagnostic = rearrange(diagnostic, 'b nlat nlon c -> b c nlat nlon')
+        surface = rearrange(surface, 'b zlat zlon c -> b c zlat zlon')
+        diagnostic = rearrange(diagnostic, 'b zlat zlon c -> b c zlat zlon')
         # flatten levels to channels. This is because we are purely compressing in lat/lon dimensions
-        multilevel = rearrange(multilevel, 'b nlevel nlat nlon c -> b (c nlevel) nlat nlon')
+        multilevel = rearrange(multilevel, 'b nlevel zlat zlon c -> b (c nlevel) zlat zlon')
 
-        x = torch.cat([surface, diagnostic, multilevel], dim=1) # b c nlat nlon
+        x = torch.cat([surface, diagnostic, multilevel], dim=1) # b c zlat zlon
 
-        x = self.conv_in(x) # b hidden_dim nlat nlon
-
-        for down_block in self.down_layers:
-            x = down_block(x) 
-
-        if self.out_shortcut:
-            residual = x.unflatten(1, (-1, self.out_shortcut_average_group_size))
-            residual = residual.mean(dim=2)
-            x = self.conv_out(x) + residual
+        if self.in_shortcut:
+            residual = x.repeat_interleave(self.in_shortcut_repeats, dim=1)
+            x = self.conv_in(x) + residual
         else:
-            x = self.conv_out(x) # b latent_dim zlat zlon
+            x = self.conv_in(x) # b hidden_dim zlat zlon
 
-        z_surface = x[:, :n_surface, :, :] # b n_surface zlat zlon
-        z_diagnostic = x[:, n_surface:n_surface + n_diagnostic, :, :] # b n_diagnostic zlat zlon
-        z_multilevel = x[:, n_surface + n_diagnostic:, :, :] # b (n_multilevel * nlevel) zlat zlon
+        for up_block in self.up_layers:
+            x = up_block(x) 
 
-        z_multilevel = rearrange(z_multilevel, 'b (c nlevel) zlat zlon -> b nlevel zlat zlon c', nlevel=n_levels)
-        z_surface = rearrange(z_surface, 'b c zlat zlon -> b zlat zlon c')
-        z_diagnostic = rearrange(z_diagnostic, 'b c zlat zlon -> b zlat zlon c')
+        x = self.conv_out(x) # b in_channels nlat nlon
+
+        z_surface = x[:, :n_surface, :, :] # b n_surface nlat nlon
+        z_diagnostic = x[:, n_surface:n_surface + n_diagnostic, :, :] # b n_diagnostic nlat nlon
+        z_multilevel = x[:, n_surface + n_diagnostic:, :, :] # b (n_multilevel * nlevel) nlat nlon
+
+        z_multilevel = rearrange(z_multilevel, 'b (c nlevel) nlat nlon -> b nlevel nlat nlon c', nlevel=n_levels)
+        z_surface = rearrange(z_surface, 'b c nlat nlon -> b nlat nlon c')
+        z_diagnostic = rearrange(z_diagnostic, 'b c nlat nlon -> b nlat nlon c')
 
         return z_surface, z_diagnostic, z_multilevel
