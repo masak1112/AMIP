@@ -141,17 +141,10 @@ class TrainModule(L.LightningModule):
 
                     # reset buffers to initial conditions 
                         
-                    self.surface_state = batch['surface']
-                    self.multilevel_state = batch['multilevel']
-                    self.diagnostic_state = batch['diagnostic']
+                    self.surface_state = batch['surface'][:, 0]
+                    self.multilevel_state = batch['multilevel'][:, 0]
+                    self.diagnostic_state = batch['diagnostic'][:, 0]
                     self.invariant_state = batch['invariants']
-
-                    print(batch['surface'].shape)
-                    print(batch['multilevel'].shape)
-                    print(batch['diagnostic'].shape)
-                    print(batch['invariants'].shape)
-                    print(batch['forcing'].shape)
-                    print(batch['scalars'].shape)
 
                     self.surface_running_mean = self.n.denormalize_surface(self.surface_state)
                     self.multilevel_running_mean = self.n.denormalize_multilevel(self.multilevel_state)
@@ -242,7 +235,7 @@ class TrainModule(L.LightningModule):
         # b = 1 
         # assume these are normalized
 
-        forcing_input = batch['forcing'] # b nlat nlon c
+        forcing_input = batch['forcing'][:, 0] # b nlat nlon c
         scalar_input = batch['scalars'] # b 2
 
         surface_input = self.surface_state # b nlat nlon c
