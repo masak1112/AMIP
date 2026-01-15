@@ -93,7 +93,8 @@ def main(args):
                         callbacks=[checkpoint_callback, lr_monitor, EMAWeightAveraging(trainconfig["ema_decay"])],
                         logger=wandb_logger,
                         accumulate_grad_batches=trainconfig.get("accumulate_grad_batches", 1),
-                        num_sanity_val_steps=trainconfig.get("num_sanity_val_steps", 1),)
+                        num_sanity_val_steps=trainconfig.get("num_sanity_val_steps", 1),
+                        precision=trainconfig["precision"],)
     
     if trainconfig["checkpoint"] is not None:
         trainer.fit(model=model,

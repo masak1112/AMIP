@@ -6,8 +6,7 @@ from modules.models.DiT import ArchesDiT
 from modules.diffusion.flow_matching import FlowScheduler
 from common.loss import latitude_weighted_rmse
 from common.plotting import plot_result, plot_spectrum, plot_bias
-from data.amip import ClimatologyLoader, SURFACE_VARIABLES, MULTILEVEL_VARIABLES, DIAGNOSTIC_VARIABLES
-from data.normalizer import Normalizer
+from data.amip import SURFACE_VARIABLES, MULTILEVEL_VARIABLES, DIAGNOSTIC_VARIABLES
 
 class TrainModule(L.LightningModule):
     def __init__(self,
@@ -28,10 +27,10 @@ class TrainModule(L.LightningModule):
         self.log_dir = config['training']['log_dir']
 
         self.dataconfig = config['data'] 
-        #self.climatology_batch = self.initialize_climatology(self.dataconfig)
 
         self.criterion = torch.nn.MSELoss()
         self.n = normalizer
+        self.climatology = None
 
         if self.model_name == "sfno":
             from modules.models.SFNO import SphericalFourierNeuralOperatorNet
@@ -52,14 +51,6 @@ class TrainModule(L.LightningModule):
             self.ddp = False
 
         self.save_hyperparameters()
-
-    def initialize_climatology(self, dataconfig):
-        climatology_loader = ClimatologyLoader(data_path=dataconfig["train_data_path"],
-                                    norm_stats_path=dataconfig["norm_stats_path"],
-                                    climatology_path = dataconfig["climatology_path"],
-                                    horizon=dataconfig['climatology_horizon'],
-                                    start_time=dataconfig['climatology_start'],)
-        return climatology_loader.get_data()
 
     def forward(self, surface, multilevel, forcing, invariant, scalars):
         if self.diffusion:
@@ -127,18 +118,44 @@ class TrainModule(L.LightningModule):
 
         return loss 
 
-    def validation_step(self, batch, batch_idx): 
-    
-        loss_dict, pred_feat_dict, target_feat_dict = self.predict_lowMem(batch)
-        self.log_losses(loss_dict)
+    def validation_step(self, batch, batch_idx, dataloader_idx=0): 
+        
+        if dataloader_idx == 0:
+            # each batch contains val_nsteps number of snapshots
+            loss_dict, pred_feat_dict, target_feat_dict = self.predict_lowMem(batch)
+            self.log_losses(loss_dict)
 
-        # visualize the prediction for first batch and on one gpu
-        if batch_idx == 0:
-            if self.ddp and self.global_rank != 0:
-                pass
-            else: 
-                self.plot_predictions(pred_feat_dict, target_feat_dict, lowMem=True)
-                #bias_loss_dict, pred_bias = self.predict_bias(self.climatology_batch)
+            # visualize the prediction for first batch and on one gpu
+            if batch_idx == 0:
+                if not self.ddp or self.global_rank == 0:
+                    self.plot_predictions(pred_feat_dict, target_feat_dict, lowMem=True)
+
+        elif dataloader_idx == 1:
+            # the first batch (batch_idx=0) contains the initial conditions, forcing, and climatologies
+            # each subsequent batch only contains forcing data and HoD, DoY
+
+            if not self.ddp or self.global_rank == 0: # only run on one GPU
+                if batch_idx == 0:
+                    if self.climatology is None:
+                        self.climatology = batch['climatology_dict'] # can save to persistent RAM, since only ~100 Mb
+
+                    # reset buffers to initial conditions 
+                        
+                    self.surface_state = batch['surface']
+                    self.multilevel_state = batch['multilevel']
+                    self.diagnostic_state = batch['diagnostic']
+                    self.invariant_state = batch['invariants']
+
+                    self.surface_running_mean = self.n.denormalize_surface(self.surface_state)
+                    self.multilevel_running_mean = self.n.denormalize_multilevel(self.multilevel_state)
+                    self.diagnostic_running_mean = self.n.denormalize_diagnostic(self.diagnostic_state)
+
+                    self.num = 1
+
+                self.update(batch) # update buffers
+
+                if batch_idx == self.trainer.num_val_batches[1] - 1:
+                    bias_dict, pred_climatology_dict = self.compute_biases()
     
     @torch.no_grad()
     def predict(self, batch):
@@ -214,65 +231,55 @@ class TrainModule(L.LightningModule):
         return loss_dict, pred_feat_dict, target_feat_dict
         
     @torch.no_grad()
-    def predict_bias(self, batch):
+    def update(self, batch):
         # b = 1 
         # assume these are normalized
-        surface_input = batch['surface'] # b nlat nlon c
-        multilevel_input = batch['multilevel'] # b nlevel nlat nlon c
-        forcing_data = batch['forcing'] # b t nlat nlon c
-        invariant_input = batch['invariants'] # b nlat nlon c
-        diagnostic_data = batch['diagnostic'] # b nlat nlon c
-        scalar_data = batch['scalars'] # b t 2
-        bias_dict = batch['climatology'] # dict of nlat nlon or nlevel nlat nlon tensors
+        forcing_input = batch['forcing'] # b nlat nlon c
+        scalar_input = batch['scalars'] # b t 2
 
-        horizon = forcing_data.shape[1]
+        surface_input = self.surface_state # b nlat nlon c
+        multilevel_input = self.multilevel_state # b nlevel nlat nlon c
+        invariant_input = self.invariant_state # b nlat nlon c
 
-        # keep track of unnormalized running totals
-        running_total_surface = self.n.denormalize_surface(surface_input.clone())
-        running_total_multilevel = self.n.denormalize_multilevel(multilevel_input.clone())
-        running_total_diagnostic = self.n.denormalize_diagnostic(diagnostic_data)
+        surface_pred, multilevel_pred, diagnostic_pred \
+                        = self.forward(surface_input,
+                                    multilevel_input,
+                                    forcing_input,
+                                    invariant_input,
+                                    scalar_input,)
+        
+        self.surface_state = surface_pred
+        self.multilevel_state = multilevel_pred
+        self.diagnostic_state = diagnostic_pred
 
-        num = 1
+        self.surface_running_mean += self.n.denormalize_surface(surface_pred)
+        self.multilevel_running_mean += self.n.denormalize_multilevel(multilevel_pred)
+        self.diagnostic_running_mean += self.n.denormalize_diagnostic(diagnostic_pred)
 
-        for i in tqdm(range(horizon), leave=False):
-            forcing_input = forcing_data[:, i] # b nlat nlon c
-            scalar_input = scalar_data[:, i] # b 2
+        self.n += 1
 
-            surface_pred, multilevel_pred, diagnostic_pred \
-                = self.forward(surface_input,
-                            multilevel_input,
-                            forcing_input,
-                            invariant_input,
-                            scalar_input,)
-
-            running_total_surface += self.n.denormalize_surface(surface_pred)
-            running_total_multilevel += self.n.denormalize_multilevel(multilevel_pred)
-            running_total_diagnostic += self.n.denormalize_diagnostic(diagnostic_pred)
-            num += 1
-            
-            surface_input = surface_pred
-            multilevel_input = multilevel_pred
-
-        surface_bias = running_total_surface / num # b nlat nlon c
-        multilevel_bias = running_total_multilevel / num # b nlevel nlat nlon c
-        diagnostic_bias = running_total_diagnostic / num # b nlat nlon c
+    @torch.no_grad()
+    def compute_biases(self):
+        surface_climatology = self.surface_running_mean / self.num # b nlat nlon c
+        multilevel_climatology = self.multilevel_running_mean / self.num # b nlevel nlat nlon c
+        diagnostic_climatology = self.diagnostic_running_mean / self.num # b nlat nlon c
 
         pred_feat_dict = {}
         for c, surface_feat_name in enumerate(SURFACE_VARIABLES):
-            pred_feat_dict[surface_feat_name] = surface_bias[..., c] # b nlat nlon 
+            pred_feat_dict[surface_feat_name] = surface_climatology[..., c] # b nlat nlon 
 
         for c, multilevel_feat_name in enumerate(MULTILEVEL_VARIABLES):
-            pred_feat_dict[multilevel_feat_name] = multilevel_bias[..., c] # b nlevel nlat nlon
+            pred_feat_dict[multilevel_feat_name] = multilevel_climatology[..., c] # b nlevel nlat nlon
 
         for c, diagnostic_feat_name in enumerate(DIAGNOSTIC_VARIABLES):
-            pred_feat_dict[diagnostic_feat_name] = diagnostic_bias[..., c] # b nlat nlon 
+            pred_feat_dict[diagnostic_feat_name] = diagnostic_climatology[..., c] # b nlat nlon 
 
-        bias_key_list = ['2m_temperature', 'PRATEsfc', 'geopotential', 'temperature', 'u_component_of_wind', 'specific_humidity']
+        key_list = ['2m_temperature', 'PRATEsfc', 'geopotential', 'temperature', 'u_component_of_wind', 'specific_humidity']
         result_dict = {}
 
-        for var_name in bias_key_list:
-            bias = bias_dict[var_name].unsqueeze(0) # 1 nlat nlon or 1 nlevel nlat nlon
-            pred_k = pred_feat_dict[var_name] # 1 nlat nlon or 1 nlevel nlat nlon
+        for var_name in key_list:
+            true_climatology = self.climatology[var_name].unsqueeze(0) # 1 nlat nlon or 1 nlevel nlat nlon
+            pred_climatology = pred_feat_dict[var_name] # 1 nlat nlon or 1 nlevel nlat nlon
             
             l = -1 
             if var_name == "geopotential":
@@ -283,18 +290,18 @@ class TrainModule(L.LightningModule):
                 l = 6
             
             if l != -1:
-                pred_k = pred_k[:, l, ...]
-                bias = bias[:, l, ...]
+                pred_climatology = pred_climatology[:, l, ...]
+                true_climatology = true_climatology[:, l, ...]
 
-            nlat, nlon = bias.shape[1], bias.shape[2]
-            loss = latitude_weighted_rmse(pred_k, 
-                                        bias,
+            nlat, nlon = true_climatology.shape[1], true_climatology.shape[2]
+            loss = latitude_weighted_rmse(pred_climatology, 
+                                        true_climatology,
                                         nlon=nlon,
                                         nlat=nlat,
                                         with_time=False)
             
             result_dict[var_name] = loss.item()
-            plot_bias(pred_k[0].cpu(), bias[0].cpu(), save_path=f"{self.log_dir}/{var_name}_bias_{self.current_epoch}.png")
+            plot_bias(pred_climatology[0].cpu(), true_climatology[0].cpu(), save_path=f"{self.log_dir}/{var_name}_bias_{self.current_epoch}.png")
 
         self.log('bias/t2m', result_dict['2m_temperature'], on_step=False, on_epoch=True, sync_dist=self.ddp)
         self.log('bias/pr_6h', result_dict['PRATEsfc'], on_step=False, on_epoch=True, sync_dist=self.ddp)

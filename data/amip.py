@@ -106,17 +106,17 @@ class AMIPData(Dataset):
                        }
         
         return return_dict
-
-class ClimatologyLoader:
+    
+class ClimatologyData(Dataset):
     def __init__(self,
-                 data_path,
-                 norm_stats_path,
-                 climatology_path,
-                 horizon=7308,
-                 start_time = 16072,
-                 normalize=True,
-                 ):
-
+                data_path,
+                norm_stats_path,
+                climatology_path,
+                horizon=7308,
+                start_time = 16072,
+                normalize=True,
+                ):
+        
         # loads one initial frame and {horizon} timesteps of forcing data. Also returns true biases
 
         self.split = "train"
@@ -132,21 +132,22 @@ class ClimatologyLoader:
 
         self.n = Normalizer(norm_stats_path)
 
-        # can load everything into memory
-        self.surface = torch.tensor(np.array(self.data['surface'][start_time]), dtype=torch.float32).unsqueeze(0) # 1 nlat nlon nsurface_channels
-        self.multilevel = torch.tensor(np.array(self.data['multilevel'][start_time]), dtype=torch.float32).unsqueeze(0) # 1 nlat nlon nlevels nmulti_channels
-        self.forcing = torch.tensor(np.array(self.data['forcing'][start_time:start_time + horizon]), dtype=torch.float32).unsqueeze(0) # 1 horizon nlat nlon nforcing_channels
-        self.invariants = torch.tensor(np.array(self.data['invariant'][:]), dtype=torch.float32).unsqueeze(0) # 1 nlat nlon n_invariant
-        self.diagnostic = torch.tensor(np.array(self.data['diagnostic'][start_time]), dtype=torch.float32).unsqueeze(0) # 1 nlat nlon ndiagnostic_channels
+        # can load initial conditions into memory
+        self.surface = torch.tensor(np.array(self.data['surface'][start_time]), dtype=torch.float32) # nlat nlon nsurface_channels
+        self.multilevel = torch.tensor(np.array(self.data['multilevel'][start_time]), dtype=torch.float32) # nlat nlon nlevels nmulti_channels
+        self.invariants = torch.tensor(np.array(self.data['invariant'][:]), dtype=torch.float32) # nlat nlon n_invariant
+        self.diagnostic = torch.tensor(np.array(self.data['diagnostic'][start_time]), dtype=torch.float32) # nlat nlon ndiagnostic_channels
         self.hour = torch.from_numpy(self.data['hour'][start_time:start_time + horizon]) # horizon
         self.day = torch.from_numpy(self.data['day'][start_time:start_time + horizon]) # horizon
-        self.scalars = torch.concat([self.day.unsqueeze(-1), self.hour.unsqueeze(-1)], dim=-1).unsqueeze(0) # 1 horizon 2
+        self.scalars = torch.concat([self.day.unsqueeze(-1), self.hour.unsqueeze(-1)], dim=-1).unsqueeze(0) # horizon 2
+
+        # Each year of forcing variables is around 1 GB, so don't load it into memoery
+        self.forcing = self.data['forcing']
 
         if self.normalize:
             self.invariants = self.n.normalize_invariant(self.invariants)
             self.surface = self.n.normalize_surface(self.surface)
             self.multilevel = self.n.normalize_multilevel(self.multilevel)
-            self.forcing = self.n.normalize_forcing(self.forcing)
             self.diagnostic = self.n.normalize_diagnostic(self.diagnostic)
 
         with open(climatology_path, 'rb') as file:
@@ -154,21 +155,30 @@ class ClimatologyLoader:
             self.climatology_dict = {k: torch.tensor(v, dtype=torch.float32) for k, v in self.climatology_dict.items()}
 
         print(f"Loaded {horizon} time stamps for climatology")
-        self.file.close()
-        self.file = None # delete h5f handle to enable pickling of this object
+
+    def __len__(self):
+        return self.horizon
+
+    def __getitem__(self, idx):
+        forcing = torch.tensor(np.array(self.forcing[self.start_time + idx]), dtype=torch.float32) # nlat nlon nforcing_channels
+        scalars = self.scalars[idx] # 2
+
+        if self.normalize:
+            forcing = self.n.normalize_forcing(forcing)
+
+        if idx == 0:
+            # return initial conditions
+            return_dict = {"surface": self.surface,
+                        "multilevel": self.multilevel,
+                        "diagnostic": self.diagnostic,
+                        "forcing": forcing,
+                        "invariants": self.invariants,
+                        "scalars": scalars,
+                        "climatology": self.climatology_dict
+                        }
+        else:
+            return_dict = {"forcing": forcing,
+                        "scalars": scalars}
     
-    def get_data(self, device='cpu'):
-        
-        return_dict = {
-            "surface": self.surface.to(device),
-            "multilevel": self.multilevel.to(device),
-            "forcing": self.forcing.to(device),
-            "invariants": self.invariants.to(device),
-            "diagnostic": self.diagnostic.to(device),
-            "scalars": self.scalars.to(device),
-            "climatology": {k: v.to(device) for k, v in self.climatology_dict.items()}
-        }
-
         return return_dict
-
 
