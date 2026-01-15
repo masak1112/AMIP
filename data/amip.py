@@ -174,7 +174,7 @@ class ClimatologyData(Dataset):
                         "forcing": forcing,
                         "invariants": self.invariants,
                         "scalars": scalars,
-                        "climatology": self.climatology_dict
+                        "climatology_dict": self.climatology_dict
                         }
         else:
             return_dict = {"forcing": forcing,

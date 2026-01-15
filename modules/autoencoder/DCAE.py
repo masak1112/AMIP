@@ -156,9 +156,9 @@ class Decoder(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        hidden_channels = (256, 256, 512, 512),
+        hidden_channels = (512, 512, 256, 256),
         blocks_per_layer = (2, 2, 2, 2),
-        out_shortcut: bool = True,
+        in_shortcut: bool = True,
     ):
         super().__init__()
 
@@ -166,13 +166,17 @@ class Decoder(nn.Module):
         latent_channels = in_channels
 
         self.conv_in = SphereConv2d(
-            in_channels,
+            latent_channels,
             hidden_channels[0],
             kernel_size=3,
             padding=1
         )
+
+        self.in_shortcut = in_shortcut
+        if in_shortcut:
+            self.in_shortcut_repeats = hidden_channels[0] // latent_channels
         
-        self.down_layers = nn.ModuleList()
+        self.up_layers = nn.ModuleList()
         for i, (out_channel, num_blocks) in enumerate(
             zip(hidden_channels, blocks_per_layer)
         ):
@@ -181,25 +185,21 @@ class Decoder(nn.Module):
                     in_channels=out_channel,
                     out_channels=out_channel,
                 )
-                self.down_layers.append(block)
+                self.up_layers.append(block)
 
-            if i < num_layers - 1: # no downsample on last layer
-                downsample_block = DCDownBlock2d(
+            if i < num_layers - 1: # no upsample on last layer
+                downsample_block = DCUpBlock2d(
                     in_channels=out_channel,
                     out_channels=hidden_channels[i + 1],
                 )
-                self.down_layers.append(downsample_block)
+                self.up_layers.append(downsample_block)
 
         self.conv_out = SphereConv2d(hidden_channels[-1], 
-                                     latent_channels, 
+                                     in_channels, 
                                      kernel_size=3,
                                      padding=1)
 
-        self.out_shortcut = out_shortcut
-        if out_shortcut:
-            self.out_shortcut_average_group_size = (
-                hidden_channels[-1] // latent_channels
-            )
+
 
     def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:
         # surface in shape b nlat nlon c 
