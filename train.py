@@ -5,6 +5,8 @@ import torch
 from torch.optim.swa_utils import get_ema_avg_fn
 import os 
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "3, 2, 1, 0"
+
 # Custom imports
 from common.utils import get_yaml, save_yaml
 from modules.train_module import TrainModule

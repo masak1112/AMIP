@@ -8,7 +8,6 @@
 
 # Enable GPU-MPI (if supported by application)
 export NCCL_DEBUG=INFO
-export CUDA_VISIBLE_DEVICES= 3,2,1,0
 
 ml conda
 conda activate pt220gpu_conda
