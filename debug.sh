@@ -7,7 +7,7 @@
 #PBS -j oe
 
 # Enable GPU-MPI (if supported by application)
-export MPICH_GPU_SUPPORT_ENABLED=1
+export NCCL_DEBUG=INFO
 
 ml conda
 conda activate pt220gpu_conda
