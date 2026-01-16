@@ -12,3 +12,4 @@ module load netcdf/4.9.2
 module load conda/latest
 module load mkl/2024.2.2
 
+module list
