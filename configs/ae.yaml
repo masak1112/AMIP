@@ -22,7 +22,7 @@ data:
     use_climatology: False
 
     batch_size: 2
-    num_workers: 0 # needs to be set to zero, otherwise errors in pickling Dataset objects
+    num_workers: 1 # needs to be set to zero, otherwise errors in pickling Dataset objects
 
 training:
     seed: 42

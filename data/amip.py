@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from torch.utils.data import Dataset
-import h5py as h5f
+import h5pickle as h5f
 import pickle 
 from data.normalizer import Normalizer
 
