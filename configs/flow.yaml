@@ -34,11 +34,12 @@ data:
     training_nsteps: 2
     val_nsteps: 41 # 10 days
     val_horizon: 1460 # 1 year
-    climatology_horizon: 120 #1460 # 1 year
+    use_climatology: True
+    climatology_horizon: 7308 # 5year #1460 # 1 year
     climatology_start: 16072 # 1990-01-01
 
     batch_size: 1
-    num_workers: 0
+    num_workers: 0 # needs to be set to zero, otherwise errors in pickling Dataset objects
 
 training:
     seed: 42
@@ -46,11 +47,11 @@ training:
     accelerator: gpu
     strategy: ddp
     precision: 16-mixed
-    check_val_every_n_epoch: 1
+    check_val_every_n_epoch: 2
     log_every_n_steps: 100
     max_epochs: 50
     ema_decay: 0.995
-    num_sanity_val_steps: 1
+    num_sanity_val_steps: 0
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip
     wandb_mode: online

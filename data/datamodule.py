@@ -11,6 +11,7 @@ class ClimateDataModule(L.LightningDataModule):
         self.batch_size = dataconfig["batch_size"]
         self.num_workers = dataconfig["num_workers"]
         self.norm_stats_path = dataconfig['norm_stats_path']
+        self.use_climatology = dataconfig.get('use_climatology', False)
 
         self.train_dataset = AMIPData(data_path=dataconfig["train_data_path"],
                                         norm_stats_path=self.norm_stats_path,
@@ -22,11 +23,12 @@ class ClimateDataModule(L.LightningDataModule):
                                         nsteps=dataconfig["val_nsteps"],  
                                         split='valid',
                                         horizon=dataconfig.get("val_horizon", -1))
-        self.climatology_dataset = ClimatologyData(data_path=dataconfig["train_data_path"],
-                                                   norm_stats_path=self.norm_stats_path,
-                                                  climatology_path=dataconfig["climatology_path"],
-                                                  horizon=dataconfig["climatology_horizon"],
-                                                  start_time=dataconfig["climatology_start"])
+        if self.use_climatology:
+            self.climatology_dataset = ClimatologyData(data_path=dataconfig["train_data_path"],
+                                                    norm_stats_path=self.norm_stats_path,
+                                                    climatology_path=dataconfig["climatology_path"],
+                                                    horizon=dataconfig["climatology_horizon"],
+                                                    start_time=dataconfig["climatology_start"])
     
         self.normalizer = self.train_dataset.n
 
@@ -62,12 +64,16 @@ class ClimateDataModule(L.LightningDataModule):
                                         batch_size=self.batch_size, 
                                         shuffle=False, 
                                         num_workers=self.num_workers,)
-        climatology_dataloser = DataLoader(self.climatology_dataset, 
-                                        batch_size=1, 
-                                        shuffle=False, 
-                                        num_workers=self.num_workers,)
         
-        return [weather_dataloader, climatology_dataloser]
+        if self.use_climatology:
+            climatology_dataloser = DataLoader(self.climatology_dataset, 
+                                            batch_size=1, 
+                                            shuffle=False, 
+                                            num_workers=self.num_workers,)
+            
+            return [weather_dataloader, climatology_dataloser]
+        else:
+            return weather_dataloader
 
     def test_dataloader(self):
         return None

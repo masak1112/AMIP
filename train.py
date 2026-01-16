@@ -5,11 +5,10 @@ import torch
 from torch.optim.swa_utils import get_ema_avg_fn
 import os 
 
-#os.environ["CUDA_VISIBLE_DEVICES"] = "3, 2, 1, 0"
-
 # Custom imports
 from common.utils import get_yaml, save_yaml
 from modules.train_module import TrainModule
+from modules.ae_module import AutoencoderModule
 from data.datamodule import ClimateDataModule
 
 # Lightning imports
@@ -67,23 +66,23 @@ def main(args):
     os.makedirs(path, exist_ok=True) 
     save_yaml(config, path + "config.yml")
 
-    monitor = "bias/z500"
-
     checkpoint_callback  = ModelCheckpoint(
-        monitor=monitor,
-        filename= "model_{epoch:02d}_best",
-        mode='min',
+        filename= "model_{epoch:02d}",
         dirpath=path,
-        save_last=True,
-        save_top_k=1
+        every_n_train_steps = 1000, # also save every 1000 training steps,
+        save_last=True
     )
 
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
     
     datamodule = ClimateDataModule(dataconfig=dataconfig)
 
-    model = TrainModule(config,
-                        normalizer=datamodule.normalizer)
+    if "AE" in modelconfig["model_name"]:
+        model = AutoencoderModule(config=config,
+                                  normalizer=datamodule.normalizer)
+    else:
+        model = TrainModule(config,
+                            normalizer=datamodule.normalizer)
 
     trainer = L.Trainer(devices = trainconfig["devices"],
                         accelerator = trainconfig["accelerator"],
