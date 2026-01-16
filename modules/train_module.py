@@ -134,6 +134,7 @@ class TrainModule(L.LightningModule):
 
             if not self.ddp or self.global_rank == 0: # only run on one GPU
                 if batch_idx == 0:
+                    print(self.global_rank, batch_idx)
                     if self.climatology is None:
                         self.climatology = batch['climatology_dict'] # can save to persistent RAM, since only ~100 Mb
 
