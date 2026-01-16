@@ -9,9 +9,9 @@
 # Enable GPU-MPI (if supported by application)
 export NCCL_DEBUG=INFO
 
+ml gcc/12.4.0
 ml ncarenv/24.12
 ml craype/2.7.31
-ml intel/2024.2.1
 ml ncarcompilers/1.0.0
 ml libfabric/1.15.2.0
 ml cuda/12.3.2
@@ -19,8 +19,8 @@ ml cray-mpich/8.1.29
 ml hdf5/1.12.3
 ml netcdf/4.9.2
 ml conda/latest
+ml intel/2024.2.1
 ml mkl/2024.2.2
-ml gcc/12.4.0
 
 conda activate credit
 
