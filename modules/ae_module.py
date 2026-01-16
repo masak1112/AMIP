@@ -207,7 +207,8 @@ class AutoencoderModule(L.LightningModule):
         self.log('val/q850', q850_loss.item(), on_step=False, on_epoch=True, sync_dist=self.ddp)
     
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(list(self.encoder.parameters()) + list(self.decoder.parameters()), 
+                                     lr=self.lr)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
 
         return [optimizer], [scheduler]
