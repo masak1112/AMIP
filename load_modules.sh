@@ -1,4 +1,4 @@
-#!/bin/bash -l
+#!/bin/bash
 
 module load ncarenv/24.12
 module load craype/2.7.31
