@@ -20,6 +20,7 @@ ml hdf5/1.12.3
 ml netcdf/4.9.2
 ml conda/latest
 ml mkl/2024.2.2
+ml gcc/12.4.0
 
 conda activate credit
 
