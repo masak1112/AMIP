@@ -13,3 +13,7 @@ module load conda/latest
 module load mkl/2024.2.2
 
 module list
+
+conda activate credit
+python -c 'import torch'
+python -c 'import lightning'
