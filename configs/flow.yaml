@@ -39,7 +39,7 @@ data:
     climatology_start: 16072 # 1990-01-01
 
     batch_size: 1
-    num_workers: 1 # needs to be set to zero, otherwise errors in pickling Dataset objects
+    num_workers: 1 
 
 training:
     seed: 42
