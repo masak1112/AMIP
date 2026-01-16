@@ -9,6 +9,7 @@
 # Enable GPU-MPI (if supported by application)
 export NCCL_DEBUG=INFO
 
+module load conda
 conda activate torch2
 
 # MPI and OpenMP settings
