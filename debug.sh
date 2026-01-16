@@ -9,6 +9,6 @@
 module load conda
 conda activate torch2
 
-CONFIG=configs/flow.yaml 
+CONFIG=configs/ae.yaml
 
 python train.py --config=$CONFIG
