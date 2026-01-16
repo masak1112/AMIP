@@ -17,6 +17,29 @@ def plot_loss(losses, filename, key=None):
     plt.savefig(filename, dpi=300)
     plt.close()
 
+def plot_reconstruction(y_pred, y, filename, cmap='twilight_shifted'):
+    # y in shape [h w], y_pred in shape [h w]
+
+    fig, axs = plt.subplots(2, 1, figsize=(6, 6))
+
+    vmin = y.min()
+    vmax = y.max()
+
+    im0 = axs[0].imshow(y, vmin=vmin, vmax=vmax,cmap=cmap, origin='lower')
+    im1 = axs[1].imshow(y_pred, vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
+
+    # set the title
+    axs[0].set_title(f"True")
+    axs[1].set_title(f"Pred")
+
+    fig.subplots_adjust(right=0.85)
+    cbar_ax = fig.add_axes([0.88, 0.15, 0.02, 0.7])
+    fig.colorbar(im0, cax=cbar_ax)
+    # save the figure
+    plt.savefig(filename, dpi=300)
+    plt.close()
+
+
 def plot_result(y_pred, y, filename, num_t=5, cmap='twilight_shifted'):
     # y in shape [t h w], y_pred in shape [t h w]
 

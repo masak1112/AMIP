@@ -26,8 +26,6 @@ class TrainModule(L.LightningModule):
         self.lr = self.modelconfig["lr"]
         self.log_dir = config['training']['log_dir']
 
-        self.dataconfig = config['data'] 
-
         self.criterion = torch.nn.MSELoss()
         self.n = normalizer
         self.climatology = None
