@@ -134,8 +134,8 @@ def plot_ssr(ssr, title, t=120, save_path=None):
 def plot_spectrum(pred, target, path, num_t = 5):
     # pred and target in shape (t, nlat, nlon)
     if pred.shape[0] == 1: # assume t is trivial
-        pred = torch.from_numpy(pred).squeeze()
-        target = torch.from_numpy(target).squeeze()
+        pred = pred.squeeze()
+        target = target.squeeze()
         nlat = pred.shape[0]
         nlon = pred.shape[1]
 
@@ -154,8 +154,6 @@ def plot_spectrum(pred, target, path, num_t = 5):
         plt.savefig(path, dpi=300)
         plt.close()
     else:
-        pred = torch.from_numpy(pred)
-        target = torch.from_numpy(target)
         t_total = pred.shape[0]
         dt = t_total // num_t
         pred = pred[::dt]

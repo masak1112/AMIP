@@ -132,19 +132,19 @@ class AutoencoderModule(L.LightningModule):
     
     def plot_predictions(self, pred_feat_dict, target_feat_dict):
 
-        t2m_pred = pred_feat_dict['2m_temperature'][0].cpu().numpy() #b h w -> h w 
-        t2m_target = target_feat_dict['2m_temperature'][0].cpu().numpy()
-        pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu().numpy()
-        pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu().numpy()
+        t2m_pred = pred_feat_dict['2m_temperature'][0].cpu() #b h w -> h w 
+        t2m_target = target_feat_dict['2m_temperature'][0].cpu()
+        pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu()
+        pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu()
 
-        z500_pred = pred_feat_dict['geopotential'][0, 10, ...].cpu().numpy() # b l h w -> h w
-        z500_target = target_feat_dict['geopotential'][0, 10, ...].cpu().numpy()
-        u250_pred = pred_feat_dict['u_component_of_wind'][0, 13, ...].cpu().numpy()
-        u250_target = target_feat_dict['u_component_of_wind'][0, 13, ...].cpu().numpy()
-        t850_pred = pred_feat_dict['temperature'][0, 6, ...].cpu().numpy()
-        t850_target = target_feat_dict['temperature'][0, 6, ...].cpu().numpy()
-        q850_pred = pred_feat_dict['specific_humidity'][0, 6, ...].cpu().numpy()
-        q850_target = target_feat_dict['specific_humidity'][0, 6, ...].cpu().numpy()
+        z500_pred = pred_feat_dict['geopotential'][0, 10, ...].cpu() # b l h w -> h w
+        z500_target = target_feat_dict['geopotential'][0, 10, ...].cpu()
+        u250_pred = pred_feat_dict['u_component_of_wind'][0, 13, ...].cpu()
+        u250_target = target_feat_dict['u_component_of_wind'][0, 13, ...].cpu()
+        t850_pred = pred_feat_dict['temperature'][0, 6, ...].cpu()
+        t850_target = target_feat_dict['temperature'][0, 6, ...].cpu()
+        q850_pred = pred_feat_dict['specific_humidity'][0, 6, ...].cpu()
+        q850_target = target_feat_dict['specific_humidity'][0, 6, ...].cpu()
 
         plot_reconstruction(t2m_pred, # h w
                     t2m_target,
@@ -207,8 +207,7 @@ class AutoencoderModule(L.LightningModule):
         self.log('val/q850', q850_loss.item(), on_step=False, on_epoch=True, sync_dist=self.ddp)
     
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(list(self.encoder.parameters()) + list(self.decoder.parameters()), 
-                                     lr=self.lr)
+        optimizer = torch.optim.Adam(list(self.encoder.parameters()) + list(self.decoder.parameters()), lr=self.lr)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
 
         return [optimizer], [scheduler]

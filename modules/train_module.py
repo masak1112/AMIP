@@ -430,31 +430,31 @@ class TrainModule(L.LightningModule):
     
     def plot_predictions(self, pred_feat_dict, target_feat_dict, lowMem=False):
 
-        t2m_pred = pred_feat_dict['2m_temperature'][0].cpu().numpy() #b t h w -> t h w 
-        t2m_target = target_feat_dict['2m_temperature'][0].cpu().numpy()
-        pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu().numpy()
-        pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu().numpy()
+        t2m_pred = pred_feat_dict['2m_temperature'][0].cpu() #b t h w -> t h w 
+        t2m_target = target_feat_dict['2m_temperature'][0].cpu()
+        pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu()
+        pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu()
 
         if lowMem:
-            z500_pred = pred_feat_dict['geopotential'][0].cpu().numpy() # b t h w -> t h w
-            z500_target = target_feat_dict['geopotential'][0].cpu().numpy()
-            pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu().numpy()
-            pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu().numpy()
-            u250_pred = pred_feat_dict['u_component_of_wind'][0].cpu().numpy()
-            u250_target = target_feat_dict['u_component_of_wind'][0].cpu().numpy()
-            t850_pred = pred_feat_dict['temperature'][0].cpu().numpy()
-            t850_target = target_feat_dict['temperature'][0].cpu().numpy()
-            q850_pred = pred_feat_dict['specific_humidity'][0].cpu().numpy()
-            q850_target = target_feat_dict['specific_humidity'][0].cpu().numpy()
+            z500_pred = pred_feat_dict['geopotential'][0].cpu() # b t h w -> t h w
+            z500_target = target_feat_dict['geopotential'][0].cpu()
+            pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu()
+            pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu()
+            u250_pred = pred_feat_dict['u_component_of_wind'][0].cpu()
+            u250_target = target_feat_dict['u_component_of_wind'][0].cpu()
+            t850_pred = pred_feat_dict['temperature'][0].cpu()
+            t850_target = target_feat_dict['temperature'][0].cpu()
+            q850_pred = pred_feat_dict['specific_humidity'][0].cpu()
+            q850_target = target_feat_dict['specific_humidity'][0].cpu()
         else:
-            z500_pred = pred_feat_dict['geopotential'][0, :, 10, ...].cpu().numpy() # b t l h w -> t h w
-            z500_target = target_feat_dict['geopotential'][0, :, 10, ...].cpu().numpy()
-            u250_pred = pred_feat_dict['u_component_of_wind'][0, :, 13, ...].cpu().numpy()
-            u250_target = target_feat_dict['u_component_of_wind'][0, :, 13, ...].cpu().numpy()
-            t850_pred = pred_feat_dict['temperature'][0, :, 6, ...].cpu().numpy()
-            t850_target = target_feat_dict['temperature'][0, :, 6, ...].cpu().numpy()
-            q850_pred = pred_feat_dict['specific_humidity'][0, :, 6, ...].cpu().numpy()
-            q850_target = target_feat_dict['specific_humidity'][0, :, 6, ...].cpu().numpy()
+            z500_pred = pred_feat_dict['geopotential'][0, :, 10, ...].cpu() # b t l h w -> t h w
+            z500_target = target_feat_dict['geopotential'][0, :, 10, ...].cpu()
+            u250_pred = pred_feat_dict['u_component_of_wind'][0, :, 13, ...].cpu()
+            u250_target = target_feat_dict['u_component_of_wind'][0, :, 13, ...].cpu()
+            t850_pred = pred_feat_dict['temperature'][0, :, 6, ...].cpu()
+            t850_target = target_feat_dict['temperature'][0, :, 6, ...].cpu()
+            q850_pred = pred_feat_dict['specific_humidity'][0, :, 6, ...].cpu()
+            q850_target = target_feat_dict['specific_humidity'][0, :, 6, ...].cpu()
 
         #print(t2m_pred.shape)
         plot_result(t2m_pred, # t h w
