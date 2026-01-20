@@ -1,6 +1,6 @@
 model:
     model_name: DCAE
-    lr: 5.0e-5
+    lr: 1.0e-4
     DCAE:
         encoder:
             in_channels: 249 # 6 + 26*9 + 9 = 249

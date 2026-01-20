@@ -1,8 +1,8 @@
 #!/bin/bash -l
 #PBS -N debug
 #PBS -l select=1:ncpus=16:ngpus=4:mem=120G
-#PBS -q main
-#PBS -l walltime=12:00:00
+#PBS -q develop
+#PBS -l walltime=2:10:00
 #PBS -A UCHI0014
 #PBS -j oe
 

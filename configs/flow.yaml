@@ -1,6 +1,6 @@
 model:
     model_name: flow
-    lr: 5.0e-5
+    lr: 1.0e-4
     flow:
         num_refinement_steps: 5
         num_train_steps: 21
