@@ -69,7 +69,6 @@ def main(args):
     checkpoint_callback  = ModelCheckpoint(
         filename= "model_{epoch:02d}",
         dirpath=path,
-        save_top_k=5,
         every_n_train_steps = 1000, # also save every 1000 training steps,
         save_last=True
     )
