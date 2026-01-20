@@ -19,7 +19,8 @@ MULTILEVEL_VARIABLES = ["temperature",
                   "specific_humidity",
                   "specific_cloud_liquid_water_content",
                   "specific_cloud_ice_water_content",
-                  "fraction_of_cloud_cover"]
+                  "fraction_of_cloud_cover",
+                  "vertical_velocity"]
 
 FORCING_VARIABLES = ["DSWRFtoa", 
                      "sea_surface_temperature", # has nans
@@ -79,7 +80,7 @@ class AMIPData(Dataset):
             self.horizon = horizon
 
         self.num_samples = self.horizon - nsteps + 1
-        print(f"Loaded {self.horizon} snapshots for {split} split")
+        print(f"Loaded {self.horizon} snapshots for {split} split, from {data_path}")
 
     def __len__(self):
         return self.num_samples

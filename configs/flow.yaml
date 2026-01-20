@@ -1,6 +1,6 @@
 model:
     model_name: flow
-    lr: 5.0e-4
+    lr: 5.0e-5
     flow:
         num_refinement_steps: 5
         num_train_steps: 21
@@ -12,7 +12,7 @@ model:
             out_emb_dim: 256  
             patch_size: [2, 2, 2]
             surface_ch: 6
-            level_ch: 8
+            level_ch: 9
             forcing_ch: 3
             invariant_ch: 2
             diagnostic_ch: 9
@@ -26,10 +26,10 @@ model:
         depth_multiplier: 1
 
 data:
-    train_data_path: /glade/derecho/scratch/ayz/AMIP_train.h5
-    val_data_path: /glade/derecho/scratch/ayz/AMIP_valid.h5
+    train_data_path: /glade/derecho/scratch/ayz/AMIP_train_new.h5
+    val_data_path: /glade/derecho/scratch/ayz/AMIP_valid_new.h5
+    norm_stats_path: /glade/derecho/scratch/ayz/norm_stats_dict_new.pkl
     climatology_path: /glade/derecho/scratch/ayz/climatology_1990_1996.pkl
-    norm_stats_path: /glade/derecho/scratch/ayz/norm_stats_dict.pkl
         
     training_nsteps: 2
     val_nsteps: 41 # 10 days
