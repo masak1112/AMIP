@@ -80,6 +80,8 @@ class WeatherEncodeDecodeLayer(nn.Module):
             bias=0,
         )
         self.pixelshuffle = nn.PixelShuffle(patch_size[-1])
+        # Apply He Initialization
+        self.apply(self._init_weights)
         ICNR_init(
             self.surface_deconv.weight,
             initializer=nn.init.kaiming_normal_,
@@ -90,6 +92,22 @@ class WeatherEncodeDecodeLayer(nn.Module):
             initializer=nn.init.kaiming_normal_,
             upscale_factor=patch_size[-1],
         )
+
+    def _init_weights(self, m):
+        """
+        Applies He (Kaiming) initialization to Conv2d and Linear layers.
+        Initializes normalization layers (LayerNorm, BatchNorm) with scale 1 and bias 0.
+        """
+        if isinstance(m, (nn.Conv2d, nn.Linear)):
+            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        
+        elif isinstance(m, (nn.LayerNorm, nn.BatchNorm2d, nn.GroupNorm)):
+            if m.weight is not None:
+                nn.init.constant_(m.weight, 1)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
     def encode(self, surface, multilevel, forcing, invariants,
                surface_noised=None, multi_noised=None, diag_noised=None):
@@ -254,6 +272,25 @@ class ArchesDiT(nn.Module):
             TimestepEmbedder(cond_dim),
             TimestepEmbedder(cond_dim),
         ])
+
+        # Apply He Initialization
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        """
+        Applies He (Kaiming) initialization to Conv2d and Linear layers.
+        Initializes normalization layers (LayerNorm, BatchNorm) with scale 1 and bias 0.
+        """
+        if isinstance(m, (nn.Conv2d, nn.Linear)):
+            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        
+        elif isinstance(m, (nn.LayerNorm, nn.BatchNorm2d, nn.GroupNorm)):
+            if m.weight is not None:
+                nn.init.constant_(m.weight, 1)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, surface, multi, forcing, invariant, cond_emb, 
                 surface_noised=None, multi_noised=None, diag_noised=None):

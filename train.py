@@ -72,10 +72,12 @@ def main(args):
         model = AutoencoderModule(config=config,
                                   normalizer=datamodule.normalizer)
         monitor = "val/t2m"
+        every_n_train_steps = None
     else:
         model = TrainModule(config,
                             normalizer=datamodule.normalizer)
         monitor = "bias/t2m"
+        every_n_train_steps = 100
 
     checkpoint_callback  = ModelCheckpoint(
         monitor=monitor,
@@ -83,7 +85,8 @@ def main(args):
         mode='min',
         dirpath=path,
         save_last=True,
-        save_top_k=1
+        save_top_k=1,
+        every_n_train_steps=every_n_train_steps,
     )
 
     lr_monitor = LearningRateMonitor(logging_interval='epoch')

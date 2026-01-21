@@ -1,6 +1,6 @@
 model:
     model_name: flow
-    lr: 1.0e-4
+    lr: 5.0e-5
     flow:
         num_refinement_steps: 5
         num_train_steps: 21
@@ -46,11 +46,11 @@ training:
     devices: 4
     accelerator: gpu
     strategy: ddp
-    precision: 16-mixed
+    precision: 32-true
     check_val_every_n_epoch: 2
-    log_every_n_steps: 100
+    log_every_n_steps: 10
     max_epochs: 50
-    ema_decay: 0.995
+    ema_decay: 0.99
     num_sanity_val_steps: 0
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip
