@@ -4,13 +4,13 @@ model:
     DCAE:
         encoder:
             in_channels: 249 # 6 + 26*9 + 9 = 249
-            hidden_channels: [256, 512, 512]
-            blocks_per_layer: [4, 4, 4]
+            hidden_channels: [256] #[256, 512, 512]
+            blocks_per_layer: [4] # [4, 4, 4]
             conv_type: 'vanilla'
         decoder:
             in_channels: 249 # 6 + 26*9 + 9 = 249
-            hidden_channels: [256, 512, 512]
-            blocks_per_layer: [4, 4, 4]
+            hidden_channels: [256] #[256, 512, 512]
+            blocks_per_layer: [4] #[4, 4, 4]
             conv_type: 'vanilla'
 
 data:
@@ -35,11 +35,11 @@ training:
     check_val_every_n_epoch: 1
     log_every_n_steps: 100
     max_epochs: 50
-    ema_decay: 0.995
+    ema_decay: 0.999
     num_sanity_val_steps: 1
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip
     wandb_mode: online
     checkpoint: null
-    description: vanilla_no_ema
+    description: vanilla_identity
     accumulate_grad_batches: 1
