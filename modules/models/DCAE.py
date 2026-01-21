@@ -35,6 +35,27 @@ class DCDownBlock2d(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         
         return self.conv_block(x) + self.shortcut_block(x)
+    
+class DownBlock3d(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        factor: int = 2,
+        conv_type = '3d'
+    ) -> None:
+        super().__init__()
+
+        self.conv_block = PixelUnshuffleDownSampleLayer(
+            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=factor, conv_type=conv_type
+        )
+        self.shortcut_block = ChannelAveragingDownSampleLayer(
+            in_channels=in_channels, out_channels=out_channels, factor=factor
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        
+        return self.conv_block(x) + self.shortcut_block(x)
 
 class DCUpBlock2d(nn.Module):
     def __init__(
@@ -95,74 +116,6 @@ class Encoder(nn.Module):
         hidden_channels = (256, 256, 512, 512),
         blocks_per_layer = (2, 2, 2, 2),
         conv_type = "2d"
-    ):
-        super().__init__()
-
-        num_layers = len(hidden_channels)
-        latent_channels = in_channels
-
-        self.conv_in = conv(
-            conv_type,
-            in_channels = in_channels,
-            out_channels = hidden_channels[0],
-            kernel_size = 3,
-            padding = 1
-        )
-        
-        self.down_layers = nn.ModuleList()
-        for i, (out_channel, num_blocks) in enumerate(
-            zip(hidden_channels, blocks_per_layer)
-        ):
-            for _ in range(num_blocks):
-                block = ResBlock(
-                    in_channels=out_channel,
-                    out_channels=out_channel,
-                    conv_type=conv_type
-                )
-                self.down_layers.append(block)
-
-            if i < num_layers - 1: # no downsample on last layer
-                downsample_block = DCDownBlock2d(
-                    in_channels=out_channel,
-                    out_channels=hidden_channels[i + 1],
-                    conv_type=conv_type
-                )
-                self.down_layers.append(downsample_block)
-
-        self.conv_out = conv(
-            conv_type=conv_type,
-            in_channels = hidden_channels[-1], 
-            out_channels = latent_channels, 
-            kernel_size=3,
-            padding=1
-        )
-
-        # Apply He Initialization
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        """
-        Applies He (Kaiming) initialization to Conv2d and Linear layers.
-        Initializes normalization layers (LayerNorm, BatchNorm) with scale 1 and bias 0.
-        """
-        if isinstance(m, (nn.Conv2d, nn.Linear)):
-            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        
-        elif isinstance(m, (nn.LayerNorm, nn.BatchNorm2d, nn.GroupNorm, LayerNorm2d)):
-            if m.weight is not None:
-                nn.init.constant_(m.weight, 1)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-
-class Encoder3D(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        hidden_channels = (64, 128, 256),
-        blocks_per_layer = (2, 2, 2),
-        conv_type = "3d"
     ):
         super().__init__()
 
@@ -356,3 +309,88 @@ class Decoder(nn.Module):
         z_diagnostic = rearrange(z_diagnostic, 'b c nlat nlon -> b nlat nlon c')
 
         return z_surface, z_multilevel, z_diagnostic
+
+class Encoder3D(nn.Module):
+    def __init__(
+        self,
+        surface_channels,
+        multilevel_channels,
+        diagnostic_channels,
+        hidden_channels = (64, 128, 256),
+        blocks_per_layer = (2, 2, 2),
+        conv_type = "3d"
+    ):
+        super().__init__()
+
+        num_layers = len(hidden_channels)
+
+        self.surface_in = conv(
+            conv_type='2d',
+            in_channels = surface_channels,
+            out_channels = hidden_channels[0] // 4 ,
+            kernel_size = 3,
+            padding = 1
+        )
+
+        self.diagnostic_in = conv(
+            conv_type='2d',
+            in_channels =  multilevel_channels,
+            out_channels = hidden_channels[0] // 4,
+            kernel_size = 3,
+            padding = 1
+        )
+
+        self.multilevel_in = conv(
+            conv_type,
+            in_channels = diagnostic_channels,
+            out_channels = hidden_channels[0] // 2,
+            kernel_size = 3,
+            padding = 1
+        )
+        
+        self.down_layers = nn.ModuleList()
+        for i, (out_channel, num_blocks) in enumerate(
+            zip(hidden_channels, blocks_per_layer)
+        ):
+            for _ in range(num_blocks):
+                block = ResBlock(
+                    in_channels=out_channel,
+                    out_channels=out_channel,
+                    conv_type=conv_type
+                )
+                self.down_layers.append(block)
+
+            if i < num_layers - 1: # no downsample on last layer
+                downsample_block = DCDownBlock3d(
+                    in_channels=out_channel,
+                    out_channels=hidden_channels[i + 1],
+                    conv_type=conv_type
+                )
+                self.down_layers.append(downsample_block)
+
+        self.conv_out = conv(
+            conv_type=conv_type,
+            in_channels = hidden_channels[-1], 
+            out_channels = latent_channels, 
+            kernel_size=3,
+            padding=1
+        )
+
+        # Apply He Initialization
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        """
+        Applies He (Kaiming) initialization to Conv2d and Linear layers.
+        Initializes normalization layers (LayerNorm, BatchNorm) with scale 1 and bias 0.
+        """
+        if isinstance(m, (nn.Conv2d, nn.Linear)):
+            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        
+        elif isinstance(m, (nn.LayerNorm, nn.BatchNorm2d, nn.GroupNorm, LayerNorm2d)):
+            if m.weight is not None:
+                nn.init.constant_(m.weight, 1)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
