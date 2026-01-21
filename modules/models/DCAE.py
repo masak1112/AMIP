@@ -135,6 +135,25 @@ class Encoder(nn.Module):
             padding=1
         )
 
+        # Apply He Initialization
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        """
+        Applies He (Kaiming) initialization to Conv2d and Linear layers.
+        Initializes normalization layers (LayerNorm, BatchNorm) with scale 1 and bias 0.
+        """
+        if isinstance(m, (nn.Conv2d, nn.Linear)):
+            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        
+        elif isinstance(m, (nn.LayerNorm, nn.BatchNorm2d, nn.GroupNorm, LayerNorm2d)):
+            if m.weight is not None:
+                nn.init.constant_(m.weight, 1)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+
     def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:
         # surface in shape b nlat nlon c 
         # multilevel in shape b nlevel nlat nlon c
@@ -214,6 +233,25 @@ class Decoder(nn.Module):
             out_channels = in_channels, 
             kernel_size=3,
             padding=1)
+        
+        # Apply He Initialization
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        """
+        Applies He (Kaiming) initialization to Conv2d and Linear layers.
+        Initializes normalization layers (LayerNorm, BatchNorm) with scale 1 and bias 0.
+        """
+        if isinstance(m, (nn.Conv2d, nn.Linear)):
+            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        
+        elif isinstance(m, (nn.LayerNorm, nn.BatchNorm2d, nn.GroupNorm, LayerNorm2d)):
+            if m.weight is not None:
+                nn.init.constant_(m.weight, 1)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
 
     def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:

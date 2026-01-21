@@ -3,17 +3,6 @@ import numpy as np
 import torch.nn as nn
 from einops import repeat, rearrange
 
-def get_cosine_weight(num_intervals, tau):
-    start = 0
-    end = 1
-    t = np.linspace(0, 1, num_intervals+1)
-    v_start = np.cos(start * np.pi / 2) ** (2 * tau)
-    v_end = np.cos(end * np.pi / 2) ** (2 * tau)
-    output = np.cos((t * (end - start) + start) * np.pi / 2) ** (2 * tau)
-    output = 1 - (v_end - output) / (v_end - v_start)
-    return output[1:]
-
-
 # base on the code from graphcast
 def _check_uniform_spacing_and_get_delta(vector):
     diff = np.diff(vector)
@@ -82,12 +71,9 @@ class WeightedLoss(nn.Module):
         self.register_buffer('latitude_weight', latitude_weight)
 
         if level_weight == 'linear':     # outweighs the lower levels
-            level_weight = torch.linspace(0.05, 0.065, nlevels)
+            level_weight = torch.linspace(0.065, 0.05, nlevels)
         elif level_weight == 'exp':
-            level_weight = torch.exp(torch.linspace(-3, 0, nlevels))
-            level_weight = level_weight / level_weight.sum()
-        elif level_weight == 'cosine':
-            level_weight = torch.from_numpy(get_cosine_weight(nlevels, 2))
+            level_weight = torch.exp(torch.linspace(0, -3, nlevels))
             level_weight = level_weight / level_weight.sum()
         else:
             level_weight = torch.ones(nlevels)
@@ -172,8 +158,8 @@ def latitude_weighted_rmse(pred,
                            nlon=None,
                            nlat=None,
                            with_time=True):
-    # if with_time, pred/target in shape: b t nlat nlon or b t nlat nlon l
-    # else, pred/target in shape: b nlat nlon or b nlat nlon l
+    # if with_time, pred/target in shape: b t nlat nlon or b t l nlat nlon
+    # else, pred/target in shape: b nlat nlon or b l nlat nlon
 
     if nlat is None:
         nlat = target.shape[2]

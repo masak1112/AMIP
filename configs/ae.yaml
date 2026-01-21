@@ -4,13 +4,13 @@ model:
     DCAE:
         encoder:
             in_channels: 249 # 6 + 26*9 + 9 = 249
-            hidden_channels: [512] #[256, 512, 512]
-            blocks_per_layer: [4] # [4, 4, 4]
+            hidden_channels: [512, 512, 1024] #[256, 512, 512]
+            blocks_per_layer: [2, 2, 2] # [4, 4, 4]
             conv_type: 'vanilla'
         decoder:
             in_channels: 249 # 6 + 26*9 + 9 = 249
-            hidden_channels: [512] #[256, 512, 512]
-            blocks_per_layer: [4] #[4, 4, 4]
+            hidden_channels: [512, 512, 1024] #[256, 512, 512]
+            blocks_per_layer: [2, 2, 2] #[4, 4, 4]
             conv_type: 'vanilla'
 
 data:
@@ -33,7 +33,7 @@ training:
     strategy: ddp
     precision: 32-true #16-mixed
     check_val_every_n_epoch: 1
-    log_every_n_steps: 100
+    log_every_n_steps: 10
     max_epochs: 50
     ema_decay: 0.999
     num_sanity_val_steps: 1
@@ -41,5 +41,5 @@ training:
     project: amip
     wandb_mode: online
     checkpoint: null
-    description: vanilla_identity_fp32_weightedLoss
+    description: vanilla_d16_fp32_weightedLoss
     accumulate_grad_batches: 4
