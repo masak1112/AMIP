@@ -1,7 +1,7 @@
 import lightning as L
 import torch
 
-from modules.models.DCAE import Encoder, Decoder
+from modules.models.AE import Encoder, Decoder, Encoder3D, Decoder3D
 from common.loss import latitude_weighted_rmse, WeightedLoss
 from common.plotting import plot_reconstruction, plot_spectrum
 from data.amip import SURFACE_VARIABLES, MULTILEVEL_VARIABLES, DIAGNOSTIC_VARIABLES
@@ -31,6 +31,9 @@ class AutoencoderModule(L.LightningModule):
         if self.model_name == "DCAE":
             self.encoder = Encoder(**self.modelconfig["DCAE"]["encoder"])
             self.decoder = Decoder(**self.modelconfig["DCAE"]["decoder"])
+        elif self.model_name == "AE_3D":
+            self.encoder = Encoder3D(**self.modelconfig["AE_3D"]["encoder"])
+            self.decoder = Decoder3D(**self.modelconfig["AE_3D"]["decoder"])
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
