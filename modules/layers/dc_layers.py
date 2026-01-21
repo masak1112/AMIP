@@ -6,8 +6,10 @@ from typing import Optional, Tuple
 from torch.nn.common_types import _size_2_t
 
 def conv(conv_type, **kwargs):
-    if conv_type == 'vanilla':
+    if conv_type == '2d':
         return nn.Conv2d(**kwargs)
+    elif conv_type == '3d':
+        return nn.Conv3d(**kwargs)
     elif conv_type == 'spherical':
         return SphereConv2d(**kwargs)
     else:
@@ -222,7 +224,7 @@ class ConvLayer(nn.Module):
         groups=1,
         use_bias=False,
         dropout=0,
-        conv_type='vanilla',
+        conv_type='2d',
     ):
         super(ConvLayer, self).__init__()
 
@@ -263,7 +265,7 @@ class PixelUnshuffleDownSampleLayer(nn.Module):
         out_channels: int,
         kernel_size: int,
         factor: int,
-        conv_type='vanilla',
+        conv_type='2d',
     ):
         super().__init__()
         self.factor = factor
@@ -325,7 +327,7 @@ class PixelShuffleUpSampleLayer(nn.Module):
         out_channels: int,
         kernel_size: int,
         factor: int,
-        conv_type='vanilla',
+        conv_type='2d',
     ):
         super().__init__()
         self.factor = factor

@@ -6,12 +6,12 @@ model:
             in_channels: 249 # 6 + 26*9 + 9 = 249
             hidden_channels: [512, 512, 1024] #[256, 512, 512]
             blocks_per_layer: [2, 2, 2] # [4, 4, 4]
-            conv_type: 'vanilla'
+            conv_type: 'spherical'
         decoder:
             in_channels: 249 # 6 + 26*9 + 9 = 249
             hidden_channels: [512, 512, 1024] #[256, 512, 512]
             blocks_per_layer: [2, 2, 2] #[4, 4, 4]
-            conv_type: 'vanilla'
+            conv_type: 'spherical'
 
 data:
     train_data_path: /glade/derecho/scratch/ayz/AMIP_train_new.h5
@@ -41,5 +41,5 @@ training:
     project: amip
     wandb_mode: online
     checkpoint: null
-    description: vanilla_d16_fp32_weightedLoss
+    description: spherical_d16_fp32_weightedLoss
     accumulate_grad_batches: 4
