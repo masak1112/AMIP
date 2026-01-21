@@ -32,6 +32,14 @@ class LayerNorm2d(nn.LayerNorm):
         if self.elementwise_affine:
             out = out * self.weight.view(1, -1, 1, 1) + self.bias.view(1, -1, 1, 1)
         return out
+    
+class LayerNorm3d(nn.LayerNorm):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out = x - torch.mean(x, dim=1, keepdim=True)
+        out = out / torch.sqrt(torch.square(out).mean(dim=1, keepdim=True) + self.eps)
+        if self.elementwise_affine:
+            out = out * self.weight.view(1, -1, 1, 1, 1) + self.bias.view(1, -1, 1, 1, 1)
+        return out
 
 class SphereConv2d(nn.Conv2d):
     """

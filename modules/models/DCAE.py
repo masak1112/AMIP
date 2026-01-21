@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 
-from modules.layers.dc_layers import SphereConv2d, LayerNorm2d, \
+from modules.layers.dc_layers import SphereConv2d, LayerNorm2d, LayerNorm3d, \
     PixelShuffleUpSampleLayer, PixelUnshuffleDownSampleLayer, ChannelAveragingDownSampleLayer, ChannelDuplicatingUpSampleLayer
 
 def conv(conv_type, **kwargs):
@@ -77,7 +77,7 @@ class UpBlock3d(nn.Module):
         out_channels: int,
         n_levels: int=26,
         factor: int = 2,
-        with_conv=False,
+        with_conv=True,
     ) -> None:
         super().__init__()
 
@@ -99,7 +99,7 @@ class UpBlock3d(nn.Module):
         if self.with_conv:
             x = self.conv(x)
             
-        x = self.upsample(x) # b (c nlevel) nlat//factor nlon//factor
+        x = self.upsample(x) # b (c nlevel) nlat*factor nlon*factor
 
         x = rearrange(x, 'b (c nlevel) nlat nlon -> b c nlevel nlat nlon', nlevel=nlevel)
         return x
@@ -145,7 +145,10 @@ class ResBlock(nn.Module):
                           kernel_size=3, 
                           padding=1, 
                           bias=False)
-        self.norm = LayerNorm2d(out_channels)
+        if conv_type == '3d':
+            self.norm = LayerNorm3d(out_channels)
+        else:
+            self.norm = LayerNorm2d(out_channels)
 
     def forward(self, x) -> torch.Tensor:
         residual = x
@@ -382,7 +385,7 @@ class Encoder3D(nn.Module):
 
         self.diagnostic_in = conv(
             conv_type='2d',
-            in_channels =  multilevel_channels,
+            in_channels =  diagnostic_channels,
             out_channels = hidden_channels[0],
             kernel_size = 3,
             padding = 1
@@ -390,7 +393,7 @@ class Encoder3D(nn.Module):
 
         self.multilevel_in = conv(
             conv_type,
-            in_channels = diagnostic_channels,
+            in_channels = multilevel_channels,
             out_channels = hidden_channels[0],
             kernel_size = 3,
             padding = 1
@@ -514,7 +517,7 @@ class Decoder3D(nn.Module):
 
         self.diagnostic_in = conv(
             conv_type='2d',
-            in_channels =  multilevel_channels,
+            in_channels =  diagnostic_channels,
             out_channels = hidden_channels[0],
             kernel_size = 3,
             padding = 1
@@ -522,7 +525,7 @@ class Decoder3D(nn.Module):
 
         self.multilevel_in = conv(
             conv_type,
-            in_channels = diagnostic_channels,
+            in_channels = multilevel_channels,
             out_channels = hidden_channels[0],
             kernel_size = 3,
             padding = 1
