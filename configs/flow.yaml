@@ -56,3 +56,4 @@ training:
     project: amip
     wandb_mode: online
     checkpoint: null
+    accumulate_grad_batches: 16
