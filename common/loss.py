@@ -46,30 +46,25 @@ def _weight_for_latitude_vector_with_poles(latitude):
     weights[[0, -1]] = np.sin(np.deg2rad(delta_latitude/4)) ** 2
     return weights
 
-def disassemble_input(assembled_input, num_levels, num_surface_channels, hpx=False):
-    surface_input = assembled_input[..., :num_surface_channels]
-    if hpx:
-        multilevel_input = rearrange(assembled_input[..., num_surface_channels:], 'b f n m (l c) -> b f n m l c', l=num_levels)
-    else:
-        multilevel_input = rearrange(assembled_input[..., num_surface_channels:], 'b nlat nlon (nlevel c) -> b nlat nlon nlevel c', nlevel=num_levels)
-    return surface_input, multilevel_input
-
 
 class WeightedLoss(nn.Module):
     def __init__(self,
-                 loss_fn,
-                 latitude_resolution,
-                 longitude_resolution,
+                 latitude_resolution = 180,
+                 longitude_resolution = 360,
                  with_poles=False,
-                 latitude_weight='cosine',
-                 level_weight='linear',
+                 latitude_weight='equal',
+                 level_weight='equal',
                  multi_level_variable_weight=None,
                  surface_variable_weight=None,
+                 diag_variable_weight=None,
                  nlevels=13,
-                 nsurface=8,
+                 nsurface=6,
+                 nmulti=9,
+                 ndiag = 9,
+                 normalize = True
                  ):
         super().__init__()
-        self.loss_fn = loss_fn   # loss function must not reduce any dimension
+        self.loss_fn = nn.MSELoss(reduction='none')
         if latitude_weight == 'cosine':
             if with_poles:
                 latitude = np.linspace(-90, 90, latitude_resolution)
@@ -83,55 +78,65 @@ class WeightedLoss(nn.Module):
             latitude_weight = weights / weights.mean()
         else:
             weights = torch.ones(latitude_resolution)   # all latitudes weight the same
-            latitude_weight = weights / weights.mean()
+            latitude_weight = weights / weights.mean() # shape (nlat, )
         self.register_buffer('latitude_weight', latitude_weight)
 
-        # weight for each level
-        # up to 13 pressure levels, the lower the level, the lower the weight
-        # the surface level has higher weight
-        # 50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000
         if level_weight == 'linear':     # outweighs the lower levels
-            level_weight = torch.linspace(0.05, 0.065, 13)
+            level_weight = torch.linspace(0.05, 0.065, nlevels)
         elif level_weight == 'exp':
-            level_weight = torch.exp(torch.linspace(-3, 0, 13))
+            level_weight = torch.exp(torch.linspace(-3, 0, nlevels))
             level_weight = level_weight / level_weight.sum()
         elif level_weight == 'cosine':
-            level_weight = torch.from_numpy(get_cosine_weight(13, 2))
+            level_weight = torch.from_numpy(get_cosine_weight(nlevels, 2))
             level_weight = level_weight / level_weight.sum()
         else:
-            level_weight = torch.ones(13)
+            level_weight = torch.ones(nlevels)
             level_weight = level_weight / level_weight.sum()
         self.register_buffer('level_weight', level_weight)
 
-        if surface_variable_weight is not None:
-            surface_variable_weight = torch.tensor(surface_variable_weight)
-        else:
-            surface_variable_weight = torch.tensor(1.)
-        self.register_buffer('surface_variable_weight', surface_variable_weight)
+        if surface_variable_weight is None:
+            surface_variable_weight = torch.ones(nsurface) # default equal weight
 
-        if multi_level_variable_weight is not None:
-            multi_level_variable_weight = torch.tensor(multi_level_variable_weight)
-        else:
-            multi_level_variable_weight = torch.tensor(1.)
+        if multi_level_variable_weight is None:
+            multi_level_variable_weight = torch.ones(nmulti) # default equal weight
+
+        if diag_variable_weight is None:
+            diag_variable_weight = torch.ones(ndiag)
+        
+        self.register_buffer('diag_variable_weight', diag_variable_weight)
+        self.register_buffer('surface_variable_weight', surface_variable_weight)
         self.register_buffer('multi_level_variable_weight', multi_level_variable_weight)
-        self.nlevels = nlevels
-        self.nsurface = nsurface
+
+        self.normalize = normalize
 
     def forward(self,
-                pred, # b nlat nlon (c + nlevel*c)
-                target,
+                surface_pred, surface_target,
+                multilevel_pred, multilevel_target,
+                diagnostic_pred, diagnostic_target
                 ):
 
-        surface_pred_feat, multi_level_pred_feat = disassemble_input(pred, num_levels=self.nlevels, num_surface_channels= self.nsurface)
-        surface_target_feat, multi_level_target_feat = disassemble_input(target, num_levels=self.nlevels, num_surface_channels= self.nsurface)
-
-        latitude_weight = self.latitude_weight.view(1, -1, 1) # b nlat nlon 
-        surface_loss = self.loss_fn(surface_pred_feat, surface_target_feat) * self.surface_variable_weight
+        
+        surface_loss = self.loss_fn(surface_pred, surface_target) # b nlat nlon nsurface
+        surface_loss = surface_loss * self.surface_variable_weight.view(1, 1, 1, -1) # b nlat nlon nsurface
         surface_loss = surface_loss.sum(dim=-1) # b nlat nlon
-        multi_level_loss = self.loss_fn(multi_level_pred_feat, multi_level_target_feat) * self.level_weight.view(1, 1, 1, -1, 1)
-        multi_level_loss = (multi_level_loss.sum(dim=-2) * self.multi_level_variable_weight).sum(dim=-1) # b nlat nlon
 
-        loss = surface_loss + multi_level_loss
+        diag_loss = self.loss_fn(diagnostic_pred, diagnostic_target) # b nlat nlon ndiag
+        diag_loss = diag_loss * self.diag_variable_weight.view(1, 1, 1, -1) # b nlat nlon ndiag
+        diag_loss = diag_loss.sum(dim=-1) # b nlat nlon
+
+        multi_level_loss = self.loss_fn(multilevel_pred, multilevel_target) # b nlevel nlat nlon nmulti
+        multi_level_loss = multi_level_loss * self.level_weight.view(1, -1, 1, 1, 1) # b nlevel nlat nlon nmulti
+        multi_level_loss = multi_level_loss.sum(dim=1) # b nlat nlon nmulti
+        multi_level_loss = multi_level_loss * self.multi_level_variable_weight.view(1, 1, 1, -1) # b nlat nlon nmulti
+        multi_level_loss = multi_level_loss.sum(dim=-1) # b nlat nlon
+
+        if self.normalize:
+            surface_loss = surface_loss / torch.norm(surface_target, p=2, keepdim=True)
+            multi_level_loss = multi_level_loss / torch.norm(multilevel_target, p=2, keepdim=True)
+            diag_loss = diag_loss / torch.norm(diagnostic_target, p=2, keepdim=True)
+
+        loss = surface_loss + multi_level_loss + diag_loss # b nlat nlon
+        latitude_weight = self.latitude_weight.view(1, -1, 1) # b nlat nlon 
         loss = loss * latitude_weight
 
         return loss.mean()   # reduce over batch/lat/lon

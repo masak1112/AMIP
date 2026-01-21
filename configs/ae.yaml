@@ -41,5 +41,5 @@ training:
     project: amip
     wandb_mode: online
     checkpoint: null
-    description: vanilla_identity_fp32
+    description: vanilla_identity_fp32_weightedLoss
     accumulate_grad_batches: 1
