@@ -5,17 +5,26 @@ from einops import rearrange
 from modules.layers.dc_layers import SphereConv2d, LayerNorm2d, \
     PixelShuffleUpSampleLayer, PixelUnshuffleDownSampleLayer, ChannelAveragingDownSampleLayer, ChannelDuplicatingUpSampleLayer
 
+def conv(conv_type, **kwargs):
+    if conv_type == 'vanilla':
+        return nn.Conv2d(**kwargs)
+    elif conv_type == 'spherical':
+        return SphereConv2d(**kwargs)
+    else:
+        raise ValueError(f"Unsupported conv_type: {conv_type}")
+
 class DCDownBlock2d(nn.Module):
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
         factor: int = 2,
+        conv_type = 'vanilla'
     ) -> None:
         super().__init__()
 
         self.conv_block = PixelUnshuffleDownSampleLayer(
-            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=factor
+            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=factor, conv_type=conv_type
         )
         self.shortcut_block = ChannelAveragingDownSampleLayer(
             in_channels=in_channels, out_channels=out_channels, factor=factor
@@ -31,10 +40,11 @@ class DCUpBlock2d(nn.Module):
         in_channels: int,
         out_channels: int,
         factor: int = 2,
+        conv_type = 'vanilla'
     ) -> None:
         super().__init__()
         self.conv_block = PixelShuffleUpSampleLayer(
-            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=factor
+            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=factor, conv_type=conv_type
         )
         self.shortcut_block = ChannelDuplicatingUpSampleLayer(
             in_channels=in_channels, out_channels=out_channels, factor=factor)
@@ -49,12 +59,22 @@ class ResBlock(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
+        conv_type = 'vanilla'
     ) -> None:
         super().__init__()
 
         self.nonlinearity = nn.GELU()
-        self.conv1 = SphereConv2d(in_channels, in_channels, kernel_size=3, padding=1)
-        self.conv2 = SphereConv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False)
+        self.conv1 = conv(conv_type,
+                          in_channels = in_channels, 
+                          out_channels = in_channels, 
+                          kernel_size=3, 
+                          padding=1)
+        self.conv2 = conv(conv_type,
+                          in_channels=in_channels, 
+                          out_channels = out_channels,
+                          kernel_size=3, 
+                          padding=1, 
+                          bias=False)
         self.norm = LayerNorm2d(out_channels)
 
     def forward(self, x) -> torch.Tensor:
@@ -72,17 +92,19 @@ class Encoder(nn.Module):
         in_channels: int,
         hidden_channels = (256, 256, 512, 512),
         blocks_per_layer = (2, 2, 2, 2),
+        conv_type = "vanilla"
     ):
         super().__init__()
 
         num_layers = len(hidden_channels)
         latent_channels = in_channels
 
-        self.conv_in = SphereConv2d(
-            in_channels,
-            hidden_channels[0],
-            kernel_size=3,
-            padding=1
+        self.conv_in = conv(
+            conv_type,
+            in_channels = in_channels,
+            out_channels = hidden_channels[0],
+            kernel_size = 3,
+            padding = 1
         )
         
         self.down_layers = nn.ModuleList()
@@ -93,6 +115,7 @@ class Encoder(nn.Module):
                 block = ResBlock(
                     in_channels=out_channel,
                     out_channels=out_channel,
+                    conv_type=conv_type
                 )
                 self.down_layers.append(block)
 
@@ -100,13 +123,17 @@ class Encoder(nn.Module):
                 downsample_block = DCDownBlock2d(
                     in_channels=out_channel,
                     out_channels=hidden_channels[i + 1],
+                    conv_type=conv_type
                 )
                 self.down_layers.append(downsample_block)
 
-        self.conv_out = SphereConv2d(hidden_channels[-1], 
-                                     latent_channels, 
-                                     kernel_size=3,
-                                     padding=1)
+        self.conv_out = conv(
+            conv_type=conv_type,
+            in_channels = hidden_channels[-1], 
+            out_channels = latent_channels, 
+            kernel_size=3,
+            padding=1
+        )
 
     def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:
         # surface in shape b nlat nlon c 
@@ -146,15 +173,17 @@ class Decoder(nn.Module):
         in_channels: int,
         hidden_channels = (512, 512, 256, 256),
         blocks_per_layer = (2, 2, 2, 2),
+        conv_type = "vanilla"
     ):
         super().__init__()
 
         num_layers = len(hidden_channels)
         latent_channels = in_channels
 
-        self.conv_in = SphereConv2d(
-            latent_channels,
-            hidden_channels[0],
+        self.conv_in = conv(
+            conv_type,
+            in_channels = latent_channels,
+            out_channels = hidden_channels[0],
             kernel_size=3,
             padding=1
         )
@@ -167,6 +196,7 @@ class Decoder(nn.Module):
                 block = ResBlock(
                     in_channels=out_channel,
                     out_channels=out_channel,
+                    conv_type=conv_type
                 )
                 self.up_layers.append(block)
 
@@ -174,14 +204,16 @@ class Decoder(nn.Module):
                 downsample_block = DCUpBlock2d(
                     in_channels=out_channel,
                     out_channels=hidden_channels[i + 1],
+                    conv_type=conv_type
                 )
                 self.up_layers.append(downsample_block)
 
-        self.conv_out = SphereConv2d(hidden_channels[-1], 
-                                     in_channels, 
-                                     kernel_size=3,
-                                     padding=1)
-
+        self.conv_out = conv(
+            conv_type=conv_type,
+            in_channels = hidden_channels[-1], 
+            out_channels = in_channels, 
+            kernel_size=3,
+            padding=1)
 
 
     def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:

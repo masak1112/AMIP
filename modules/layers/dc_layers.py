@@ -5,6 +5,14 @@ import torch.nn.functional as F
 from typing import Optional, Tuple
 from torch.nn.common_types import _size_2_t
 
+def conv(conv_type, **kwargs):
+    if conv_type == 'vanilla':
+        return nn.Conv2d(**kwargs)
+    elif conv_type == 'spherical':
+        return SphereConv2d(**kwargs)
+    else:
+        raise ValueError(f"Unsupported conv_type: {conv_type}")
+
 
 # https://arxiv.org/abs/2410.10733
 
@@ -214,6 +222,7 @@ class ConvLayer(nn.Module):
         groups=1,
         use_bias=False,
         dropout=0,
+        conv_type='vanilla',
     ):
         super(ConvLayer, self).__init__()
 
@@ -221,9 +230,10 @@ class ConvLayer(nn.Module):
         padding *= dilation
 
         self.dropout = nn.Dropout2d(dropout, inplace=False) if dropout > 0 else None
-        self.conv = SphereConv2d(
-            in_channels,
-            out_channels,
+        self.conv = conv(
+            conv_type,
+            in_channels = in_channels,
+            out_channels = out_channels,
             kernel_size=(kernel_size, kernel_size),
             stride=(stride, stride),
             padding=padding,
@@ -253,6 +263,7 @@ class PixelUnshuffleDownSampleLayer(nn.Module):
         out_channels: int,
         kernel_size: int,
         factor: int,
+        conv_type='vanilla',
     ):
         super().__init__()
         self.factor = factor
@@ -263,6 +274,7 @@ class PixelUnshuffleDownSampleLayer(nn.Module):
             out_channels=out_channels // out_ratio,
             kernel_size=kernel_size,
             use_bias=True,
+            conv_type=conv_type,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -313,6 +325,7 @@ class PixelShuffleUpSampleLayer(nn.Module):
         out_channels: int,
         kernel_size: int,
         factor: int,
+        conv_type='vanilla',
     ):
         super().__init__()
         self.factor = factor
@@ -322,6 +335,7 @@ class PixelShuffleUpSampleLayer(nn.Module):
             out_channels=out_channels * out_ratio,
             kernel_size=kernel_size,
             use_bias=True,
+            conv_type=conv_type,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
