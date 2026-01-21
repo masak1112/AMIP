@@ -41,5 +41,5 @@ training:
     project: amip
     wandb_mode: online
     checkpoint: null
-    description: vanilla_accumulate_4
-    accumulate_grad_batches: 4
+    description: vanilla_no_ema
+    accumulate_grad_batches: 1

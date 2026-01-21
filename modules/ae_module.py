@@ -61,9 +61,9 @@ class AutoencoderModule(L.LightningModule):
     
     def training_step(self, batch, batch_idx):
 
-        surface_data = batch['surface'][:, 0] # b 1 nlat nlon c
-        multilevel_data = batch['multilevel'][:, 0] # b 1 nlevel nlat nlon c
-        diagnostic_data = batch['diagnostic'][:, 0] # b 1 nlat nlon c
+        surface_data = batch['surface'][:, 0] # b nlat nlon c
+        multilevel_data = batch['multilevel'][:, 0] # b nlevel nlat nlon c
+        diagnostic_data = batch['diagnostic'][:, 0] # b nlat nlon c
 
         surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
 
@@ -77,9 +77,9 @@ class AutoencoderModule(L.LightningModule):
 
     def validation_step(self, batch, batch_idx): 
         
-        surface_data = batch['surface'][:, 0] # b 1 nlat nlon c
-        multilevel_data = batch['multilevel'][:, 0] # b 1 nlevel nlat nlon c
-        diagnostic_data = batch['diagnostic'][:, 0] # b 1 nlat nlon c
+        surface_data = batch['surface'][:, 0] # b nlat nlon c
+        multilevel_data = batch['multilevel'][:, 0] # b nlevel nlat nlon c
+        diagnostic_data = batch['diagnostic'][:, 0] # b nlat nlon c
 
         surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
 

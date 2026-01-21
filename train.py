@@ -91,7 +91,7 @@ def main(args):
                         log_every_n_steps = trainconfig["log_every_n_steps"],
                         max_epochs = trainconfig["max_epochs"],
                         default_root_dir = path,
-                        callbacks=[checkpoint_callback, lr_monitor, EMAWeightAveraging(trainconfig["ema_decay"])],
+                        callbacks=[checkpoint_callback, lr_monitor],#, EMAWeightAveraging(trainconfig["ema_decay"])],
                         logger=wandb_logger,
                         accumulate_grad_batches=trainconfig.get("accumulate_grad_batches", 1),
                         num_sanity_val_steps=trainconfig.get("num_sanity_val_steps", 1),
