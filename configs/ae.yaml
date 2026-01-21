@@ -1,5 +1,5 @@
 model:
-    model_name: AE_3D
+    model_name: DCAE
     lr: 5.0e-5
     DCAE:
         encoder:
