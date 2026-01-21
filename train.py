@@ -19,7 +19,7 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
 
 class EMAWeightAveraging(WeightAveraging):
-    def __init__(self, decay=0.999):
+    def __init__(self, decay=0.995):
         super().__init__(avg_fn=get_ema_avg_fn(decay=decay))
 
     def should_update(self, step_idx=None, epoch_idx=None):
@@ -66,24 +66,28 @@ def main(args):
     os.makedirs(path, exist_ok=True) 
     save_yaml(config, path + "config.yml")
 
-    checkpoint_callback  = ModelCheckpoint(
-        filename= "model_{epoch:02d}",
-        dirpath=path,
-        every_n_train_steps = 1000, # also save every 1000 training steps,
-        save_last=True
-    )
-
-    lr_monitor = LearningRateMonitor(logging_interval='epoch')
-    
     datamodule = ClimateDataModule(dataconfig=dataconfig)
 
     if "AE" in modelconfig["model_name"]:
         model = AutoencoderModule(config=config,
                                   normalizer=datamodule.normalizer)
+        monitor = "val/t2m"
     else:
         model = TrainModule(config,
                             normalizer=datamodule.normalizer)
+        monitor = "bias/t2m"
 
+    checkpoint_callback  = ModelCheckpoint(
+        monitor=monitor,
+        filename= "model_{epoch:02d}_best",
+        mode='min',
+        dirpath=path,
+        save_last=True,
+        save_top_k=1
+    )
+
+    lr_monitor = LearningRateMonitor(logging_interval='epoch')
+    
     trainer = L.Trainer(devices = trainconfig["devices"],
                         accelerator = trainconfig["accelerator"],
                         strategy = trainconfig["strategy"],
