@@ -81,8 +81,6 @@ class FlowScheduler(nn.Module):
         self.num_refinement_steps = num_refinement_steps
         self.ode_integrator = ODEIntegrator(method=integrator)
 
-        self.training_criterion = nn.MSELoss()
-
         print(f"Using LinearScheduler with {self.num_train_timesteps} training steps and {self.num_refinement_steps} refinement steps.")
 
     def get_noise(self, x):
@@ -94,7 +92,8 @@ class FlowScheduler(nn.Module):
 
         return alpha * x + sigma * noise
 
-    def compute_loss(self, model, 
+    def compute_loss(self, model,
+                     criterion, 
                      surface_input,
                     multilevel_input,
                     forcing_input,
@@ -132,11 +131,12 @@ class FlowScheduler(nn.Module):
         multi_target = noise_multilevel - multilevel_target
         diag_target = noise_diagnostic - diagnostic_target
 
-        surface_loss = self.training_criterion(surface_pred, surface_target)
-        multi_loss = self.training_criterion(multi_pred, multi_target)
-        diag_loss = self.training_criterion(diag_pred, diag_target)
+        loss = criterion(surface_pred, surface_target,
+                              multi_pred, multi_target,
+                              diag_pred, diag_target)
+    
 
-        return surface_loss + multi_loss + diag_loss
+        return loss
 
     def sample(self, model, surface_input,
                     multilevel_input,

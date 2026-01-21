@@ -4,7 +4,7 @@ from tqdm import tqdm
 
 from modules.models.DiT import ArchesDiT
 from modules.diffusion.flow_matching import FlowScheduler
-from common.loss import latitude_weighted_rmse
+from common.loss import latitude_weighted_rmse, WeightedLoss
 from common.plotting import plot_result, plot_spectrum, plot_bias
 from data.amip import SURFACE_VARIABLES, MULTILEVEL_VARIABLES, DIAGNOSTIC_VARIABLES
 
@@ -26,7 +26,8 @@ class TrainModule(L.LightningModule):
         self.lr = self.modelconfig["lr"]
         self.log_dir = config['training']['log_dir']
 
-        self.criterion = torch.nn.MSELoss()
+        self.criterion = WeightedLoss(latitude_resolution=180,
+                                      longitude_resolution=360)
         self.n = normalizer
         self.climatology = None
 
@@ -63,13 +64,11 @@ class TrainModule(L.LightningModule):
                      surface_pred, surface_target,
                      multilevel_pred, multilevel_target,
                      diagnostic_pred, diagnostic_target):
-        
-        surface_loss = self.criterion(surface_pred, surface_target)
-        multilevel_loss = self.criterion(multilevel_pred, multilevel_target)
-        diagnostic_loss = self.criterion(diagnostic_pred, diagnostic_target)
 
-        # can weight this optionally
-        return surface_loss + multilevel_loss + diagnostic_loss
+        return self.criterion(surface_pred, surface_target,
+                              multilevel_pred, multilevel_target,
+                              diagnostic_pred, diagnostic_target)
+    
     
     def training_step(self, batch, batch_idx):
 
@@ -91,6 +90,7 @@ class TrainModule(L.LightningModule):
 
         if self.diffusion:
             loss = self.scheduler.compute_loss(self.model,
+                                               self.criterion,
                                                surface_input,
                                                multilevel_input,
                                                forcing_input,
