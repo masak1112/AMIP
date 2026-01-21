@@ -57,7 +57,7 @@ class WeightedLoss(nn.Module):
                  multi_level_variable_weight=None,
                  surface_variable_weight=None,
                  diag_variable_weight=None,
-                 nlevels=13,
+                 nlevels=26,
                  nsurface=6,
                  nmulti=9,
                  ndiag = 9,
