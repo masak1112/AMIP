@@ -54,6 +54,6 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip
     wandb_mode: online
-    checkpoint: null
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/DCAE_d16_weightedLoss_42_2026-01-21T14-55-26/last.ckpt
     description: d16_weightedLoss
     accumulate_grad_batches: 4
