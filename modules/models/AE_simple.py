@@ -244,7 +244,6 @@ class Encoder(nn.Module):
                  attn_resolutions = [32], 
                  dropout=0.0, 
                  double_z=False, 
-                 cond_channels=0,
                  tanh_out=False,
                  dim=2,
                  padding_mode='zeros',
@@ -253,7 +252,6 @@ class Encoder(nn.Module):
         
         super().__init__()
         self.hidden_channels = hidden_channels
-        self.temb_ch = cond_channels
         self.num_resolutions = len(ch_mult)
         self.num_res_blocks = num_res_blocks
         self.resolution = resolution
@@ -287,7 +285,6 @@ class Encoder(nn.Module):
             for i_block in range(self.num_res_blocks):
                 block.append(ResnetBlock(in_channels=block_in,
                                          out_channels=block_out,
-                                         temb_channels=self.temb_ch,
                                          dropout=dropout,
                                          dim=dim,
                                          padding_mode=padding_mode))
@@ -306,7 +303,6 @@ class Encoder(nn.Module):
         self.mid = nn.Module()
         self.mid.block_1 = ResnetBlock(in_channels=block_in,
                                        out_channels=block_in,
-                                       temb_channels=self.temb_ch,
                                        dropout=dropout,
                                        dim=dim,
                                        padding_mode=padding_mode)
@@ -316,7 +312,6 @@ class Encoder(nn.Module):
             self.mid.attn_1 = nn.Identity()
         self.mid.block_2 = ResnetBlock(in_channels=block_in,
                                        out_channels=block_in,
-                                       temb_channels=self.temb_ch,
                                        dropout=dropout,
                                        dim=dim,
                                        padding_mode=padding_mode)
@@ -420,7 +415,6 @@ class Decoder(nn.Module):
                  attn_resolutions = [32], 
                  dropout=0.0, 
                  double_z=True, 
-                 cond_channels=0,
                  tanh_out=False,
                  dim=2,
                  padding_mode='zeros',
@@ -428,7 +422,6 @@ class Decoder(nn.Module):
         super().__init__()
         self.hidden_channels = hidden_channels
         self.out_channels = out_channels
-        self.temb_ch = cond_channels
         self.num_resolutions = len(ch_mult)
         self.num_res_blocks = num_res_blocks
         self.resolution = resolution
@@ -436,8 +429,6 @@ class Decoder(nn.Module):
         attn_type = "vanilla"
         resamp_with_conv = True
         self.dim = dim
-
-        print("Initializing decoder")
 
         # compute in_ch_mult, block_in and curr_res at lowest res
         block_in = self.hidden_channels*ch_mult[self.num_resolutions-1]
@@ -457,7 +448,6 @@ class Decoder(nn.Module):
         self.mid = nn.Module()
         self.mid.block_1 = ResnetBlock(in_channels=block_in,
                                        out_channels=block_in,
-                                       temb_channels=self.temb_ch,
                                        dropout=dropout,
                                        dim=dim,
                                        padding_mode=padding_mode)
@@ -467,7 +457,6 @@ class Decoder(nn.Module):
             self.mid.attn_1 = nn.Identity()
         self.mid.block_2 = ResnetBlock(in_channels=block_in,
                                        out_channels=block_in,
-                                       temb_channels=self.temb_ch,
                                        dropout=dropout,
                                        dim=dim,
                                        padding_mode=padding_mode)
@@ -481,7 +470,6 @@ class Decoder(nn.Module):
             for i_block in range(self.num_res_blocks+1):
                 block.append(ResnetBlock(in_channels=block_in,
                                          out_channels=block_out,
-                                         temb_channels=self.temb_ch,
                                          dropout=dropout,
                                          dim=dim,
                                          padding_mode=padding_mode))
