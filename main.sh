@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -N AE_main
+#PBS -N AE_simple
 #PBS -l select=1:ncpus=16:ngpus=4:mem=120G
 #PBS -q main
 #PBS -l walltime=12:00:00
@@ -9,6 +9,6 @@
 module load conda
 conda activate torch2
 
-CONFIG=configs/ae.yaml
+CONFIG=configs/ae_simple.yaml
 
 python train.py --config=$CONFIG
