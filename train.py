@@ -72,17 +72,19 @@ def main(args):
         model = AutoencoderModule(config=config,
                                   normalizer=datamodule.normalizer)
         monitor = "val/t2m"
+        mode = 'min'
         every_n_train_steps = None
     else:
         model = TrainModule(config,
                             normalizer=datamodule.normalizer)
-        monitor = "bias/t2m"
+        monitor = "step"
+        mode = 'max'
         every_n_train_steps = 100
 
     checkpoint_callback  = ModelCheckpoint(
         monitor=monitor,
-        filename= "model_{epoch:02d}_best",
-        mode='min',
+        filename= "model_{epoch:02d}_{step}_best",
+        mode=mode,
         dirpath=path,
         save_last=True,
         save_top_k=1,
