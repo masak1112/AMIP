@@ -36,6 +36,50 @@ class DCDownBlock2d(nn.Module):
         
         return self.conv_block(x) + self.shortcut_block(x)
     
+class AvgDownBlock2d(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        factor: int = 2,
+        conv_type = '2d'
+    ) -> None:
+        super().__init__()
+
+        self.conv = conv(conv_type,
+                        in_channels=in_channels, 
+                        out_channels=out_channels, 
+                        kernel_size=3, 
+                        padding=1)
+        self.downsample = nn.AvgPool2d(kernel_size=factor, stride=factor)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv(x)
+        x = self.downsample(x)
+        return x
+    
+class AvgUpBlock2d(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        factor: int = 2,
+        conv_type = '2d'
+    ) -> None:
+        super().__init__()
+
+        self.conv = conv(conv_type,
+                        in_channels=in_channels, 
+                        out_channels=out_channels, 
+                        kernel_size=3, 
+                        padding=1)
+        self.upsample = nn.Upsample(scale_factor=factor, mode='bilinear', align_corners=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv(x)
+        x = self.upsample(x)
+        return x
+    
 class DownBlock3d(nn.Module):
     def __init__(
         self,
@@ -165,9 +209,13 @@ class Encoder(nn.Module):
         in_channels: int,
         hidden_channels = (256, 256, 512, 512),
         blocks_per_layer = (2, 2, 2, 2),
-        conv_type = "2d"
+        conv_type = "2d",
+        saturate=False,
+        downsample_type = "DC"
     ):
         super().__init__()
+
+        self.saturate_latent = saturate
 
         num_layers = len(hidden_channels)
         latent_channels = in_channels
@@ -193,11 +241,18 @@ class Encoder(nn.Module):
                 self.down_layers.append(block)
 
             if i < num_layers - 1: # no downsample on last layer
-                downsample_block = DCDownBlock2d(
-                    in_channels=out_channel,
-                    out_channels=hidden_channels[i + 1],
-                    conv_type=conv_type
-                )
+                if downsample_type == "DC":
+                    downsample_block = DCDownBlock2d(
+                        in_channels=out_channel,
+                        out_channels=hidden_channels[i + 1],
+                        conv_type=conv_type
+                    )
+                elif downsample_type == "avg":
+                    downsample_block = AvgDownBlock2d(in_channels=out_channel,
+                                                      out_channels=hidden_channels[i + 1],
+                                                     conv_type=conv_type)
+                else:
+                    raise ValueError(f"Unsupported downsample_type: {downsample_type}")
                 self.down_layers.append(downsample_block)
 
         self.conv_out = conv(
@@ -227,6 +282,10 @@ class Encoder(nn.Module):
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
+    def saturate(self, x, B=5.0):
+        x = x /torch.sqrt(1 + x**2/B**2)
+        return x
+
     def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:
         # surface in shape b nlat nlon c 
         # multilevel in shape b nlevel nlat nlon c
@@ -249,6 +308,9 @@ class Encoder(nn.Module):
 
         x = self.conv_out(x) # b latent_dim zlat zlon
 
+        if self.saturate_latent:
+            x = self.saturate(x)
+
         z_surface = x[:, :n_surface, :, :] # b n_surface zlat zlon
         z_diagnostic = x[:, n_surface:n_surface + n_diagnostic, :, :] # b n_diagnostic zlat zlon
         z_multilevel = x[:, n_surface + n_diagnostic:, :, :] # b (n_multilevel * nlevel) zlat zlon
@@ -265,7 +327,8 @@ class Decoder(nn.Module):
         in_channels: int,
         hidden_channels = (512, 512, 256, 256),
         blocks_per_layer = (2, 2, 2, 2),
-        conv_type = "2d"
+        conv_type = "2d",
+        upsample_type = "DC"
     ):
         super().__init__()
 
@@ -293,12 +356,20 @@ class Decoder(nn.Module):
                 self.up_layers.append(block)
 
             if i < num_layers - 1: # no upsample on last layer
-                downsample_block = DCUpBlock2d(
-                    in_channels=out_channel,
-                    out_channels=hidden_channels[i + 1],
-                    conv_type=conv_type
-                )
-                self.up_layers.append(downsample_block)
+                if upsample_type == "DC":
+                    upsample_block = DCUpBlock2d(
+                        in_channels=out_channel,
+                        out_channels=hidden_channels[i + 1],
+                        conv_type=conv_type
+                    )
+                elif upsample_type == "avg":
+                    upsample_block = AvgUpBlock2d(in_channels=out_channel,
+                                                    out_channels=hidden_channels[i + 1],
+                                                     conv_type=conv_type)
+                else:
+                    raise ValueError(f"Unsupported upsample_type: {upsample_type}")
+                
+                self.up_layers.append(upsample_block)
 
         self.conv_out = conv(
             conv_type=conv_type,
