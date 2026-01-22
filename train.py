@@ -109,7 +109,8 @@ def main(args):
     if trainconfig["checkpoint"] is not None:
         trainer.fit(model=model,
                 datamodule=datamodule,
-                ckpt_path=trainconfig["checkpoint"])
+                ckpt_path=trainconfig["checkpoint"],
+                weights_only=False)
     else:
         trainer.fit(model=model, 
                 datamodule=datamodule)
