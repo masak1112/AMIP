@@ -22,9 +22,11 @@ class AutoencoderModule(L.LightningModule):
         self.model_name = self.modelconfig["model_name"]
         self.lr = self.modelconfig["lr"]
         self.log_dir = config['training']['log_dir']
+        downsample_levels = config['data'].get('downsample_levels', 1)
 
         self.criterion = WeightedLoss(latitude_resolution=180,
-                                      longitude_resolution=360)
+                                      longitude_resolution=360,
+                                      nlevels = 26 // downsample_levels)
         self.n = normalizer
 
         if self.model_name == "DCAE":
