@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from einops import rearrange
+import torch.nn.functional as F
 
 TYPE = "group"
 
@@ -85,6 +86,94 @@ class Downsample(nn.Module):
             else:
                 x = torch.nn.functional.avg_pool2d(x, kernel_size=2, stride=2)
         return x
+    
+class DCUpsample(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        interpolate: bool = False,
+        shortcut: bool = True,
+        interpolation_mode: str = "nearest",
+    ) -> None:
+        super().__init__()
+
+        self.interpolate = interpolate
+        self.interpolation_mode = interpolation_mode
+        self.shortcut = shortcut
+        self.factor = 2
+        self.repeats = out_channels * self.factor**2 // in_channels
+
+        out_ratio = self.factor**2
+
+        if not interpolate:
+            out_channels = out_channels * out_ratio
+
+        self.conv = nn.Conv2d(
+            in_channels, out_channels, 3, 1, 1)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        if self.interpolate:
+            x = F.interpolate(
+                hidden_states, scale_factor=self.factor, mode=self.interpolation_mode
+            )
+            x = self.conv(x)
+        else:
+            x = self.conv(hidden_states)
+            x = F.pixel_shuffle(x, self.factor)
+
+        if self.shortcut:
+            y = hidden_states.repeat_interleave(self.repeats, dim=1)
+            y = F.pixel_shuffle(y, self.factor)
+            hidden_states = x + y
+        else:
+            hidden_states = x
+
+        return hidden_states
+    
+class DCDownsample(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        downsample: bool = False,
+        shortcut: bool = True,
+    ) -> None:
+        super().__init__()
+
+        self.downsample = downsample
+        self.factor = 2
+        self.stride = 1 if downsample else 2
+        self.group_size = in_channels * self.factor**2 // out_channels
+        self.shortcut = shortcut
+
+        out_ratio = self.factor**2
+        if downsample:
+            assert out_channels % out_ratio == 0
+            out_channels = out_channels // out_ratio
+
+        self.conv = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=3,
+            stride=self.stride,
+            padding=1,
+        )
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        x = self.conv(hidden_states)
+        if self.downsample:
+            x = F.pixel_unshuffle(x, self.factor)
+
+        if self.shortcut:
+            y = F.pixel_unshuffle(hidden_states, self.factor)
+            y = y.unflatten(1, (-1, self.group_size))
+            y = y.mean(dim=2)
+            hidden_states = x + y
+        else:
+            hidden_states = x
+
+        return hidden_states
 
 
 class ResnetBlock(nn.Module):
@@ -247,6 +336,7 @@ class Encoder(nn.Module):
                  tanh_out=False,
                  dim=2,
                  padding_mode='zeros',
+                 downsample_type = 'avg',
                  use_attn=False,
                  saturate=True):
         
@@ -295,7 +385,11 @@ class Encoder(nn.Module):
             down.block = block
             down.attn = attn
             if i_level != self.num_resolutions-1:
-                down.downsample = Downsample(block_in, resamp_with_conv, dim=dim)
+                if downsample_type == 'dc':
+                    down.downsample = DCDownsample(block_in, 
+                                                  block_in)
+                else:
+                    down.downsample = Downsample(block_in, resamp_with_conv, dim=dim)
                 curr_res = curr_res // 2
             self.down.append(down)
 
@@ -418,6 +512,7 @@ class Decoder(nn.Module):
                  tanh_out=False,
                  dim=2,
                  padding_mode='zeros',
+                 upsample_type = 'avg',
                  use_attn=False):
         super().__init__()
         self.hidden_channels = hidden_channels
@@ -481,7 +576,11 @@ class Decoder(nn.Module):
             up.block = block
             up.attn = attn
             if i_level != 0:
-                up.upsample = Upsample(block_in, resamp_with_conv, dim=dim)
+                if upsample_type == 'dc':
+                    up.upsample = DCUpsample(block_in, 
+                                            block_in)
+                else:
+                    up.upsample = Upsample(block_in, resamp_with_conv, dim=dim)
                 curr_res = curr_res * 2
             self.up.insert(0, up) # prepend to get consistent order
 
