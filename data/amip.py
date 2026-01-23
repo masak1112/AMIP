@@ -47,6 +47,7 @@ class AMIPData(Dataset):
                  normalize=True,
                  nsteps=1,   # how many steps to load
                  horizon=-1,
+                 downsample_levels=1
                  ):
 
         self.data_path = data_path 
@@ -54,6 +55,7 @@ class AMIPData(Dataset):
         self.norm_stats_path = norm_stats_path
         self.normalize = normalize
         self.split = split 
+        self.downsample_levels = downsample_levels
 
         self.file = h5f.File(self.data_path, 'r') # has keys of 'split'
         self.data = self.file[split] # has keys of 'surface', 'multilevel', 'forcing', 'forcing_invariant', 'diagnostic', lat', 'lon', 'hour', 'day'
@@ -87,10 +89,13 @@ class AMIPData(Dataset):
     
     def __getitem__(self, idx):
         surface = torch.tensor(np.array(self.surface[idx:idx+self.nsteps]), dtype=torch.float32) # nsteps nlat nlon nsurface_channels
-        multilevel = torch.tensor(np.array(self.multilevel[idx:idx+self.nsteps]), dtype=torch.float32) # nsteps nlat nlon nlevels nmulti_channels
+        multilevel = torch.tensor(np.array(self.multilevel[idx:idx+self.nsteps]), dtype=torch.float32) # nsteps nlevels nlat nlon nmulti_channels
         diagnostic = torch.tensor(np.array(self.diagnostic[idx:idx+self.nsteps]), dtype=torch.float32) # nsteps nlat nlon ndiagnostic_channels
         forcing = torch.tensor(np.array(self.forcing[idx:idx+self.nsteps]), dtype=torch.float32) # nsteps nlat nlon nforcing_channels
         scalars = self.scalars[idx:idx+self.nsteps] # nsteps 2
+
+        if self.downsample_levels > 1:
+            multilevel = multilevel[:, ::self.downsample_levels]
 
         if self.normalize:
             surface = self.n.normalize_surface(surface)
