@@ -292,11 +292,10 @@ class TrainModule(L.LightningModule):
                 pred_climatology = pred_climatology[:, l, ...]
                 true_climatology = true_climatology[:, l, ...]
 
-            nlat, nlon = true_climatology.shape[1], true_climatology.shape[2]
             loss = latitude_weighted_rmse(pred_climatology, 
                                         true_climatology,
-                                        nlon=nlon,
-                                        nlat=nlat,
+                                        nlon=360,
+                                        nlat=180,
                                         with_time=False)
             
             result_dict[var_name] = loss.item()

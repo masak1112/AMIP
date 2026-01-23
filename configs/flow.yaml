@@ -55,5 +55,5 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip
     wandb_mode: online
-    checkpoint: null
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/flow__42_2026-01-22T08-09-34/last.ckpt
     accumulate_grad_batches: 16
