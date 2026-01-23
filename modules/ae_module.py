@@ -22,11 +22,11 @@ class AutoencoderModule(L.LightningModule):
         self.model_name = self.modelconfig["model_name"]
         self.lr = self.modelconfig["lr"]
         self.log_dir = config['training']['log_dir']
-        downsample_levels = config['data'].get('downsample_levels', 1)
+        self.downsample_levels = config['data'].get('downsample_levels', 1)
 
         self.criterion = WeightedLoss(latitude_resolution=180,
                                       longitude_resolution=360,
-                                      nlevels = 26 // downsample_levels)
+                                      nlevels = 26 // self.downsample_levels)
         self.n = normalizer
 
         if self.model_name == "DCAE":
@@ -144,14 +144,14 @@ class AutoencoderModule(L.LightningModule):
         pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu()
         pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu()
 
-        z500_pred = pred_feat_dict['geopotential'][0, 10, ...].cpu() # b l h w -> h w
-        z500_target = target_feat_dict['geopotential'][0, 10, ...].cpu()
-        u250_pred = pred_feat_dict['u_component_of_wind'][0, 13, ...].cpu()
-        u250_target = target_feat_dict['u_component_of_wind'][0, 13, ...].cpu()
-        t850_pred = pred_feat_dict['temperature'][0, 6, ...].cpu()
-        t850_target = target_feat_dict['temperature'][0, 6, ...].cpu()
-        q850_pred = pred_feat_dict['specific_humidity'][0, 6, ...].cpu()
-        q850_target = target_feat_dict['specific_humidity'][0, 6, ...].cpu()
+        z500_pred = pred_feat_dict['geopotential'][0, 10//self.downsample_levels, ...].cpu() # b l h w -> h w
+        z500_target = target_feat_dict['geopotential'][0, 10//self.downsample_levels, ...].cpu()
+        u250_pred = pred_feat_dict['u_component_of_wind'][0, 13//self.downsample_levels, ...].cpu()
+        u250_target = target_feat_dict['u_component_of_wind'][0, 13//self.downsample_levels, ...].cpu()
+        t850_pred = pred_feat_dict['temperature'][0, 6//self.downsample_levels, ...].cpu()
+        t850_target = target_feat_dict['temperature'][0, 6//self.downsample_levels, ...].cpu()
+        q850_pred = pred_feat_dict['specific_humidity'][0, 6//self.downsample_levels, ...].cpu()
+        q850_target = target_feat_dict['specific_humidity'][0, 6//self.downsample_levels, ...].cpu()
 
         plot_reconstruction(t2m_pred, # h w
                     t2m_target,
@@ -201,10 +201,10 @@ class AutoencoderModule(L.LightningModule):
         # calculate the mean loss across batch, shape b for each key, b l for multilevel keys
         t2m_loss = loss_dict['2m_temperature'].mean(0) # surface temp, mean across batch dim
         pr_6h_loss = loss_dict['PRATEsfc'].mean(0) # 6-hour accumulated PRATEsfc
-        z500_loss = loss_dict['geopotential'][..., 10].mean(0) # geopotential at level=10
-        u250_loss = loss_dict['u_component_of_wind'][..., 13].mean(0) # u wind at level=13
-        t850_loss = loss_dict['temperature'][..., 6].mean(0) # temp at level=6
-        q850_loss = loss_dict['specific_humidity'][..., 6].mean(0) # specific humidity at level=6
+        z500_loss = loss_dict['geopotential'][..., 10//self.downsample_levels].mean(0) # geopotential at level=10
+        u250_loss = loss_dict['u_component_of_wind'][..., 13//self.downsample_levels].mean(0) # u wind at level=13
+        t850_loss = loss_dict['temperature'][..., 6//self.downsample_levels].mean(0) # temp at level=6
+        q850_loss = loss_dict['specific_humidity'][..., 6//self.downsample_levels].mean(0) # specific humidity at level=6
         
         self.log('val/t2m', t2m_loss.item(), on_step=False, on_epoch=True, sync_dist=self.ddp) 
         self.log('val/pr_6h', pr_6h_loss.item(), on_step=False, on_epoch=True, sync_dist=self.ddp)

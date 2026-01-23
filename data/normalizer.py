@@ -4,7 +4,8 @@ from einops import rearrange
 import pickle 
 
 class Normalizer:
-    def __init__(self, stat_path):
+    def __init__(self, stat_path,
+                 downsample_levels=1):
         
         with open(stat_path, 'rb') as file:
             self.stat_dict = pickle.load(file)
@@ -15,6 +16,10 @@ class Normalizer:
         
         self.multilevel_means = torch.tensor(self.stat_dict['multi_mean'], dtype=torch.float32)  # shape (nlevels, multi_level_channels)
         self.multilevel_stds = torch.tensor(self.stat_dict['multi_std'], dtype=torch.float32)    # shape (nlevels, multi_level_channels)
+
+        if downsample_levels > 1:
+            self.multilevel_means = self.multilevel_means[::downsample_levels]
+            self.multilevel_stds = self.multilevel_stds[::downsample_levels]
 
         # Some multilevel variables have zero mean/std, since they are constantly zero (upper atmosphere cloud cover) 
         eps = 1e-7

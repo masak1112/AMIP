@@ -59,7 +59,8 @@ class AMIPData(Dataset):
 
         self.file = h5f.File(self.data_path, 'r') # has keys of 'split'
         self.data = self.file[split] # has keys of 'surface', 'multilevel', 'forcing', 'forcing_invariant', 'diagnostic', lat', 'lon', 'hour', 'day'
-        self.n = Normalizer(norm_stats_path)
+        self.n = Normalizer(norm_stats_path,
+                            downsample_levels=downsample_levels)
 
         # load refs
         self.surface = self.data['surface'] # t nlat nlon nsurface_channels
