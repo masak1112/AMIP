@@ -32,13 +32,13 @@ model:
             blocks_per_layer: [2, 2, 2]
     AE_simple:
         encoder:
-            in_channels: 249 # 6 + 26*9 + 9 = 249
+            in_channels: 132  # 6 + 26*9 + 9 = 249
             hidden_channels: 256
-            z_channels: 249
+            z_channels: 132 
         decoder:
-            out_channels: 249 # 6 + 26*9 + 9 = 249
+            out_channels: 132  # 6 + 26*9 + 9 = 249
             hidden_channels: 256
-            z_channels: 249
+            z_channels: 132 
 data:
     train_data_path: /glade/derecho/scratch/ayz/AMIP_train_new.h5
     val_data_path: /glade/derecho/scratch/ayz/AMIP_valid_new.h5
