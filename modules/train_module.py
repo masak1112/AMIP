@@ -131,7 +131,7 @@ class TrainModule(L.LightningModule):
         elif dataloader_idx == 1:
             # the first batch (batch_idx=0) contains the initial conditions, forcing, and climatologies
             # each subsequent batch only contains forcing data and HoD, DoY
-
+            return 
             if not self.ddp or self.global_rank == 0: # only run on one GPU
                 if batch_idx == 0:
                     if self.climatology is None:
