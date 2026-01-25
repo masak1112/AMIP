@@ -69,7 +69,7 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip
     wandb_mode: online
-    checkpoint: null
-    #checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/AE_simple_d16_simple_42_2026-01-22T09-22-14/last.ckpt
+    #checkpoint: null
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/AE_simple_d16_simple_DC_42_2026-01-24T09-24-05/last.ckpt
     description: d16_simple_DC
     accumulate_grad_batches: 16
