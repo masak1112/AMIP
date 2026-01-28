@@ -9,6 +9,6 @@
 module load conda
 conda activate torch2
 
-CONFIG=configs/ae_simple_DS.yaml
+CONFIG=configs/ae_decoder_only.yaml
 
 python train.py --config=$CONFIG
