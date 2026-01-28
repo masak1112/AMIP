@@ -1,3 +1,4 @@
+from typing import Any
 import torch
 import torch.nn as nn
 from einops import rearrange
@@ -502,6 +503,9 @@ class BilinearEncoder():
                  downsample_factor = 4):
         super().__init__()
         self.downsample_factor = downsample_factor
+
+    def __call__(self, surface, multilevel, diagnostic) -> Any:
+        return self.forward(surface, multilevel, diagnostic)
     
     def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:
         # surface in shape b nlat nlon c 
