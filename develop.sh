@@ -1,14 +1,14 @@
 #!/bin/bash -l
-#PBS -N ae_DS
+#PBS -N AE_decoder_only
 #PBS -l select=1:ncpus=16:ngpus=4:mem=120G
-#PBS -q main
-#PBS -l walltime=12:00:00
+#PBS -q develop
+#PBS -l walltime=0:10:00
 #PBS -A URIC0009
 #PBS -j oe
 
 module load conda
 conda activate torch2
 
-CONFIG=configs/ae_simple_DS.yaml
+CONFIG=configs/ae_decoder_only.yaml
 
 python train.py --config=$CONFIG

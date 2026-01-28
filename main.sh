@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -N AE_simple
+#PBS -N AE_decoder_only
 #PBS -l select=1:ncpus=16:ngpus=4:mem=120G
 #PBS -q main
 #PBS -l walltime=12:00:00
