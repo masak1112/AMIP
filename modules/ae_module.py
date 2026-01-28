@@ -41,6 +41,10 @@ class AutoencoderModule(L.LightningModule):
             from modules.models.AE_simple import Encoder, Decoder 
             self.encoder = Encoder(**self.modelconfig["AE_simple"]["encoder"])
             self.decoder = Decoder(**self.modelconfig["AE_simple"]["decoder"])
+        elif self.model_name == "AE_Decoder_Only":
+            from modules.models.AE_simple import BilinearEncoder, Decoder 
+            self.encoder = BilinearEncoder(**self.modelconfig["AE_Decoder_Only"]["encoder"])
+            self.decoder = Decoder(**self.modelconfig["AE_Decoder_Only"]["decoder"])
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 

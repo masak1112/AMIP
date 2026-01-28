@@ -496,7 +496,33 @@ class Encoder(nn.Module):
         z_diagnostic = rearrange(z_diagnostic, 'b c zlat zlon -> b zlat zlon c')
 
         return z_surface, z_multilevel,  z_diagnostic
+    
+class BilinearEncoder():
+    def __init__(self,
+                 downsample_factor = 4):
+        super().__init__()
+        self.downsample_factor = downsample_factor
+    
+    def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:
+        # surface in shape b nlat nlon c 
+        # multilevel in shape b nlevel nlat nlon c
+        # diagnostic in shape b nlat nlon c
+        nlevels = multilevel.shape[1]
 
+        surface = rearrange(surface, 'b nlat nlon c -> b c nlat nlon')
+        diagnostic = rearrange(diagnostic, 'b nlat nlon c -> b c nlat nlon')
+        multilevel = rearrange(multilevel, 'b nlevel nlat nlon c -> b (nlevel c) nlat nlon')
+
+        surface = F.interpolate(surface, scale_factor=1/self.downsample_factor, mode='bilinear', align_corners=False)
+        diagnostic = F.interpolate(diagnostic, scale_factor=1/self.downsample_factor, mode='bilinear', align_corners=False)
+        multilevel = F.interpolate(multilevel, scale_factor=1/self.downsample_factor, mode='bilinear', align_corners=False)
+
+        surface = rearrange(surface, 'b c zlat zlon -> b zlat zlon c')
+        diagnostic = rearrange(diagnostic, 'b c zlat zlon -> b zlat zlon c')
+        surface = rearrange(multilevel, 'b (nlevel c) zlat zlon -> b nlevel zlat zlon c', nlevel=nlevels)
+
+        return surface, multilevel, diagnostic
+      
 
 class Decoder(nn.Module):
     def __init__(self,
