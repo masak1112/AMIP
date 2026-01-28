@@ -513,10 +513,6 @@ class BilinearEncoder():
         # diagnostic in shape b nlat nlon c
         nlevels = multilevel.shape[1]
 
-        print(surface.shape)
-        print(multilevel.shape)
-        print(diagnostic.shape)
-
         surface = rearrange(surface, 'b nlat nlon c -> b c nlat nlon')
         diagnostic = rearrange(diagnostic, 'b nlat nlon c -> b c nlat nlon')
         multilevel = rearrange(multilevel, 'b nlevel nlat nlon c -> b (nlevel c) nlat nlon')
@@ -527,7 +523,7 @@ class BilinearEncoder():
 
         surface = rearrange(surface, 'b c zlat zlon -> b zlat zlon c')
         diagnostic = rearrange(diagnostic, 'b c zlat zlon -> b zlat zlon c')
-        surface = rearrange(multilevel, 'b (nlevel c) zlat zlon -> b nlevel zlat zlon c', nlevel=nlevels)
+        multilevel = rearrange(multilevel, 'b (nlevel c) zlat zlon -> b nlevel zlat zlon c', nlevel=nlevels)
 
         return surface, multilevel, diagnostic
       
@@ -651,10 +647,6 @@ class Decoder(nn.Module):
         # surface in shape b nlat nlon c 
         # multilevel in shape b nlevel nlat nlon c
         # diagnostic in shape b nlat nlon c
-
-        print(surface.shape)
-        print(multilevel.shape)
-        print(diagnostic.shape)
         
         n_surface = surface.shape[-1]
         n_diagnostic = diagnostic.shape[-1]
