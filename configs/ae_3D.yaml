@@ -33,7 +33,7 @@ data:
     val_horizon: 1460 # 1 year
     use_climatology: False
 
-    batch_size: 2
+    batch_size: 1
     num_workers: 4
 
 training:
@@ -52,4 +52,4 @@ training:
     wandb_mode: online
     checkpoint: null
     description: simple_3D
-    accumulate_grad_batches: 8
+    accumulate_grad_batches: 16
