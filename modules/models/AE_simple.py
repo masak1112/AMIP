@@ -36,6 +36,7 @@ class Upsample(nn.Module):
     def __init__(self, in_channels, with_conv, dim=2):
         super().__init__()
         self.with_conv = with_conv
+        self.dim = dim
         if self.with_conv:
             self.conv = conv_nd(dim,
                                 in_channels,
@@ -47,8 +48,10 @@ class Upsample(nn.Module):
     def forward(self, x):
         if len(x.shape) == 6: # interpolate doesn't support 6D
             x = torch.kron(x, torch.ones(2, 2, 2, 2, device=x.device))  # upsample w/ kronecker product
+        elif self.dim == 3:
+            x = torch.nn.functional.interpolate(x, scale_factor=(1,2,2), mode="trilinear") # do not upsample levels
         else:
-            x = torch.nn.functional.interpolate(x, scale_factor=2.0, mode="nearest")
+            x = torch.nn.functional.interpolate(x, scale_factor=2.0, mode="bilinear")
         if self.with_conv:
             x = self.conv(x)
         return x
@@ -83,7 +86,7 @@ class Downsample(nn.Module):
                 x = self.conv(x)
         else:
             if self.dim == 3:
-                x = torch.nn.functional.avg_pool3d(x, kernel_size=2, stride=2)
+                x = torch.nn.functional.avg_pool3d(x, kernel_size=(1, 2, 2)) # do not downsample levels
             else:
                 x = torch.nn.functional.avg_pool2d(x, kernel_size=2, stride=2)
         return x
@@ -339,7 +342,8 @@ class Encoder(nn.Module):
                  padding_mode='zeros',
                  downsample_type = 'avg',
                  use_attn=False,
-                 saturate=True):
+                 saturate=True,
+                 resamp_with_conv = True):
         
         super().__init__()
         self.hidden_channels = hidden_channels
@@ -348,7 +352,6 @@ class Encoder(nn.Module):
         self.resolution = resolution
         self.in_channels = in_channels
         attn_type = "vanilla"
-        resamp_with_conv = True
         self.tanh_out = tanh_out
         self.dim = dim 
 
@@ -497,6 +500,42 @@ class Encoder(nn.Module):
         z_diagnostic = rearrange(z_diagnostic, 'b c zlat zlon -> b zlat zlon c')
 
         return z_surface, z_multilevel,  z_diagnostic
+    
+class Encoder3D(Encoder):
+    def __init__(self,
+                 in_channels, # input channel dim
+                 hidden_channels, # width of network
+                 z_channels, # output latent dim
+                 ch_mult=(1,2,4), 
+                 num_res_blocks = 2,
+                 resolution = (180, 360, 30), 
+                 attn_resolutions = [32], 
+                 dropout=0.0, 
+                 double_z=False, 
+                 tanh_out=False,
+                 dim=3,
+                 padding_mode='zeros',
+                 downsample_type = 'avg',
+                 use_attn=False,
+                 saturate=True,
+                 resamp_with_conv = True):
+        
+        super().__init__(in_channels,
+                         hidden_channels,
+                         z_channels,
+                         ch_mult,
+                         num_res_blocks,
+                         resolution,
+                         attn_resolutions,
+                         dropout,
+                         double_z,
+                         tanh_out,
+                         dim,
+                         padding_mode,
+                         downsample_type,
+                         use_attn,
+                         saturate,
+                         resamp_with_conv)
     
 class BilinearEncoder():
     def __init__(self,
@@ -692,4 +731,3 @@ class Decoder(nn.Module):
         z_diagnostic = rearrange(z_diagnostic, 'b c zlat zlon -> b zlat zlon c')
 
         return z_surface, z_multilevel,  z_diagnostic
-    
