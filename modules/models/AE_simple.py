@@ -23,7 +23,7 @@ def nonlinearity(x):
     return x*torch.sigmoid(x)
 
 
-def Normalize(in_channels, num_groups=16, type=TYPE):
+def Normalize(in_channels, num_groups=8, type=TYPE):
     if type == "layer":
         return torch.nn.LayerNorm(in_channels, eps=1e-6)
     elif type == "group":
@@ -343,7 +343,8 @@ class Encoder(nn.Module):
                  downsample_type = 'avg',
                  use_attn=False,
                  saturate=True,
-                 resamp_with_conv = True):
+                 resamp_with_conv = True,
+                 separate_embedders=False):
         
         super().__init__()
         self.hidden_channels = hidden_channels
@@ -355,14 +356,36 @@ class Encoder(nn.Module):
         self.tanh_out = tanh_out
         self.dim = dim 
 
-        # downsampling
-        self.conv_in = conv_nd(dim,
-                                in_channels,
-                                self.hidden_channels,
-                                kernel_size=3,
-                                stride=1,
-                                padding=1,
-                                padding_mode=padding_mode)
+        if separate_embedders:
+            self.conv_surface = conv_nd(2,
+                                    6,
+                                    self.hidden_channels,
+                                    kernel_size=3,
+                                    stride=1,
+                                    padding=1,
+                                    padding_mode=padding_mode)
+            self.conv_diag = conv_nd(2,
+                                    9,
+                                    self.hidden_channels,
+                                    kernel_size=3,
+                                    stride=1,
+                                    padding=1,
+                                    padding_mode=padding_mode)
+            self.conv_multilevel = conv_nd(dim,
+                                    9,
+                                    self.hidden_channels,
+                                    kernel_size=3,
+                                    stride=1,
+                                    padding=1,
+                                    padding_mode=padding_mode)
+        else:
+            self.conv_in = conv_nd(dim,
+                                    in_channels,
+                                    self.hidden_channels,
+                                    kernel_size=3,
+                                    stride=1,
+                                    padding=1,
+                                    padding_mode=padding_mode)
 
         if isinstance(resolution, int):
             resolution = (resolution, resolution, resolution)
@@ -433,7 +456,7 @@ class Encoder(nn.Module):
         Applies He (Kaiming) initialization to Conv2d and Linear layers.
         Initializes normalization layers (LayerNorm, BatchNorm) with scale 1 and bias 0.
         """
-        if isinstance(m, (nn.Conv2d, nn.Linear)):
+        if isinstance(m, (nn.Conv2d, nn.Linear, nn.Conv3d)):
             nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
@@ -535,7 +558,65 @@ class Encoder3D(Encoder):
                          downsample_type,
                          use_attn,
                          saturate,
-                         resamp_with_conv)
+                         resamp_with_conv,
+                         separate_embedders=True)
+        
+
+
+    def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:
+        # surface in shape b nlat nlon c 
+        # multilevel in shape b nlevel nlat nlon c
+        # diagnostic in shape b nlat nlon c
+        n_levels = multilevel.shape[1]
+
+        surface = rearrange(surface, 'b nlat nlon c -> b c nlat nlon')
+        diagnostic = rearrange(diagnostic, 'b nlat nlon c -> b c nlat nlon')
+        # flatten levels to channels. This is because we are purely compressing in lat/lon dimensions
+        multilevel = rearrange(multilevel, 'b nlevel nlat nlon c -> b c nlevel nlat nlon')
+
+        surface = self.conv_surface(surface).unsqueeze(2) # b hidden 1 nlat nlon
+        diagnostic = self.conv_diag(diagnostic).unsqueeze(2) # b hidden 1 nlat nlon
+        multilevel = self.conv_multilevel(multilevel) # b hidden nlevel nlat nlon
+
+        x = torch.cat([surface, diagnostic, multilevel], dim=2) # b hidden (nlevel + 2) nlat nlon
+
+        # downsampling  
+        hs = [self.conv_in(x)]
+        for i_level in range(self.num_resolutions):
+            for i_block in range(self.num_res_blocks):
+                h = self.down[i_level].block[i_block](hs[-1])
+                if len(self.down[i_level].attn) > 0:
+                    h = self.down[i_level].attn[i_block](h)
+                hs.append(h)
+            if i_level != self.num_resolutions-1:
+                hs.append(self.down[i_level].downsample(hs[-1]))
+
+        # middle
+        h = hs[-1]
+        h = self.mid.block_1(h)
+        h = self.mid.attn_1(h)
+        h = self.mid.block_2(h)
+
+        # end
+        h = self.norm_out(h)
+        h = nonlinearity(h)
+        h = self.conv_out(h) # b c h w
+
+        if self.tanh_out:
+            h = torch.tanh(h) # clamp between -1 and 1. 
+
+        if self.saturate_latent:
+            h = self.saturate(h, B=5.0)
+
+        z_surface = h[:, :, 0] # b hidden zlat zlon
+        z_diagnostic = h[:, :, 1] # b hidden zlat zlon
+        z_multilevel = h[:, :, 2:] # b hidden nlevel zlat zlon
+
+        z_multilevel = rearrange(z_multilevel, 'b c nlevel zlat zlon -> b nlevel zlat zlon c', nlevel=n_levels)
+        z_surface = rearrange(z_surface, 'b c zlat zlon -> b zlat zlon c')
+        z_diagnostic = rearrange(z_diagnostic, 'b c zlat zlon -> b zlat zlon c')
+
+        return z_surface, z_multilevel,  z_diagnostic
     
 class BilinearEncoder():
     def __init__(self,
