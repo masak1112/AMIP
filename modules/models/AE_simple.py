@@ -541,7 +541,7 @@ class Encoder3D(Encoder):
                  downsample_type = 'avg',
                  use_attn=False,
                  saturate=True,
-                 resamp_with_conv = True):
+                 resamp_with_conv = False):
         
         super().__init__(in_channels,
                          hidden_channels,
@@ -581,7 +581,7 @@ class Encoder3D(Encoder):
         x = torch.cat([surface, diagnostic, multilevel], dim=2) # b hidden (nlevel + 2) nlat nlon
 
         # downsampling  
-        hs = [self.conv_in(x)]
+        hs = [x]
         for i_level in range(self.num_resolutions):
             for i_block in range(self.num_res_blocks):
                 h = self.down[i_level].block[i_block](hs[-1])
@@ -663,7 +663,10 @@ class Decoder(nn.Module):
                  dim=2,
                  padding_mode='zeros',
                  upsample_type = 'avg',
-                 use_attn=False):
+                 use_attn=False,
+                 resamp_with_conv = True,
+                 separate_embedders=False
+                 ):
         super().__init__()
         self.hidden_channels = hidden_channels
         self.out_channels = out_channels
@@ -672,7 +675,6 @@ class Decoder(nn.Module):
         self.resolution = resolution
         self.tanh_out = tanh_out
         attn_type = "vanilla"
-        resamp_with_conv = True
         self.dim = dim
 
         # compute in_ch_mult, block_in and curr_res at lowest res
@@ -736,13 +738,36 @@ class Decoder(nn.Module):
 
         # end
         self.norm_out = Normalize(block_in)
-        self.conv_out = conv_nd(dim,
-                                block_in,
-                                out_channels,
-                                kernel_size=3,
-                                stride=1,
-                                padding=1,
-                                padding_mode=padding_mode)
+        if separate_embedders:
+            self.surface_out = conv_nd(2,
+                                       block_in,
+                                    out_channels=6,
+                                    kernel_size=3,
+                                    stride=1,
+                                    padding=1,
+                                    padding_mode=padding_mode)
+            self.diagnostic_out = conv_nd(2,
+                                       block_in,
+                                    out_channels=9,
+                                    kernel_size=3,
+                                    stride=1,
+                                    padding=1,
+                                    padding_mode=padding_mode)
+            self.multilevel_out = conv_nd(dim,
+                                    block_in,
+                                    out_channels=9,
+                                    kernel_size=3,
+                                    stride=1,
+                                    padding=1,
+                                    padding_mode=padding_mode)
+        else:
+            self.conv_out = conv_nd(dim,
+                                    block_in,
+                                    out_channels,
+                                    kernel_size=3,
+                                    stride=1,
+                                    padding=1,
+                                    padding_mode=padding_mode)
         
         # Apply He Initialization
         self.apply(self._init_weights)
@@ -752,7 +777,7 @@ class Decoder(nn.Module):
         Applies He (Kaiming) initialization to Conv2d and Linear layers.
         Initializes normalization layers (LayerNorm, BatchNorm) with scale 1 and bias 0.
         """
-        if isinstance(m, (nn.Conv2d, nn.Linear)):
+        if isinstance(m, (nn.Conv2d, nn.Conv3d, nn.Linear)):
             nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
@@ -808,6 +833,90 @@ class Decoder(nn.Module):
         z_multilevel = h[:, n_surface + n_diagnostic:, :, :] # b (n_multilevel * nlevel) zlat zlon
 
         z_multilevel = rearrange(z_multilevel, 'b (c nlevel) zlat zlon -> b nlevel zlat zlon c', nlevel=n_levels)
+        z_surface = rearrange(z_surface, 'b c zlat zlon -> b zlat zlon c')
+        z_diagnostic = rearrange(z_diagnostic, 'b c zlat zlon -> b zlat zlon c')
+
+        return z_surface, z_multilevel,  z_diagnostic
+    
+
+class Decoder3D(Decoder):
+    def __init__(self,
+                 out_channels, # output channel dim
+                 hidden_channels, # width of network
+                 z_channels, # input latent dim
+                 ch_mult=(1,2,4), 
+                 num_res_blocks = 2,
+                 resolution = (180, 360, 30), 
+                 attn_resolutions = [32], 
+                 dropout=0.0, 
+                 double_z=True, 
+                 tanh_out=False,
+                 dim=3,
+                 padding_mode='zeros',
+                 upsample_type = 'avg',
+                 use_attn=False,
+                 resamp_with_conv = False):
+        super().__init__(out_channels,
+                         hidden_channels,
+                         z_channels,
+                         ch_mult,
+                         num_res_blocks,
+                         resolution,
+                         attn_resolutions,
+                         dropout,
+                         double_z,
+                         tanh_out,
+                         dim,
+                         padding_mode,
+                         upsample_type,
+                         use_attn,
+                         resamp_with_conv,
+                         separate_embedders=True)
+        
+    def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:
+        # surface in shape b nlat nlon c 
+        # multilevel in shape b nlevel nlat nlon c
+        # diagnostic in shape b nlat nlon c
+        
+        n_surface = surface.shape[-1]
+        n_diagnostic = diagnostic.shape[-1]
+        n_levels = multilevel.shape[1]
+
+        surface = rearrange(surface, 'b nlat nlon c -> b c nlat nlon').unsqueeze(2) # b c 1 nlat nlon
+        diagnostic = rearrange(diagnostic, 'b nlat nlon c -> b c nlat nlon').unsqueeze(2) # b c 1 nlat nlon
+        multilevel = rearrange(multilevel, 'b nlevel nlat nlon c -> b c nlevel nlat nlon')
+
+        z = torch.cat([surface, diagnostic, multilevel], dim=2) # b c (nlevel+2) nlat nlon
+
+        # z to block_in
+        h = self.conv_in(z)
+
+        # middle
+        h = self.mid.block_1(h)
+        h = self.mid.attn_1(h)
+        h = self.mid.block_2(h)
+
+        # upsampling
+        for i_level in reversed(range(self.num_resolutions)):
+            for i_block in range(self.num_res_blocks+1):
+                h = self.up[i_level].block[i_block](h)
+                if len(self.up[i_level].attn) > 0:
+                    h = self.up[i_level].attn[i_block](h)
+            if i_level != 0:
+                h = self.up[i_level].upsample(h)
+
+        h = self.norm_out(h)
+        h = nonlinearity(h)
+
+        z_surface = h[:, :, 0] # b c zlat zlon
+        z_diagnostic = h[:, :, 1] # b c zlat zlon
+        z_multilevel = h[:, :, 2:] # b c nlevel zlat zlon
+
+        z_surface = self.surface_out(z_surface) # b n_surface zlat zlon
+        z_diagnostic = self.diagnostic_out(z_diagnostic)
+        z_multilevel = self.multilevel_out(z_multilevel)
+
+        z_multilevel = rearrange(z_multilevel, 'b c nlevel zlat zlon -> b nlevel zlat zlon c', nlevel=n_levels)
         z_surface = rearrange(z_surface, 'b c zlat zlon -> b zlat zlon c')
         z_diagnostic = rearrange(z_diagnostic, 'b c zlat zlon -> b zlat zlon c')
 
