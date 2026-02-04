@@ -7,7 +7,7 @@
 #PBS -j oe
 
 module load conda
-conda activate torch2
+conda activate torch
 
 CONFIG=configs/ae_atlas.yaml
 
