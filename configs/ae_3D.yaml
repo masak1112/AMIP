@@ -51,5 +51,5 @@ training:
     project: amip
     wandb_mode: online
     checkpoint: null
-    description: simple_3D
+    description: simple_3D_kernel
     accumulate_grad_batches: 16
