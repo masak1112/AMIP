@@ -29,6 +29,7 @@ class AutoencoderModule(L.LightningModule):
                                       nlevels = 26 // self.downsample_levels)
         self.n = normalizer
 
+        self.history = False
         if self.model_name == "DCAE":
             from modules.models.AE import Encoder, Decoder
             self.encoder = Encoder(**self.modelconfig["DCAE"]["encoder"])
@@ -49,6 +50,12 @@ class AutoencoderModule(L.LightningModule):
             from modules.models.AE_simple import BilinearEncoder, Decoder 
             self.encoder = BilinearEncoder(**self.modelconfig["AE_Decoder_Only"]["encoder"])
             self.decoder = Decoder(**self.modelconfig["AE_Decoder_Only"]["decoder"])
+        elif self.model_name == "AE_Atlas":
+            from modules.models.AE_simple import BilinearEncoder
+            from modules.models.AE_attn import NattenCombineDiT
+            self.encoder = BilinearEncoder(**self.modelconfig["AE_Atlas"]["encoder"])
+            self.decoder = NattenCombineDiT(**self.modelconfig["AE_Atlas"]["decoder"])
+            self.history = True
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
@@ -65,6 +72,16 @@ class AutoencoderModule(L.LightningModule):
 
         return surface_pred, multilevel_pred, diagnostic_pred
     
+    def forward_history(self, surface_history, multilevel_history, diagnostic_history,
+                        surface, multilevel, diagnostic):
+        
+        z_surface, z_multilevel, z_diagnostic = self.encoder(surface, multilevel, diagnostic)
+
+        surface_pred, multilevel_pred, diagnostic_pred = self.decoder(surface_history, multilevel_history, diagnostic_history,
+                                                                     z_surface, z_multilevel, z_diagnostic)
+        
+        return surface_pred, multilevel_pred, diagnostic_pred
+    
     def compute_loss(self, 
                      surface_pred, surface_target,
                      multilevel_pred, multilevel_target,
@@ -75,12 +92,25 @@ class AutoencoderModule(L.LightningModule):
                               diagnostic_pred, diagnostic_target)
     
     def training_step(self, batch, batch_idx):
+        
+        if not self.history:
+            surface_data = batch['surface'][:, 0] # b nlat nlon c
+            multilevel_data = batch['multilevel'][:, 0] # b nlevel nlat nlon c
+            diagnostic_data = batch['diagnostic'][:, 0] # b nlat nlon c
 
-        surface_data = batch['surface'][:, 0] # b nlat nlon c
-        multilevel_data = batch['multilevel'][:, 0] # b nlevel nlat nlon c
-        diagnostic_data = batch['diagnostic'][:, 0] # b nlat nlon c
+            surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
+        else:
+            surface_history = batch['surface'][:, 0] # b nlat nlon c
+            multilevel_history = batch['multilevel'][:, 0]
+            diagnostic_history = batch['diagnostic'][:, 0]
 
-        surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
+            surface_data = batch['surface'][:, 1] # b nlat nlon c
+            multilevel_data = batch['multilevel'][:, 1]
+            diagnostic_data = batch['diagnostic'][:, 1]
+
+            surface_pred, multilevel_pred, diagnostic_pred = self.forward_history(
+                surface_history, multilevel_history, diagnostic_history,
+                surface_data, multilevel_data, diagnostic_data)
 
         loss = self.compute_loss(surface_pred, surface_data,
                                 multilevel_pred, multilevel_data,
@@ -92,11 +122,24 @@ class AutoencoderModule(L.LightningModule):
 
     def validation_step(self, batch, batch_idx): 
         
-        surface_data = batch['surface'][:, 0] # b nlat nlon c
-        multilevel_data = batch['multilevel'][:, 0] # b nlevel nlat nlon c
-        diagnostic_data = batch['diagnostic'][:, 0] # b nlat nlon c
+        if not self.history:
+            surface_data = batch['surface'][:, 0] # b nlat nlon c
+            multilevel_data = batch['multilevel'][:, 0] # b nlevel nlat nlon c
+            diagnostic_data = batch['diagnostic'][:, 0] # b nlat nlon c
 
-        surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
+            surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
+        else:
+            surface_history = batch['surface'][:, 0] # b nlat nlon c
+            multilevel_history = batch['multilevel'][:, 0]
+            diagnostic_history = batch['diagnostic'][:, 0]
+
+            surface_data = batch['surface'][:, 1] # b nlat nlon c
+            multilevel_data = batch['multilevel'][:, 1]
+            diagnostic_data = batch['diagnostic'][:, 1]
+
+            surface_pred, multilevel_pred, diagnostic_pred = self.forward_history(
+                surface_history, multilevel_history, diagnostic_history,
+                surface_data, multilevel_data, diagnostic_data)
 
         loss_dict, pred_dict, data_dict = self.compute_loss_val(surface_pred, surface_data,
                                                 multilevel_pred, multilevel_data,

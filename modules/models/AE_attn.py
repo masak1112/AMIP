@@ -333,6 +333,10 @@ class NattenCombineDiT(nn.Module):
         # natten_kernel_size=(3, 3),
         kernel_size=3,
         checkpoint=None,  # it int > 0, checkpoint every n blocks
+        nsurface=6,
+        ndiagnostic=9,
+        nmultilevel=9,
+        nlevels=26,
         **kwargs,
     ):
         super().__init__()
@@ -430,6 +434,11 @@ class NattenCombineDiT(nn.Module):
         )
         self.checkpoint = checkpoint
 
+        self.nsurface = nsurface
+        self.ndiagnostic = ndiagnostic
+        self.nmultilevel = nmultilevel
+        self.nlevels = nlevels
+
     def _get_dit_block(
         self, use_natten: bool, natten_kernel_size: tuple[int, int] | None = None
     ):
@@ -446,12 +455,6 @@ class NattenCombineDiT(nn.Module):
 
         return block
 
-    def upsample(self, x, resample_shape):
-        if self.upsampler is not None:
-            x = self.upsampler(x, resample_shape)
-            x = self.up_conv(x)
-        return x
-
     def unpatchify(self, x):
         c = self.output_channels
         p1 = self.patch_size[0]
@@ -461,16 +464,54 @@ class NattenCombineDiT(nn.Module):
 
         x = x.reshape(shape=(x.shape[0], n1, n2, p1, p2, c))
         return einops.rearrange(x, "a b c d e f -> a f (b d) (c e)")
+    
+    def assemble_input(self, surface, multilevel, diagnostic):
+        multilevel = einops.rearrange(
+            multilevel, "b l h w c -> b h w (l c)"
+        )
+        out = torch.cat((surface, diagnostic, multilevel), dim=-1) # b h w c
+        out = einops.rearrange(
+            out, "b h w c -> b c h w"
+        )
 
-    def forward(self, x_1, x_2, t=None, date=None, **kwargs):
+        return out
+    
+    def disassemble_input(self, x):
+        x = einops.rearrange(
+            x, "b c h w -> b h w c"
+        )
+
+        surface = x[..., : self.nsurface]
+        diagnostic = x[..., self.nsurface : self.nsurface + self.ndiagnostic]
+        multilevel = x[..., self.nsurface + self.ndiagnostic :]
+
+        multilevel = einops.rearrange(
+            multilevel,
+            "b h w (l c) -> b l h w c",
+            l=self.nlevels,
+        )
+
+        return surface, multilevel, diagnostic
+
+    def forward(self, surface_history, multilevel_history, diagnostic_history,
+                z_surface, z_history, z_diagnostic, t=None, date=None, **kwargs):
         """
         Forward pass of DiT.
         x: (N, seq_length, seq_dim) tensor input
         t: (N,) tensor of diffusion timesteps
         """
+        x_1 = self.assemble_input(
+            surface_history, multilevel_history, diagnostic_history
+        )
+        x_2 = self.assemble_input(
+            z_surface, z_history, z_diagnostic
+        )
+
         # Pad or resample if needed
         x_1 = self.preprocess1(x_1)
         x_2 = self.preprocess2(x_2)
+
+        print(x_1.shape, x_2.shape)
 
         # First, embed the patches + add fixed positional embedding:
         x_1 = (
@@ -526,4 +567,4 @@ class NattenCombineDiT(nn.Module):
         # Unpad or resample
         x = self.postprocess(x)
 
-        return x
+        return self.disassemble_input(x)
