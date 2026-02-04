@@ -41,6 +41,10 @@ class AutoencoderModule(L.LightningModule):
             from modules.models.AE_simple import Encoder, Decoder 
             self.encoder = Encoder(**self.modelconfig["AE_simple"]["encoder"])
             self.decoder = Decoder(**self.modelconfig["AE_simple"]["decoder"])
+        elif self.model_name == "AE_simple_3D":
+            from modules.models.AE_simple import Encoder3D, Decoder3D
+            self.encoder = Encoder3D(**self.modelconfig["AE_simple_3D"]["encoder"])
+            self.decoder = Decoder3D(**self.modelconfig["AE_simple_3D"]["decoder"])
         elif self.model_name == "AE_Decoder_Only":
             from modules.models.AE_simple import BilinearEncoder, Decoder 
             self.encoder = BilinearEncoder(**self.modelconfig["AE_Decoder_Only"]["encoder"])
