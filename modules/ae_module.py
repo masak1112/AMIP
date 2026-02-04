@@ -265,7 +265,7 @@ class AutoencoderModule(L.LightningModule):
         self.log('val/q850', q850_loss.item(), on_step=False, on_epoch=True, sync_dist=self.ddp)
     
     def configure_optimizers(self):
-        if self.model_name == "AE_Decoder_Only":
+        if self.model_name == "AE_Decoder_Only" or self.model_name == "AE_Atlas":
             optimizer = torch.optim.Adam(list(self.decoder.parameters()), lr=self.lr)
         else:
             optimizer = torch.optim.Adam(list(self.encoder.parameters()) + list(self.decoder.parameters()), lr=self.lr)
