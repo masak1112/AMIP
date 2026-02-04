@@ -1,5 +1,5 @@
 model:
-    model_name: AE_3D_simple
+    model_name: AE_simple_3D
     lr: 5.0e-5
     AE_simple:
         encoder:
@@ -10,7 +10,7 @@ model:
             out_channels: 249 # 6 + 26*9 + 9 = 249
             hidden_channels: 256
             z_channels: 249
-    AE_3D_simple:
+    AE_simple_3D:
         encoder:
             in_channels: 24 
             hidden_channels: 32
