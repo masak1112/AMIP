@@ -13,12 +13,12 @@ model:
     AE_simple_3D:
         encoder:
             in_channels: 24 
-            hidden_channels: 48
+            hidden_channels: 64
             z_channels: 32
             kernel_size: [1, 3, 3]
         decoder:
             out_channels: 24 
-            hidden_channels: 48
+            hidden_channels: 64
             z_channels: 32
             kernel_size: [1, 3, 3]
 data:
@@ -31,7 +31,7 @@ data:
     val_horizon: 1460 # 1 year
     use_climatology: False
 
-    batch_size: 1
+    batch_size: 2
     num_workers: 4
 
 training:
@@ -50,4 +50,4 @@ training:
     wandb_mode: online
     checkpoint: null
     description: simple_3D
-    accumulate_grad_batches: 16
+    accumulate_grad_batches: 8
