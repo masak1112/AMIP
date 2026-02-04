@@ -545,7 +545,8 @@ class Encoder3D(Encoder):
                  downsample_type = 'avg',
                  use_attn=False,
                  saturate=True,
-                 resamp_with_conv = False):
+                 resamp_with_conv = False,
+                 kernel_size=3):
         
         super().__init__(in_channels,
                          hidden_channels,
@@ -564,9 +565,8 @@ class Encoder3D(Encoder):
                          saturate,
                          resamp_with_conv,
                          separate_embedders=True,
-                         kernel_size=(1, 3, 3))
+                         kernel_size=kernel_size)
         
-
 
     def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:
         # surface in shape b nlat nlon c 
@@ -864,7 +864,8 @@ class Decoder3D(Decoder):
                  padding_mode='zeros',
                  upsample_type = 'avg',
                  use_attn=False,
-                 resamp_with_conv = False):
+                 resamp_with_conv = False,
+                 kernel_size=3):
         super().__init__(out_channels,
                          hidden_channels,
                          z_channels,
@@ -881,7 +882,7 @@ class Decoder3D(Decoder):
                          use_attn,
                          resamp_with_conv,
                          separate_embedders=True,
-                         kernel_size=(1,3,3))
+                         kernel_size=kernel_size)
         
     def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:
         # surface in shape b nlat nlon c 
