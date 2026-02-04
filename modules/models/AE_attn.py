@@ -328,7 +328,7 @@ class NattenCombineDiT(nn.Module):
         patch_processing="pad",  # resample
         patch_processing_add_conv=True,  # If resample only
         date_condition=False,
-        combination_mode="token_addition",  # 'token_adition', 'token_multiplication'
+        combination_mode="channel_concatenation",  # 'token_adition', 'token_multiplication'
         use_natten=True,
         # natten_kernel_size=(3, 3),
         kernel_size=3,
