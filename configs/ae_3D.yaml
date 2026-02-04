@@ -1,21 +1,6 @@
 model:
     model_name: AE_3D_simple
     lr: 5.0e-5
-    AE_3D:
-        encoder:
-            surface_channels: 6
-            multilevel_channels: 9
-            diagnostic_channels: 9
-            nlevels: 26
-            hidden_channels: [64, 128, 256]
-            blocks_per_layer: [2, 2, 2]
-        decoder:
-            surface_channels: 6
-            multilevel_channels: 9
-            diagnostic_channels: 9
-            nlevels: 26
-            hidden_channels: [256, 128, 64]
-            blocks_per_layer: [2, 2, 2]
     AE_simple:
         encoder:
             in_channels: 249 # 6 + 26*9 + 9 = 249
