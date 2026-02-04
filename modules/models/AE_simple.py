@@ -182,7 +182,7 @@ class DCDownsample(nn.Module):
 
 class ResnetBlock(nn.Module):
     def __init__(self, *, in_channels, out_channels=None, conv_shortcut=False,
-                 dropout, dim=2, padding_mode='zeros'):
+                 dropout, dim=2, padding_mode='zeros', kernel_size=3):
         super().__init__()
         self.in_channels = in_channels
         out_channels = in_channels if out_channels is None else out_channels
@@ -194,7 +194,7 @@ class ResnetBlock(nn.Module):
         self.conv1 = conv_nd(dim,
                             in_channels,
                             out_channels,
-                            kernel_size=3,
+                            kernel_size=kernel_size,
                             stride=1,
                             padding=1,
                             padding_mode=padding_mode)
@@ -204,7 +204,7 @@ class ResnetBlock(nn.Module):
         self.conv2 = conv_nd(dim,
                             out_channels,
                             out_channels,
-                            kernel_size=3,
+                            kernel_size=kernel_size,
                             stride=1,
                             padding=1,
                             padding_mode=padding_mode)
@@ -213,7 +213,7 @@ class ResnetBlock(nn.Module):
                 self.conv_shortcut = conv_nd(dim,
                                             in_channels,
                                             out_channels,
-                                            kernel_size=3,
+                                            kernel_size=kernel_size,
                                             stride=1,
                                             padding=1,
                                             padding_mode=padding_mode)
@@ -344,7 +344,8 @@ class Encoder(nn.Module):
                  use_attn=False,
                  saturate=True,
                  resamp_with_conv = True,
-                 separate_embedders=False):
+                 separate_embedders=False,
+                 kernel_size=3):
         
         super().__init__()
         self.hidden_channels = hidden_channels
@@ -374,7 +375,7 @@ class Encoder(nn.Module):
             self.conv_multilevel = conv_nd(dim,
                                     9,
                                     self.hidden_channels,
-                                    kernel_size=3,
+                                    kernel_size=kernel_size,
                                     stride=1,
                                     padding=1,
                                     padding_mode=padding_mode)
@@ -382,7 +383,7 @@ class Encoder(nn.Module):
             self.conv_in = conv_nd(dim,
                                     in_channels,
                                     self.hidden_channels,
-                                    kernel_size=3,
+                                    kernel_size=kernel_size,
                                     stride=1,
                                     padding=1,
                                     padding_mode=padding_mode)
@@ -404,7 +405,8 @@ class Encoder(nn.Module):
                                          out_channels=block_out,
                                          dropout=dropout,
                                          dim=dim,
-                                         padding_mode=padding_mode))
+                                         padding_mode=padding_mode,
+                                         kernel_size=kernel_size))
                 block_in = block_out
                 if curr_res in attn_resolutions:
                     attn.append(make_attn(block_in, attn_type=attn_type, dim=dim))
@@ -426,7 +428,8 @@ class Encoder(nn.Module):
                                        out_channels=block_in,
                                        dropout=dropout,
                                        dim=dim,
-                                       padding_mode=padding_mode)
+                                       padding_mode=padding_mode,
+                                       kernel_size=kernel_size)
         if use_attn:
             self.mid.attn_1 = make_attn(block_in, attn_type=attn_type, dim=dim)
         else:
@@ -435,14 +438,15 @@ class Encoder(nn.Module):
                                        out_channels=block_in,
                                        dropout=dropout,
                                        dim=dim,
-                                       padding_mode=padding_mode)
+                                       padding_mode=padding_mode,
+                                       kernel_size=kernel_size)
 
         # end
         self.norm_out = Normalize(block_in)
         self.conv_out = conv_nd(dim,
                                 block_in,
                                 2*z_channels if double_z else z_channels,
-                                kernel_size=3,
+                                kernel_size=kernel_size,
                                 stride=1,
                                 padding=1,
                                 padding_mode=padding_mode)
@@ -559,7 +563,8 @@ class Encoder3D(Encoder):
                          use_attn,
                          saturate,
                          resamp_with_conv,
-                         separate_embedders=True)
+                         separate_embedders=True,
+                         kernel_size=(1, 3, 3))
         
 
 
@@ -665,7 +670,8 @@ class Decoder(nn.Module):
                  upsample_type = 'avg',
                  use_attn=False,
                  resamp_with_conv = True,
-                 separate_embedders=False
+                 separate_embedders=False,
+                 kernel_size=3
                  ):
         super().__init__()
         self.hidden_channels = hidden_channels
@@ -686,7 +692,7 @@ class Decoder(nn.Module):
         self.conv_in = conv_nd(dim,
                                 z_channels,
                                 block_in,
-                                kernel_size=3,
+                                kernel_size=kernel_size,
                                 stride=1,
                                 padding=1,
                                 padding_mode=padding_mode)
@@ -697,7 +703,8 @@ class Decoder(nn.Module):
                                        out_channels=block_in,
                                        dropout=dropout,
                                        dim=dim,
-                                       padding_mode=padding_mode)
+                                       padding_mode=padding_mode,
+                                       kernel_size=kernel_size)
         if use_attn:
             self.mid.attn_1 = make_attn(block_in, attn_type=attn_type, dim=dim)
         else:
@@ -706,7 +713,8 @@ class Decoder(nn.Module):
                                        out_channels=block_in,
                                        dropout=dropout,
                                        dim=dim,
-                                       padding_mode=padding_mode)
+                                       padding_mode=padding_mode,
+                                       kernel_size=kernel_size)
 
         # upsampling
         self.up = nn.ModuleList()
@@ -719,7 +727,8 @@ class Decoder(nn.Module):
                                          out_channels=block_out,
                                          dropout=dropout,
                                          dim=dim,
-                                         padding_mode=padding_mode))
+                                         padding_mode=padding_mode,
+                                         kernel_size=kernel_size))
                 block_in = block_out
                 if curr_res in attn_resolutions:
                     attn.append(make_attn(block_in, attn_type=attn_type, dim=dim))
@@ -756,7 +765,7 @@ class Decoder(nn.Module):
             self.multilevel_out = conv_nd(dim,
                                     block_in,
                                     out_channels=9,
-                                    kernel_size=3,
+                                    kernel_size=kernel_size,
                                     stride=1,
                                     padding=1,
                                     padding_mode=padding_mode)
@@ -764,7 +773,7 @@ class Decoder(nn.Module):
             self.conv_out = conv_nd(dim,
                                     block_in,
                                     out_channels,
-                                    kernel_size=3,
+                                    kernel_size=kernel_size,
                                     stride=1,
                                     padding=1,
                                     padding_mode=padding_mode)
@@ -871,7 +880,8 @@ class Decoder3D(Decoder):
                          upsample_type,
                          use_attn,
                          resamp_with_conv,
-                         separate_embedders=True)
+                         separate_embedders=True,
+                         kernel_size=(1,3,3))
         
     def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:
         # surface in shape b nlat nlon c 
