@@ -62,6 +62,7 @@ def main(args):
                                mode=trainconfig["wandb_mode"])
     path = trainconfig["log_dir"] + name + "/"
     config['training']["log_dir"] = path
+    use_compile = config['training'].get("use_compile", False)
 
     os.makedirs(path, exist_ok=True) 
     save_yaml(config, path + "config.yml")
@@ -81,7 +82,8 @@ def main(args):
         mode = 'max'
         every_n_train_steps = 100
 
-    model = torch.compile(model)
+    if use_compile:
+        model = torch.compile(model)
 
     checkpoint_callback  = ModelCheckpoint(
         monitor=monitor,
