@@ -170,8 +170,7 @@ class NattenDiTBlock(nn.Module):
     def forward(self, x: torch.Tensor, cond: torch.Tensor):
         b, t, c = x.shape
         h, w = self.grid_size
-        print("cond")
-        print(cond.shape)
+
         res = self.adaLN_modulation(cond).chunk(6, dim=1)
         shift_attn, scale_attn, gate_attn, shift_mlp, scale_mlp, gate_mlp = res
 
@@ -501,13 +500,6 @@ class NattenCombineDiT(nn.Module):
         x: (N, seq_length, seq_dim) tensor input
         t: (N,) tensor of diffusion timesteps
         """
-        print(f"surface_history shape: {surface_history.shape}")
-        print(f"multilevel_history shape: {multilevel_history.shape}")
-        print(f"diagnostic_history shape: {diagnostic_history.shape}")
-        print(f"z_surface shape: {z_surface.shape}")
-        print(f"z_history shape: {z_history.shape}")
-        print(f"z_diagnostic shape: {z_diagnostic.shape}")
-        print(f"t shape: {t.shape if t is not None else None}")
 
         x_1 = self.assemble_input(
             surface_history, multilevel_history, diagnostic_history
