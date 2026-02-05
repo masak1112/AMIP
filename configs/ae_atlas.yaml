@@ -9,10 +9,10 @@ model:
             input_size2: [45, 90]
             input_channels1: 249
             input_channels2: 249
-            hidden_channels1: 192
-            hidden_channels2: 192
+            hidden_channels1: 128
+            hidden_channels2: 128
             patch_size: [4, 4]
-            depth: 8
+            depth: 12
 
 data:
     train_data_path: /glade/derecho/scratch/ayz/AMIP_train_new.h5
