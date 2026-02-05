@@ -81,6 +81,8 @@ def main(args):
         mode = 'max'
         every_n_train_steps = 100
 
+    model = torch.compile(model)
+
     checkpoint_callback  = ModelCheckpoint(
         monitor=monitor,
         filename= "model_{epoch:02d}_{step}_best",
