@@ -638,23 +638,25 @@ class BilinearEncoder():
     def __call__(self, surface, multilevel, diagnostic) -> Any:
         return self.forward(surface, multilevel, diagnostic)
     
-    def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:
+    def forward(self, surface, multilevel, diagnostic=None) -> torch.Tensor:
         # surface in shape b nlat nlon c 
         # multilevel in shape b nlevel nlat nlon c
         # diagnostic in shape b nlat nlon c
         nlevels = multilevel.shape[1]
 
         surface = rearrange(surface, 'b nlat nlon c -> b c nlat nlon')
-        diagnostic = rearrange(diagnostic, 'b nlat nlon c -> b c nlat nlon')
         multilevel = rearrange(multilevel, 'b nlevel nlat nlon c -> b (nlevel c) nlat nlon')
 
         surface = F.interpolate(surface, scale_factor=1/self.downsample_factor, mode='bilinear', align_corners=False)
-        diagnostic = F.interpolate(diagnostic, scale_factor=1/self.downsample_factor, mode='bilinear', align_corners=False)
         multilevel = F.interpolate(multilevel, scale_factor=1/self.downsample_factor, mode='bilinear', align_corners=False)
 
         surface = rearrange(surface, 'b c zlat zlon -> b zlat zlon c')
-        diagnostic = rearrange(diagnostic, 'b c zlat zlon -> b zlat zlon c')
         multilevel = rearrange(multilevel, 'b (nlevel c) zlat zlon -> b nlevel zlat zlon c', nlevel=nlevels)
+
+        if diagnostic is not None:
+            diagnostic = rearrange(diagnostic, 'b nlat nlon c -> b c nlat nlon')
+            diagnostic = F.interpolate(diagnostic, scale_factor=1/self.downsample_factor, mode='bilinear', align_corners=False)
+            diagnostic = rearrange(diagnostic, 'b c zlat zlon -> b zlat zlon c')
 
         return surface, multilevel, diagnostic
       
@@ -689,6 +691,9 @@ class Decoder(nn.Module):
         self.tanh_out = tanh_out
         attn_type = "vanilla"
         self.dim = dim
+        self.nsurface = 6
+        self.ndiagnostic = 9
+        self.nlevels = 26
 
         # compute in_ch_mult, block_in and curr_res at lowest res
         block_in = self.hidden_channels*ch_mult[self.num_resolutions-1]
@@ -807,21 +812,20 @@ class Decoder(nn.Module):
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
-    def forward(self, surface, multilevel, diagnostic) -> torch.Tensor:
+    def forward(self, surface, multilevel, diagnostic=None) -> torch.Tensor:
         # surface in shape b nlat nlon c 
         # multilevel in shape b nlevel nlat nlon c
         # diagnostic in shape b nlat nlon c
-        
-        n_surface = surface.shape[-1]
-        n_diagnostic = diagnostic.shape[-1]
-        n_levels = multilevel.shape[1]
 
         surface = rearrange(surface, 'b nlat nlon c -> b c nlat nlon')
-        diagnostic = rearrange(diagnostic, 'b nlat nlon c -> b c nlat nlon')
         # flatten levels to channels. This is because we are purely compressing in lat/lon dimensions
         multilevel = rearrange(multilevel, 'b nlevel nlat nlon c -> b (c nlevel) nlat nlon')
 
-        z = torch.cat([surface, diagnostic, multilevel], dim=1) # b c nlat nlon
+        if diagnostic is not None:
+            diagnostic = rearrange(diagnostic, 'b nlat nlon c -> b c nlat nlon')
+            z = torch.cat([surface, diagnostic, multilevel], dim=1) # b c nlat nlon
+        else:
+            z = torch.cat([surface, multilevel], dim=1) # b c nlat nlon
 
         # z to block_in
         h = self.conv_in(z)
@@ -847,11 +851,11 @@ class Decoder(nn.Module):
         if self.tanh_out:
             h = torch.tanh(h)
 
-        z_surface = h[:, :n_surface, :, :] # b n_surface zlat zlon
-        z_diagnostic = h[:, n_surface:n_surface + n_diagnostic, :, :] # b n_diagnostic zlat zlon
-        z_multilevel = h[:, n_surface + n_diagnostic:, :, :] # b (n_multilevel * nlevel) zlat zlon
+        z_surface = h[:, :self.nsurface, :, :] # b n_surface zlat zlon
+        z_diagnostic = h[:, self.nsurface:self.nsurface + self.ndiagnostic, :, :] # b n_diagnostic zlat zlon
+        z_multilevel = h[:, self.nsurface + self.ndiagnostic:, :, :] # b (n_multilevel * nlevel) zlat zlon
 
-        z_multilevel = rearrange(z_multilevel, 'b (c nlevel) zlat zlon -> b nlevel zlat zlon c', nlevel=n_levels)
+        z_multilevel = rearrange(z_multilevel, 'b (c nlevel) zlat zlon -> b nlevel zlat zlon c', nlevel=self.nlevels)
         z_surface = rearrange(z_surface, 'b c zlat zlon -> b zlat zlon c')
         z_diagnostic = rearrange(z_diagnostic, 'b c zlat zlon -> b zlat zlon c')
 

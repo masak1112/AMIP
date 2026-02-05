@@ -1,17 +1,16 @@
 model:
-    model_name: AE_simple
+    model_name: AE_Decoder_Only
     lr: 5.0e-5
-    AE_simple:
+    separate_diagnostic: True
+    AE_Decoder_Only:
         encoder:
-            in_channels: 249  # 6 + 26*9 + 9 = 249
-            hidden_channels: 384
-            z_channels: 249
-            downsample_type: dc
+            downsample_factor: 4
         decoder:
             out_channels: 249  # 6 + 26*9 + 9 = 249
-            hidden_channels: 384
-            z_channels: 249
+            hidden_channels: 512
+            z_channels: 136 # 6 + 26*5 = 136
             upsample_type: dc
+
 data:
     train_data_path: /glade/derecho/scratch/ayz/AMIP_train_new.h5
     val_data_path: /glade/derecho/scratch/ayz/AMIP_valid_new.h5
@@ -23,7 +22,7 @@ data:
     use_climatology: False
     downsample_levels: 1
 
-    batch_size: 1
+    batch_size: 2
     num_workers: 4
 
 training:
@@ -40,7 +39,7 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip
     wandb_mode: online
-    #checkpoint: null
-    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/AE_simple_d16_simple_DC_42_2026-01-24T09-24-05/last.ckpt
-    description: d16_simple_DC
-    accumulate_grad_batches: 16
+    checkpoint: null
+    #checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/AE_simple_d16_simple_DC_42_2026-01-24T09-24-05/last.ckpt
+    description: d16_decoder_only_diag
+    accumulate_grad_batches: 8

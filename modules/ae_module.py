@@ -23,6 +23,7 @@ class AutoencoderModule(L.LightningModule):
         self.lr = self.modelconfig["lr"]
         self.log_dir = config['training']['log_dir']
         self.downsample_levels = config['data'].get('downsample_levels', 1)
+        self.separate_diagnostic = config['model'].get('separate_diagnostic', False)
 
         self.criterion = WeightedLoss(latitude_resolution=180,
                                       longitude_resolution=360,
@@ -67,8 +68,14 @@ class AutoencoderModule(L.LightningModule):
         self.save_hyperparameters()
 
     def forward(self, surface, multilevel, diagnostic):
-        z_surface, z_multilevel, z_diagnostic = self.encoder(surface, multilevel, diagnostic)
-        surface_pred, multilevel_pred, diagnostic_pred = self.decoder(z_surface, z_multilevel, z_diagnostic)
+
+        if self.separate_diagnostic:
+            multilevel = multilevel[..., :5] # remove cloud and vertical velocity from inputs
+            z_surface, z_multilevel, _ = self.encoder(surface, multilevel, None)
+            surface_pred, multilevel_pred, diagnostic_pred = self.decoder(z_surface, z_multilevel, None)
+        else:
+            z_surface, z_multilevel, z_diagnostic = self.encoder(surface, multilevel, diagnostic)
+            surface_pred, multilevel_pred, diagnostic_pred = self.decoder(z_surface, z_multilevel, z_diagnostic)
 
         return surface_pred, multilevel_pred, diagnostic_pred
     
