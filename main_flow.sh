@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -N flow_main
+#PBS -N atlas_autoencoder
 #PBS -l select=1:ncpus=16:ngpus=4:mem=120G
 #PBS -q main
 #PBS -l walltime=12:00:00
@@ -7,8 +7,8 @@
 #PBS -j oe
 
 module load conda
-conda activate torch2
+conda activate torch
 
-CONFIG=configs/flow.yaml
+CONFIG=configs/ae_atlas.yaml
 
 python train.py --config=$CONFIG
