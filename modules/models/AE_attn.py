@@ -170,7 +170,7 @@ class NattenDiTBlock(nn.Module):
     def forward(self, x: torch.Tensor, cond: torch.Tensor):
         b, t, c = x.shape
         h, w = self.grid_size
-
+        print(cond.shape)
         res = self.adaLN_modulation(cond).chunk(6, dim=1)
         shift_attn, scale_attn, gate_attn, shift_mlp, scale_mlp, gate_mlp = res
 
