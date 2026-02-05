@@ -19,8 +19,8 @@ data:
     val_data_path: /glade/derecho/scratch/ayz/AMIP_valid_new.h5
     norm_stats_path: /glade/derecho/scratch/ayz/norm_stats_dict_new.pkl
         
-    training_nsteps: 1
-    val_nsteps: 1
+    training_nsteps: 2
+    val_nsteps: 2
     val_horizon: 1460 # 1 year
     use_climatology: False
 
