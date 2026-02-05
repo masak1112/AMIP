@@ -531,8 +531,8 @@ class Encoder(nn.Module):
             z_multilevel = h[:, self.nsurface + self.ndiagnostic:, :, :] # b (n_multilevel * nlevel) zlat zlon
             z_diagnostic = rearrange(z_diagnostic, 'b c zlat zlon -> b zlat zlon c')
         else:
-            z_surface = h[:, :n_surface, :, :] # b n_surface zlat zlon
-            z_multilevel = h[:, n_surface:, :, :] # b (n_multilevel * nlevel) zlat zlon
+            z_surface = h[:, :self.nsurface, :, :] # b n_surface zlat zlon
+            z_multilevel = h[:, self.nsurface:, :, :] # b (n_multilevel * nlevel) zlat zlon
             z_diagnostic = None
 
         z_multilevel = rearrange(z_multilevel, 'b (c nlevel) zlat zlon -> b nlevel zlat zlon c', nlevel=self.nlevels)
