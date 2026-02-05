@@ -12,7 +12,7 @@ model:
             hidden_channels1: 256
             hidden_channels2: 256
             patch_size: [4, 4]
-            depth: 12
+            depth: 8
 
 data:
     train_data_path: /glade/derecho/scratch/ayz/AMIP_train_new.h5

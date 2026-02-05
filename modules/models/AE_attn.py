@@ -511,8 +511,6 @@ class NattenCombineDiT(nn.Module):
         x_1 = self.preprocess1(x_1)
         x_2 = self.preprocess2(x_2)
 
-        print(x_1.shape, x_2.shape)
-
         # First, embed the patches + add fixed positional embedding:
         x_1 = (
             self.x_embedder1(x_1) + self.pos_embed1
