@@ -16,7 +16,7 @@ from modules.layers.unpatchify import SubPixelConvICNR_2D, Unpatchify
 from modules.layers.patchify import PatchEmbed
 from modules.layers.cross_attention import CrossAttentionBlock
 
-class ClimaDIT(nn.Module):
+class ClimaDiT(nn.Module):
 
     def __init__(self, 
                  in_dim,
@@ -183,8 +183,8 @@ class ClimaDIT(nn.Module):
 
         return surface, multilevel, diagnostic
 
-    def forward(self, surface_history, multilevel_history, 
-                z_surface, z_history, diagnostic_history = None, z_diagnostic=None, t=None):
+    def forward(self, surface_history, multilevel_history, diagnostic_history = None,
+                z_surface=None, z_history=None, z_diagnostic=None, t=None):
 
         x = self.assemble_input(surface_history, multilevel_history, diagnostic_history) # b c h w
         z = self.assemble_input(z_surface, z_history, z_diagnostic) # b c h w

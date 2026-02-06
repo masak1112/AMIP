@@ -57,6 +57,11 @@ class AutoencoderModule(L.LightningModule):
             self.encoder = BilinearEncoder(**self.modelconfig["AE_Atlas"]["encoder"])
             self.decoder = NattenCombineDiT(**self.modelconfig["AE_Atlas"]["decoder"])
             self.history = True
+        elif self.model_name == "ClimaDiT":
+            from modules.models.AE_dit import ClimaDiT
+            self.encoder = BilinearEncoder(**self.modelconfig["ClimaDiT"]["encoder"])
+            self.decoder = ClimaDiT(**self.modelconfig["ClimaDiT"]["decoder"])
+            self.history = True
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
@@ -82,10 +87,16 @@ class AutoencoderModule(L.LightningModule):
     def forward_history(self, surface_history, multilevel_history, diagnostic_history,
                         surface, multilevel, diagnostic):
         
-        z_surface, z_multilevel, z_diagnostic = self.encoder(surface, multilevel, diagnostic)
-
-        surface_pred, multilevel_pred, diagnostic_pred = self.decoder(surface_history, multilevel_history, diagnostic_history,
-                                                                     z_surface, z_multilevel, z_diagnostic)
+        if self.separate_diagnostic:
+            multilevel = multilevel[..., :5] # remove cloud and vertical velocity from inputs
+            multilevel_history = multilevel_history[..., :5] 
+            z_surface, z_multilevel, _ = self.encoder(surface, multilevel, None)
+            surface_pred, multilevel_pred, diagnostic_pred = self.decoder(surface_history, multilevel_history, None,
+                                                                z_surface, z_multilevel, None)
+        else:
+            z_surface, z_multilevel, z_diagnostic = self.encoder(surface, multilevel, diagnostic)
+            surface_pred, multilevel_pred, diagnostic_pred = self.decoder(surface_history, multilevel_history, diagnostic_history,
+                                                                        z_surface, z_multilevel, z_diagnostic)
         
         return surface_pred, multilevel_pred, diagnostic_pred
     
