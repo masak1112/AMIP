@@ -59,6 +59,7 @@ class AutoencoderModule(L.LightningModule):
             self.history = True
         elif self.model_name == "AE_ClimaDiT":
             from modules.models.AE_dit import ClimaDiT
+            from modules.models.AE_simple import BilinearEncoder
             self.encoder = BilinearEncoder(**self.modelconfig["AE_ClimaDiT"]["encoder"])
             self.decoder = ClimaDiT(**self.modelconfig["AE_ClimaDiT"]["decoder"])
             self.history = True
