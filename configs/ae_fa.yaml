@@ -7,10 +7,10 @@ model:
         decoder:
             in_dim: 249
             out_dim: 249
-            dim: 384
+            dim: 256
             num_heads: 16
-            num_blocks: 8
-            num_out_blocks: 2
+            num_blocks: 20
+            num_out_blocks: 4
 
 data:
     train_data_path: /glade/derecho/scratch/ayz/AMIP_train_new.h5
@@ -29,7 +29,7 @@ training:
     seed: 42
     devices: 4
     accelerator: gpu
-    strategy: ddp
+    strategy: ddp_find_unused_parameters_true
     precision: 32-true #16-mixed
     check_val_every_n_epoch: 1
     log_every_n_steps: 10
