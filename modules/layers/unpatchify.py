@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from einops import rearrange
-from modules.models.basics import modulate_fused
+from modules.layers.fa_basics import modulate_fused
 
 class FinalLayer(nn.Module):
     """
@@ -184,7 +184,7 @@ class SubPixelConvICNR_2D(nn.Module):
         assert patch_size[0] == patch_size[1], 'mismatch'
 
         if polar_pad:
-            self.pad_poles = PolarPad2d((1, 1), num_lat=num_lat//patch_size[0], grid_has_poles=grid_has_poles)
+            self.pad_poles = PolarPad2d((1, 1))
         else:
             self.pad_poles = nn.ZeroPad2d((0, 0, 1, 1))
         self.pad_circular = nn.CircularPad2d((1, 1, 0, 0))

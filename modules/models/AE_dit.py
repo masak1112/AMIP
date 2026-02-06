@@ -23,6 +23,7 @@ class ClimaDiT(nn.Module):
                  dim,
                  num_heads,
                  num_blocks,
+                 num_out_blocks = 1,
                  patch_size=2,
                  z_patch_size=1,
                  nlat = 180,
@@ -118,17 +119,33 @@ class ClimaDiT(nn.Module):
         else:
             raise ValueError("unpatch type not supported")
         
-        self.out_layer = nn.Sequential(
-            FADiTBlockS2(self.dim,
+        self.out_fa_blocks = nn.ModuleList()
+        self.num_out_blocks = num_out_blocks
+
+        for _ in range(num_out_blocks):
+            self.out_fa_blocks.append(FADiTBlockS2(self.dim,
                         self.dim // self.num_heads,
                         self.num_heads,
                         self.dim,
                         self.dim,
                         self.dim,
                         use_softmax=True,
-                        depth_dropout=self.dropout),
+                        depth_dropout=self.dropout))
+        
+        self.out_proj = nn.Sequential(
             nn.LayerNorm(self.dim),
             nn.Linear(self.dim, self.out_dim))
+        
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        # Initialize transformer layers:
+        def _basic_init(module):
+            if isinstance(module, nn.Linear) or isinstance(module, nn.Conv2d):
+                torch.nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+        self.apply(_basic_init)
 
     @torch.no_grad()
     def get_grid(self, nlat, nlon, device):
@@ -154,16 +171,9 @@ class ClimaDiT(nn.Module):
         else:
             out = torch.cat((surface, diagnostic, multilevel), dim=-1) # b h w c
 
-        out = rearrange(
-            out, "b h w c -> b c h w"
-        )
-
         return out
     
     def disassemble_input(self, x, use_diagnostic=True):
-        x = rearrange(
-            x, "b c h w -> b h w c"
-        )
 
         if use_diagnostic:
             surface = x[..., : self.nsurface]
@@ -185,8 +195,8 @@ class ClimaDiT(nn.Module):
     def forward(self, surface_history, multilevel_history, diagnostic_history = None,
                 z_surface=None, z_history=None, z_diagnostic=None, t=None):
 
-        x = self.assemble_input(surface_history, multilevel_history, diagnostic_history) # b c h w
-        z = self.assemble_input(z_surface, z_history, z_diagnostic) # b c h w
+        x = self.assemble_input(surface_history, multilevel_history, diagnostic_history) # b h w c
+        z = self.assemble_input(z_surface, z_history, z_diagnostic) # b h w c
 
         batch_size = x.size(0)
         nlat, nlon, = x.size(1), x.size(2)
@@ -198,6 +208,9 @@ class ClimaDiT(nn.Module):
         # n x n distance matrix
         lat_grid_diff = lat_grid.unsqueeze(0) - lat_grid.unsqueeze(1)
         lon_grid_diff = lon_grid.unsqueeze(0) - lon_grid.unsqueeze(1)
+
+        lat_diff = lat.unsqueeze(0) - lat.unsqueeze(1)
+        lon_diff = lon.unsqueeze(0) - lon.unsqueeze(1)
 
         # patchify x
         x = self.patch_embed(x) # [b, nlat, nlon, c] -> [b, nlat//p, nlon//p, dim]
@@ -213,20 +226,23 @@ class ClimaDiT(nn.Module):
         z = z + sphere_pe   # [b, nlat//p, nlon//p, dim]
 
         if t is None:
-            t = torch.ones(x.shape[0], 1, device=x.device).view(-1)
+            t = torch.ones(batch_size, 1, device=x.device)
 
         c = self.cond_embedder(t)
 
         for l in range(self.num_blocks):
             z = self.fa_blocks[l](z, lat_grid, lat_grid_diff, lon_grid_diff, c)
-            z = self.ca_blocks[l](z, x)
+            z = self.ca_blocks[l](z, x, reshape=True)
 
         # flatten x after factorized attention
         z = rearrange(x, 'b ny nx c -> b (ny nx) c') # [b, nlat//p * nlon//p, dim]
 
         z = self.unpatchify_layer(z, c) # [b, h, w, out_dim]
 
-        z = self.out_layer(z) # [b, h, w, out_dim]
+        for l in range(self.num_out_blocks):
+            z = self.out_fa_blocks[l](z, lat, lat_diff, lon_diff, c)
+
+        z = self.out_proj(z) # [b, h, w, out_dim]
 
         surface, multilevel, diagnostic = self.disassemble_input(z, use_diagnostic=(diagnostic_history is not None))
 

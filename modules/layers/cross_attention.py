@@ -58,8 +58,8 @@ class CrossAttentionBlock(nn.Module):
         self.ln_2 = nn.LayerNorm(hidden_dim)
         self.mlp = MLP(hidden_dim, expansion_ratio=mlp_ratio)
 
-    def forward(self, q, kv):
-        if len(q.shape) == 4:
+    def forward(self, q, kv, reshape=False):
+        if reshape:
             # q in shape b h w c
             _, h, w, _ = q.shape
             q = rearrange(q, 'b h w c -> b (h w) c')
@@ -68,7 +68,7 @@ class CrossAttentionBlock(nn.Module):
         fx = self.Attn(self.ln_q(q), self.ln_kv(kv)) + q
         fx = self.mlp(self.ln_2(fx)) + fx
 
-        if len(q.shape) == 4:
+        if reshape:
             fx = rearrange(fx, 'b (h w) c -> b h w c', h=h, w=w)
 
         return fx
