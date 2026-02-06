@@ -9,8 +9,8 @@ model:
             out_dim: 249
             dim: 256
             num_heads: 16
-            num_blocks: 20
-            num_out_blocks: 4
+            num_blocks: 24
+            num_out_blocks: 8
 
 data:
     train_data_path: /glade/derecho/scratch/ayz/AMIP_train_new.h5
