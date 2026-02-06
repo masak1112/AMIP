@@ -5,30 +5,13 @@ import numpy as np
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 
-from modules.layers.basics import LayerNorm, GroupNorm, \
+from modules.layers.fa_basics import LayerNorm, GroupNorm, \
     bias_dropout_add_scale, \
     bias_dropout_add_scale_fused_train, \
     bias_dropout_add_scale_fused_inference, \
-    modulate_fused
+    modulate_fused, MLP
 
 from modules.layers.positional_encoding import RotaryEmbedding, apply_rotary_pos_emb, RadialBesselBasis
-
-class MLP(nn.Module):
-    def __init__(self, dim,
-                 out_dim=None,
-                 expansion_ratio=4, dropout=0.):
-        super().__init__()
-        if out_dim is None:
-            out_dim = dim
-        self.fc1 = nn.Linear(dim, int(dim * expansion_ratio))
-        self.fc2 = nn.Linear(int(dim*expansion_ratio), out_dim)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.dropout(x)
-        x = F.gelu(x, approximate='tanh')
-        return self.fc2(x)
 
 class DotProductKernel(nn.Module):
     # a simple implementation of the dot product kernel
