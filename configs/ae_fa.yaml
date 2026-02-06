@@ -7,7 +7,7 @@ model:
         decoder:
             in_dim: 249
             out_dim: 249
-            dim: 256
+            dim: 384
             num_heads: 16
             num_blocks: 8
             num_out_blocks: 2
