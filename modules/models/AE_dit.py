@@ -24,7 +24,7 @@ class ClimaDiT(nn.Module):
                  num_heads,
                  num_blocks,
                  num_out_blocks = 1,
-                 patch_size=2,
+                 patch_size=4,
                  z_patch_size=1,
                  nlat = 180,
                  nlon = 360,

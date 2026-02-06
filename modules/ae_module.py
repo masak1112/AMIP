@@ -57,10 +57,10 @@ class AutoencoderModule(L.LightningModule):
             self.encoder = BilinearEncoder(**self.modelconfig["AE_Atlas"]["encoder"])
             self.decoder = NattenCombineDiT(**self.modelconfig["AE_Atlas"]["decoder"])
             self.history = True
-        elif self.model_name == "ClimaDiT":
+        elif self.model_name == "AE_ClimaDiT":
             from modules.models.AE_dit import ClimaDiT
-            self.encoder = BilinearEncoder(**self.modelconfig["ClimaDiT"]["encoder"])
-            self.decoder = ClimaDiT(**self.modelconfig["ClimaDiT"]["decoder"])
+            self.encoder = BilinearEncoder(**self.modelconfig["AE_ClimaDiT"]["encoder"])
+            self.decoder = ClimaDiT(**self.modelconfig["AE_ClimaDiT"]["decoder"])
             self.history = True
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
