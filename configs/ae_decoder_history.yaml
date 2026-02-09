@@ -1,16 +1,14 @@
 model:
-    model_name: AE_History
+    model_name: AE_History2
     lr: 5.0e-5
     AE_History:
         encoder:
             downsample_factor: 4
         decoder:
             out_channels: 249  # 6 + 26*9 + 9 = 249
-            hidden_channels: 384
+            hidden_channels: 512
             z_channels: 249
-            z_channels_2: 249
             upsample_type: dc
-            num_out_blocks: 8
             padding_mode: circular
 
 data:

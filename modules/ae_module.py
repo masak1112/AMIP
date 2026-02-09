@@ -82,6 +82,13 @@ class AutoencoderModule(L.LightningModule):
             self.decoder = DecoderHistory(**self.modelconfig["AE_History"]["decoder"])
             self.history = True
             self.decoder_only = True
+        elif self.model_name == "AE_History2":
+            from modules.models.AE_decoder import DecoderHistory
+            from modules.models.AE_simple import BilinearEncoder
+            self.encoder = BilinearEncoder(**self.modelconfig["AE_History"]["encoder"])
+            self.decoder = DecoderHistory(**self.modelconfig["AE_History"]["decoder"])
+            self.history = True
+            self.decoder_only = True
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
