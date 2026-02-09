@@ -975,6 +975,7 @@ class DecoderHistory(nn.Module):
                  kernel_size=3,
                  padding=1,
                  num_out_blocks=8,
+                 depthwise_out=False
                  ):
         super().__init__()
         self.hidden_channels = hidden_channels
@@ -1068,22 +1069,27 @@ class DecoderHistory(nn.Module):
                                                   padding=padding,
                                                   kernel_size=kernel_size,))
 
-        self.out_blocks.append(conv_nd(dim,
-                                block_in*2,
-                                out_channels,
-                                kernel_size=kernel_size,
-                                stride=1,
-                                padding=padding,
-                                padding_mode=padding_mode))
-
+        self.norm_out = Normalize(block_in) 
         self.conv_out = conv_nd(dim,
-                                out_channels,
-                                out_channels,
-                                kernel_size=kernel_size,
-                                stride=1,
-                                padding=padding,
-                                padding_mode=padding_mode,
-                                groups = out_channels)
+                        block_in*2,
+                        out_channels,
+                        kernel_size=kernel_size,
+                        stride=1,
+                        padding=padding,
+                        padding_mode=padding_mode)
+        
+        self.depthwise_out = depthwise_out
+        if depthwise_out:
+            self.depth_out = conv_nd(dim,
+                                    out_channels,
+                                    out_channels,
+                                    kernel_size=kernel_size,
+                                    stride=1,
+                                    padding=padding,
+                                    padding_mode=padding_mode,
+                                    groups = out_channels)
+
+            
         
         # Apply He Initialization
         self.apply(self._init_weights)
@@ -1165,8 +1171,12 @@ class DecoderHistory(nn.Module):
         for block in self.out_blocks:
             h = block(h)
 
+        h = self.norm_out(h)
         h = nonlinearity(h)
-        h = self.conv_out(h)
+        h = self.conv_out(h) # b c h w
+
+        if self.depthwise_out:
+            h = self.depth_out(h)
 
         surface_out, multilevel_out, diagnostic_out = self.disassemble_input(h)
 
