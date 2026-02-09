@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -N ae_DC_diag
+#PBS -N ae_decoder_history_weighted
 #PBS -l select=1:ncpus=16:ngpus=4:mem=120G
 #PBS -q develop
 #PBS -l walltime=00:10:00
@@ -9,6 +9,6 @@
 module load conda
 conda activate torch
 
-CONFIG=configs/ae_simple_DC_diag.yaml
+CONFIG=configs/ae_decoder_history_weighted.yaml
 
 python train.py --config=$CONFIG
