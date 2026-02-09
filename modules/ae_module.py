@@ -27,10 +27,12 @@ class AutoencoderModule(L.LightningModule):
         self.surface_variable_weight = config['model'].get('surface_variable_weight', None)
         self.multi_level_variable_weight = config['model'].get('multi_level_variable_weight', None)
         self.diag_variable_weight = config['model'].get('diag_variable_weight', None)
+        self.level_weight = config['model'].get('level_weight', "equal")
 
         self.criterion = WeightedLoss(latitude_resolution=180,
                                       longitude_resolution=360,
                                       nlevels = 26 // self.downsample_levels,
+                                      level_weight=self.level_weight,
                                       surface_variable_weight=self.surface_variable_weight,
                                       multi_level_variable_weight=self.multi_level_variable_weight,
                                       diag_variable_weight=self.diag_variable_weight)

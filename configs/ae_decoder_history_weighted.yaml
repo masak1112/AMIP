@@ -1,6 +1,9 @@
 model:
     model_name: AE_History
     lr: 5.0e-5
+    # [t, u, v, z, q, lwc, iwc, cc, w]
+    multi_level_variable_weight: [1.0, 1.0, 1.0, 10.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    level_weight: cosine
     AE_History:
         encoder:
             downsample_factor: 4
@@ -24,7 +27,7 @@ data:
     use_climatology: False
     downsample_levels: 1
 
-    batch_size: 1
+    batch_size: 2
     num_workers: 4
 
 training:
