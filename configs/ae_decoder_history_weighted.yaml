@@ -27,7 +27,7 @@ data:
     use_climatology: False
     downsample_levels: 1
 
-    batch_size: 2
+    batch_size: 1
     num_workers: 4
 
 training:
@@ -45,5 +45,5 @@ training:
     project: amip
     wandb_mode: online
     checkpoint: null
-    description: decoder_history
-    accumulate_grad_batches: 8
+    description: decoder_history_weighted
+    accumulate_grad_batches: 16
