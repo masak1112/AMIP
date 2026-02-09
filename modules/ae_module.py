@@ -24,10 +24,16 @@ class AutoencoderModule(L.LightningModule):
         self.log_dir = config['training']['log_dir']
         self.downsample_levels = config['data'].get('downsample_levels', 1)
         self.separate_diagnostic = config['model'].get('separate_diagnostic', False)
+        self.surface_variable_weight = config['model'].get('surface_variable_weight', None)
+        self.multi_level_variable_weight = config['model'].get('multi_level_variable_weight', None)
+        self.diag_variable_weight = config['model'].get('diag_variable_weight', None)
 
         self.criterion = WeightedLoss(latitude_resolution=180,
                                       longitude_resolution=360,
-                                      nlevels = 26 // self.downsample_levels)
+                                      nlevels = 26 // self.downsample_levels,
+                                      surface_variable_weight=self.surface_variable_weight,
+                                      multi_level_variable_weight=self.multi_level_variable_weight,
+                                      diag_variable_weight=self.diag_variable_weight)
         self.n = normalizer
 
         self.history = False

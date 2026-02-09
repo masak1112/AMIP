@@ -70,7 +70,7 @@ class WeightedLoss(nn.Module):
             latitude_weight = weights / weights.mean() # shape (nlat, )
         self.register_buffer('latitude_weight', latitude_weight)
 
-        if level_weight == 'linear':     # outweighs the lower levels
+        if level_weight == 'linear':     # weighs the lower levels
             level_weight = torch.linspace(0.065, 0.05, nlevels)
         elif level_weight == 'exp':
             level_weight = torch.exp(torch.linspace(0, -3, nlevels))
