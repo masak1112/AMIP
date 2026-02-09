@@ -22,8 +22,7 @@ def nonlinearity(x):
     # swish
     return x*torch.sigmoid(x)
 
-
-def Normalize(in_channels, num_groups=8, type=TYPE):
+def Normalize(in_channels, num_groups=16, type=TYPE):
     if type == "layer":
         return torch.nn.LayerNorm(in_channels, eps=1e-6)
     elif type == "group":
@@ -968,14 +967,11 @@ class DecoderHistory(nn.Module):
                  resolution = (180, 360), 
                  attn_resolutions = [32], 
                  dropout=0.0, 
-                 double_z=True, 
                  tanh_out=False,
                  dim=2,
                  padding_mode='zeros',
                  upsample_type = 'avg',
-                 use_attn=False,
                  resamp_with_conv = True,
-                 separate_embedders=False,
                  kernel_size=3,
                  padding=1,
                  num_out_blocks=0,
@@ -1063,7 +1059,7 @@ class DecoderHistory(nn.Module):
                         padding_mode=padding_mode)
 
         self.out_blocks = nn.ModuleList()
-        for _ in num_out_blocks:
+        for _ in range(num_out_blocks):
             self.out_blocks.append(ResnetBlock(in_channels=block_in*2,
                                                   out_channels=block_in*2,
                                                   dropout=dropout,
@@ -1072,13 +1068,13 @@ class DecoderHistory(nn.Module):
                                                   padding=padding,
                                                   kernel_size=kernel_size,))
 
-        self.out_blocks.append(ResnetBlock(in_channels=block_in*2,
-                        out_channels=out_channels,
-                        dropout=dropout,
-                        dim=dim,
-                        padding=padding,
-                        padding_mode=padding_mode,
-                        kernel_size=kernel_size,))
+        self.out_blocks.append(conv_nd(dim,
+                                block_in*2,
+                                out_channels,
+                                kernel_size=kernel_size,
+                                stride=1,
+                                padding=padding,
+                                padding_mode=padding_mode))
 
         self.conv_out = conv_nd(dim,
                                 out_channels,
@@ -1166,9 +1162,10 @@ class DecoderHistory(nn.Module):
         
         h = torch.cat([h, history], dim=1)
 
-        for _ in self.out_blocks:
-            h = self.out_blocks(h)
+        for block in self.out_blocks:
+            h = block(h)
 
+        h = nonlinearity(h)
         h = self.conv_out(h)
 
         surface_out, multilevel_out, diagnostic_out = self.disassemble_input(h)
