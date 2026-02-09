@@ -963,7 +963,7 @@ class DecoderHistory(nn.Module):
                  z_channels, # input latent dim
                  z_channels_2,
                  ch_mult=(1,2,2), 
-                 num_res_blocks = 2,
+                 num_res_blocks = 4,
                  resolution = (180, 360), 
                  attn_resolutions = [32], 
                  dropout=0.0, 
@@ -974,7 +974,7 @@ class DecoderHistory(nn.Module):
                  resamp_with_conv = True,
                  kernel_size=3,
                  padding=1,
-                 num_out_blocks=0,
+                 num_out_blocks=8,
                  ):
         super().__init__()
         self.hidden_channels = hidden_channels

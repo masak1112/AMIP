@@ -31,6 +31,7 @@ class AutoencoderModule(L.LightningModule):
         self.n = normalizer
 
         self.history = False
+        self.decoder_only = False
         if self.model_name == "DCAE":
             from modules.models.AE import Encoder, Decoder
             self.encoder = Encoder(**self.modelconfig["DCAE"]["encoder"])
@@ -51,18 +52,28 @@ class AutoencoderModule(L.LightningModule):
             from modules.models.AE_simple import BilinearEncoder, Decoder 
             self.encoder = BilinearEncoder(**self.modelconfig["AE_Decoder_Only"]["encoder"])
             self.decoder = Decoder(**self.modelconfig["AE_Decoder_Only"]["decoder"])
+            self.decoder_only = True
         elif self.model_name == "AE_Atlas":
             from modules.models.AE_simple import BilinearEncoder
             from modules.models.AE_attn import NattenCombineDiT
             self.encoder = BilinearEncoder(**self.modelconfig["AE_Atlas"]["encoder"])
             self.decoder = NattenCombineDiT(**self.modelconfig["AE_Atlas"]["decoder"])
             self.history = True
+            self.decoder_only = True
         elif self.model_name == "AE_ClimaDiT":
             from modules.models.AE_dit import ClimaDiT
             from modules.models.AE_simple import BilinearEncoder
             self.encoder = BilinearEncoder(**self.modelconfig["AE_ClimaDiT"]["encoder"])
             self.decoder = ClimaDiT(**self.modelconfig["AE_ClimaDiT"]["decoder"])
             self.history = True
+            self.decoder_only = True
+        elif self.model_name == "AE_History":
+            from modules.models.AE_simple import DecoderHistory
+            from modules.models.AE_simple import BilinearEncoder
+            self.encoder = BilinearEncoder(**self.modelconfig["AE_History"]["encoder"])
+            self.decoder = DecoderHistory(**self.modelconfig["AE_History"]["decoder"])
+            self.history = True
+            self.decoder_only = True
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
@@ -284,7 +295,7 @@ class AutoencoderModule(L.LightningModule):
         self.log('val/q850', q850_loss.item(), on_step=False, on_epoch=True, sync_dist=self.ddp)
     
     def configure_optimizers(self):
-        if self.model_name == "AE_Decoder_Only" or self.model_name == "AE_Atlas" or self.model_name == "AE_ClimaDiT":
+        if self.decoder_only:
             optimizer = torch.optim.Adam(list(self.decoder.parameters()), lr=self.lr)
         else:
             optimizer = torch.optim.Adam(list(self.encoder.parameters()) + list(self.decoder.parameters()), lr=self.lr)
