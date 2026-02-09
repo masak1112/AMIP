@@ -27,13 +27,15 @@ class PatchEmbed(nn.Module):
         nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
         nn.init.constant_(self.proj.bias, 0)
 
-    def forward(self, x):
-        x = rearrange(x, 'b ny nx c -> b c ny nx')
+    def forward(self, x, reshape=True):
+        if reshape:
+            x = rearrange(x, 'b ny nx c -> b c ny nx')
         x = self.proj(x)
         if self.flatten:
             x = x.flatten(2).transpose(1, 2)  # BCHW -> BNC
         else:
-            x = x.permute(0, 2, 3, 1)  # BCHW -> BHWC
+            if reshape:
+                x = x.permute(0, 2, 3, 1)  # BCHW -> BHWC
         x = self.norm(x)
         return x
     

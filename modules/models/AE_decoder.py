@@ -37,7 +37,6 @@ class DecoderHistory(nn.Module):
                  out_channels, # output channel dim
                  hidden_channels, # width of network
                  z_channels, # input latent dim
-                 z_channels_2,
                  ch_mult=(1,2,2), 
                  num_res_blocks = 4,
                  resolution = (180, 360), 
@@ -199,7 +198,7 @@ class DecoderHistory(nn.Module):
 
         # z to block_in
         h = self.conv_in(z)
-        history = self.conv_in_history(history) 
+        history = self.conv_in_history(history, reshape=False) 
 
         h = torch.cat((h, history), dim=1)
 
