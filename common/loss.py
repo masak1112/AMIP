@@ -82,12 +82,18 @@ class WeightedLoss(nn.Module):
 
         if surface_variable_weight is None:
             surface_variable_weight = torch.ones(nsurface) # default equal weight
+        else:
+            surface_variable_weight = torch.tensor(surface_variable_weight, dtype=torch.float32)
 
         if multi_level_variable_weight is None:
             multi_level_variable_weight = torch.ones(nmulti) # default equal weight
+        else:
+            multi_level_variable_weight = torch.tensor(multi_level_variable_weight, dtype=torch.float32)
 
         if diag_variable_weight is None:
             diag_variable_weight = torch.ones(ndiag)
+        else:
+            diag_variable_weight = torch.tensor(diag_variable_weight, dtype=torch.float32)
         
         self.register_buffer('diag_variable_weight', diag_variable_weight)
         self.register_buffer('surface_variable_weight', surface_variable_weight)
