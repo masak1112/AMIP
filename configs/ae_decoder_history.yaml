@@ -1,6 +1,9 @@
 model:
     model_name: AE_History2
     lr: 5.0e-5
+    # [t, u, v, z, q, lwc, iwc, cc, w]
+    multi_level_variable_weight: [1.0, 1.0, 1.0, 10.0, 1.0, 0.25, 0.25, 0.25, 1.0]
+    level_weight: cosine
     AE_History:
         encoder:
             downsample_factor: 4
@@ -40,5 +43,5 @@ training:
     project: amip
     wandb_mode: online
     checkpoint: null
-    description: decoder_history
+    description: decoder_history2_weighted
     accumulate_grad_batches: 16
