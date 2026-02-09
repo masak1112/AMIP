@@ -1069,7 +1069,7 @@ class DecoderHistory(nn.Module):
                                                   padding=padding,
                                                   kernel_size=kernel_size,))
 
-        self.norm_out = Normalize(block_in) 
+        self.norm_out = Normalize(block_in*2) 
         self.conv_out = conv_nd(dim,
                         block_in*2,
                         out_channels,
