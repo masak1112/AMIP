@@ -260,7 +260,7 @@ class FADiTBlockS2(nn.Module):
                  bottleneck_dim,
                  dim_out,
                  cond_dim,
-                 depth_dropout=0.1,
+                 depth_dropout=0.0,
                  mlp_dropout=0.0,
                  kernel_expansion_ratio=1.0,
                  use_softmax=True,
@@ -273,7 +273,7 @@ class FADiTBlockS2(nn.Module):
         self.dim_head = dim_head
         self.norm1 = LayerNorm(dim, force_fp32=True)  # norm before attention
         self.norm2 = LayerNorm(dim, force_fp32=True)  # norm before ffn
-        self.dropout = nn.Dropout(depth_dropout) if depth_dropout > 0 else nn.Identity()
+        self.dropout = nn.Identity()
 
         self.to_v = nn.Linear(dim, dim_head * heads, bias=False)
 
