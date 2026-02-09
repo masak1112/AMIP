@@ -43,4 +43,4 @@ training:
     wandb_mode: online
     checkpoint: null
     description: decoder_history
-    accumulate_grad_batches: 8
+    accumulate_grad_batches: 4
