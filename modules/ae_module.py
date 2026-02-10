@@ -136,7 +136,7 @@ class AutoencoderModule(L.LightningModule):
                         surface, multilevel, diagnostic):
         
         if self.scheduler is not None:
-            z_surface, z_multilevel, z_diagnostic = self.upsample(self.downsample(surface, multilevel, diagnostic))
+            z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface, multilevel, diagnostic))
             x = assemble_input(z_surface, z_multilevel, z_diagnostic)
             cond = assemble_input(surface_history, multilevel_history, diagnostic_history)
             y = self.scheduler.sample(x, self.decoder, cond=cond)
@@ -189,7 +189,7 @@ class AutoencoderModule(L.LightningModule):
             diagnostic_data = batch['diagnostic'][:, 1]
 
             cond = assemble_input(surface_history, multilevel_history, diagnostic_history)
-            z_surface, z_multilevel, z_diagnostic = self.upsample(self.downsample(surface_data, multilevel_data, diagnostic_data))
+            z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface_data, multilevel_data, diagnostic_data))
             x = assemble_input(z_surface, z_multilevel, z_diagnostic)
             y = assemble_input(surface_data, multilevel_data, diagnostic_data)
 
