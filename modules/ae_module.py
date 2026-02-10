@@ -2,6 +2,7 @@ import lightning as L
 import torch
 
 from common.loss import latitude_weighted_rmse, WeightedLoss
+from common.utils import assemble_input
 from common.plotting import plot_reconstruction, plot_spectrum
 from data.amip import SURFACE_VARIABLES, MULTILEVEL_VARIABLES, DIAGNOSTIC_VARIABLES
 
@@ -28,6 +29,7 @@ class AutoencoderModule(L.LightningModule):
         self.multi_level_variable_weight = config['model'].get('multi_level_variable_weight', None)
         self.diag_variable_weight = config['model'].get('diag_variable_weight', None)
         self.level_weight = config['model'].get('level_weight', "equal")
+        self.spectral_loss_weight = config['model'].get('spectral_loss_weight', 0.0)
 
         self.criterion = WeightedLoss(latitude_resolution=180,
                                       longitude_resolution=360,
@@ -36,6 +38,12 @@ class AutoencoderModule(L.LightningModule):
                                       surface_variable_weight=self.surface_variable_weight,
                                       multi_level_variable_weight=self.multi_level_variable_weight,
                                       diag_variable_weight=self.diag_variable_weight)
+        
+        self.spectral_criterion = None
+        if self.spectral_loss_weight > 0.0:
+            from common.loss import SpectralBaseLoss
+            self.spectral_criterion = SpectralBaseLoss(img_shape=(180, 360))
+
         self.n = normalizer
 
         self.history = False
@@ -132,9 +140,22 @@ class AutoencoderModule(L.LightningModule):
                      multilevel_pred, multilevel_target,
                      diagnostic_pred, diagnostic_target):
         
-        return self.criterion(surface_pred, surface_target,
-                              multilevel_pred, multilevel_target,
-                              diagnostic_pred, diagnostic_target)
+        if self.spectral_criterion is None:
+            return self.criterion(surface_pred, surface_target,
+                        multilevel_pred, multilevel_target,
+                        diagnostic_pred, diagnostic_target)
+        else:
+            mse_loss = self.criterion(surface_pred, surface_target,
+                        multilevel_pred, multilevel_target,
+                        diagnostic_pred, diagnostic_target)
+            
+            x_pred = assemble_input(surface_pred, multilevel_pred, diagnostic_pred)
+            x_target = assemble_input(surface_target, multilevel_target, diagnostic_target)
+
+            spectral_loss = self.spectral_criterion(x_pred, x_target)
+
+            return mse_loss + self.spectral_loss_weight * spectral_loss
+    
     
     def training_step(self, batch, batch_idx):
         
