@@ -693,7 +693,7 @@ class BilinearDecoder():
 
         if diagnostic is not None:
             diagnostic = rearrange(diagnostic, 'b nlat nlon c -> b c nlat nlon')
-            diagnostic = F.interpolate(diagnostic, scale_factor=1/self.downsample_factor, mode='bilinear', align_corners=False)
+            diagnostic = F.interpolate(diagnostic, scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
             diagnostic = rearrange(diagnostic, 'b c zlat zlon -> b zlat zlon c')
 
         return surface, multilevel, diagnostic
