@@ -9,9 +9,9 @@ model:
             out_channels: 249
             hidden_channels: 512
             norm: True
-            ch_mults: [1, 1, 2]
-            mid_attn: True
-            n_blocks: 2
+            ch_mults: [1, 1, 1]
+            mid_attn: False
+            n_blocks: 4
         scheduler:
             num_refinement_steps: 10
             num_train_steps: 21  
