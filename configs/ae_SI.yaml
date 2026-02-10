@@ -7,14 +7,15 @@ model:
         decoder:
             in_channels: 747
             out_channels: 249
-            hidden_channels: 512
+            hidden_channels: 768
             norm: True
             ch_mults: [1, 1, 1]
             mid_attn: False
-            n_blocks: 4
+            n_blocks: 2
         scheduler:
             num_refinement_steps: 10
             num_train_steps: 21  
+            antithetic_sampling: False
 
 data:
     train_data_path: /glade/derecho/scratch/ayz/AMIP_train_new.h5
