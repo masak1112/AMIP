@@ -52,7 +52,7 @@ class DriftScheduler(nn.Module):
         self.sigma_sample = sigma_sample if sigma_sample is not None else sigma_coef
 
         print(f'Scheduler initialized with {self.num_train_timesteps} training steps and {self.num_refinement_steps} refinement steps.')
-        print(f"sigma_coef: {self.sigma_coef}, integrator: {integrator}, beta_fn: {self.beta_fn}, use_gf: {self.use_gF}, antithetic_sampling: {self.antithetic_sampling}, rho: {self.rho}")
+        print(f"sigma_coef: {self.sigma_coef}, integrator: {integrator}, beta_fn: {self.beta_fn}, antithetic_sampling: {self.antithetic_sampling}")
 
     def wide(self, t):
         if self.ndim == 2:
