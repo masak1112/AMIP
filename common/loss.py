@@ -2,6 +2,12 @@ import torch
 import numpy as np
 import torch.nn as nn
 from einops import repeat, rearrange
+import math 
+
+try:
+    import torch_harmonics as th
+except ImportError:
+    print("Warning: torch.distributed could not be imported. Distributed losses will not work.")
 
 # base on the code from graphcast
 def _check_uniform_spacing_and_get_delta(vector):
@@ -210,3 +216,65 @@ def latitude_weighted_l1(pred, target):
         lat_weight = lat_weight.view(1, 1, nlat, 1)
 
     return ((pred - target).abs() * lat_weight).mean(dim=(2, 3))   # spatial averaging
+
+
+class SpectralBaseLoss(nn.Module):
+    """
+    Geometric base loss class used by all geometric losses
+    """
+
+    def __init__(
+        self,
+        img_shape = (180, 360),
+        grid_type = 'equiangular',
+    ):
+        super().__init__()
+
+        self.img_shape = img_shape
+
+        self.sht = th.RealSHT(*img_shape, grid=grid_type).float()
+
+        # get the local l weights
+        lmax = self.sht.lmax
+        # l_weights = 1 / (2*ls+1)
+        l_weights = torch.ones(lmax)
+
+        # get the local m weights
+        mmax = self.sht.mmax
+        m_weights = 2 * torch.ones(mmax)#.reshape(1, -1)
+        m_weights[0] = 1.0
+
+        # get meshgrid of weights:
+        l_weights, m_weights = torch.meshgrid(l_weights, m_weights, indexing="ij")
+
+        # use the product weights
+        lm_weights = l_weights * m_weights
+
+        # register
+        self.register_buffer("lm_weights", lm_weights, persistent=False)
+
+    def forward(self, forecasts: torch.Tensor, observations: torch.Tensor) -> torch.Tensor:
+
+        forecasts = self.sht(forecasts) / 4.0 / math.pi
+        observations = self.sht(observations) / 4.0 / math.pi
+
+        forecasts = torch.abs(forecasts)
+        observations = torch.abs(observations)
+
+        # we assume the following shapes:
+        # forecasts: batch, channels, mmax, lmax
+        # observations: batch, channels, mmax, lmax
+        B, C, H, W = forecasts.shape
+
+        spectral_weights = self.lm_weights
+
+        # crps w/ E = 1
+        crps = torch.abs(observations - forecasts).reshape(B, C, H * W)
+        norm = torch.abs(observations).reshape(B, C, H * W)
+        spectral_weights_split = spectral_weights.reshape(1, 1, H * W)
+       
+        # perform spatial average of crps score
+        crps = torch.sum(crps * spectral_weights_split, dim=-1)
+        norm = torch.sum(norm * spectral_weights_split, dim=-1)
+
+        return crps.mean() / norm.mean() # dimension 
