@@ -48,6 +48,8 @@ class AutoencoderModule(L.LightningModule):
 
         self.history = False
         self.decoder_only = False
+        self.scheduler = None
+        
         if self.model_name == "DCAE":
             from modules.models.AE import Encoder, Decoder
             self.encoder = Encoder(**self.modelconfig["DCAE"]["encoder"])
@@ -97,6 +99,15 @@ class AutoencoderModule(L.LightningModule):
             self.decoder = DecoderHistory(**self.modelconfig["AE_History"]["decoder"])
             self.history = True
             self.decoder_only = True
+        elif self.model_name == "AE_History_SI":
+            from modules.AE_decoder import DecoderHistory
+            from modules.models.AE_simple import BilinearEncoder
+            from modules.diffusion.interpolant import DriftScheduler
+            self.encoder = BilinearEncoder(**self.modelconfig["AE_History"]["encoder"])
+            self.decoder = DecoderHistory(**self.modelconfig["AE_History"]["decoder"])
+            self.scheduler = DriftScheduler(**self.modelconfig["AE_History_SI"]["scheduler"])
+            self.history = True
+            self.decoder_only = True 
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 

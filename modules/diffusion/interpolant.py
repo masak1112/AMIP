@@ -14,7 +14,7 @@ class Integrator:
         elif self.method == "euler": # ODE
             return x + dt*drift 
 
-    def integrate(self, x, y, model, timesteps, g_fn, use_gF=False, scheduler=None, **kwargs):
+    def integrate(self, x, y, model, timesteps, g_fn, **kwargs):
 
         for i_t in range(len(timesteps)-1):
             t_current = timesteps[i_t]
@@ -23,11 +23,6 @@ class Integrator:
             g_t = g_fn(t_current.expand(x.shape[0]))  # shape (b, 1, 1, 1)
 
             drift = model(torch.cat((x, y), dim=-1), t_current.expand(x.shape[0]).unsqueeze(-1), **kwargs)
-
-            # if g is equal to sigma then the score vanishes during sampling, otherwise need to compute
-            if use_gF:
-                t = t_current 
-                drift = (1 + t)/2 * drift + (1 - t)/(2*t)*(y - x)
             
             y = self.step_fn(y, drift, dt, g_t)
         return y
@@ -39,12 +34,9 @@ class DriftScheduler(nn.Module):
                  integrator='em', 
                  sigma_coef=1.0,  
                  beta_fn = "t",
-                 gamma_fn = "sqrt_t",
-                 use_gF = False,
                  antithetic_sampling=True,
                  sigma_sample=None,
                  ndim=2,
-                 rho=1.0,
                  ):
         super(DriftScheduler, self).__init__()
 
@@ -53,16 +45,11 @@ class DriftScheduler(nn.Module):
         self.sigma_coef = sigma_coef
         self.method = integrator
         self.integrator = Integrator(method=integrator)
-        self.gamma_fn = gamma_fn
-
-        self.mode = 'sde'
-        
+   
         self.ndim = ndim
         self.beta_fn = beta_fn
-        self.use_gF = use_gF
         self.antithetic_sampling = antithetic_sampling
         self.sigma_sample = sigma_sample if sigma_sample is not None else sigma_coef
-        self.rho = rho
 
         print(f'Scheduler initialized with {self.num_train_timesteps} training steps and {self.num_refinement_steps} refinement steps.')
         print(f"sigma_coef: {self.sigma_coef}, integrator: {integrator}, beta_fn: {self.beta_fn}, use_gf: {self.use_gF}, antithetic_sampling: {self.antithetic_sampling}, rho: {self.rho}")
@@ -96,28 +83,12 @@ class DriftScheduler(nn.Module):
             return self.sigma_sample * self.wide(1-t)
         else:
             return self.sigma_coef * self.wide(1-t)
-        
-    def gamma(self, t, sample=False):
-        if self.gamma_fn == "sqrt_t":
-            return self.sigma_coef * self.wide((1-t)*torch.sqrt(t))
-        else:
-            return self.sigma_coef * self.wide((1-t)*t)
-        
-    def gamma_dot(self, t, sample=False):
-        if self.gamma_fn == "sqrt_t":
-            return self.sigma_coef * self.wide(1/(2*torch.sqrt(t)) - 1.5 * torch.sqrt(t))
-        else:
-            return self.sigma_coef * self.wide(1 - 2*t)
 
     def sigma_dot(self, t, sample=False):
         if sample:
             return self.sigma_sample * self.wide(-1.0 * torch.ones_like(t))
         else:
             return self.sigma_coef * self.wide(-1.0 * torch.ones_like(t))
-    
-    # derived for beta(t) = t, so can't use if beta_fn is not "t"
-    def g_F(self, t):
-        return self.sigma_coef * self.wide(torch.sqrt((1-t)**2 + 2*(1-t)))
     
     def I(self, x0, x1, t):
         return self.alpha(t) * x0 + self.beta(t) * x1
@@ -141,65 +112,34 @@ class DriftScheduler(nn.Module):
         # no need to train on t=1
         t = torch.randint(0, self.num_train_timesteps-1, device=x.device, size=(x.shape[0],)) / (self.num_train_timesteps - 1)  # shape (b,)
 
-        if self.mode == 'ode' and self.gamma_fn == "sqrt_t":
-            t[t==0] = 1e-2  # avoid t=0 for ODE case to prevent singularities
-
         dIdt = self.dIdt(x, y, t) # shape (b, nx, ny, d)
         I = self.I(x, y, t) # shape (b, nx, ny, d)
 
-        if self.mode == "sde":
-            sigma_dot = self.sigma_dot(t) # shape (b, 1, 1, 1) 
-            sigma = self.sigma(t) # shape (b, 1, 1, 1)
+        sigma_dot = self.sigma_dot(t) # shape (b, 1, 1, 1) 
+        sigma = self.sigma(t) # shape (b, 1, 1, 1)
 
-            W = self.wide(torch.sqrt(t)) * noise
+        W = self.wide(torch.sqrt(t)) * noise
 
-            if self.antithetic_sampling:
-                I_p = I + sigma * W
-                I_m = I - sigma * W
-                model_in_p = torch.cat([x, I_p], dim=-1)
-                model_in_m = torch.cat([x, I_m], dim=-1)
-                target_p = dIdt + sigma_dot * W
-                target_m = dIdt - sigma_dot * W
-                drift_p = model(model_in_p, t.float().view(-1, 1), **kwargs)
-                drift_m = model(model_in_m, t.float().view(-1, 1), **kwargs)
-                loss_p = 0.5 * self.image_sq_norm(drift_p - target_p).mean()
-                loss_m = 0.5 * self.image_sq_norm(drift_m - target_m).mean()
-                loss = loss_p + loss_m
+        if self.antithetic_sampling:
+            I_p = I + sigma * W
+            I_m = I - sigma * W
+            model_in_p = torch.cat([x, I_p], dim=-1)
+            model_in_m = torch.cat([x, I_m], dim=-1)
+            target_p = dIdt + sigma_dot * W
+            target_m = dIdt - sigma_dot * W
+            drift_p = model(model_in_p, t.float().view(-1, 1), **kwargs)
+            drift_m = model(model_in_m, t.float().view(-1, 1), **kwargs)
+            loss_p = 0.5 * self.image_sq_norm(drift_p - target_p).mean()
+            loss_m = 0.5 * self.image_sq_norm(drift_m - target_m).mean()
+            loss = loss_p + loss_m
 
-            else:
-                I_noised = I + sigma * W
-                model_in = torch.cat([x, I_noised], dim=-1)
-                drift = model(model_in, t.float().view(-1, 1), **kwargs)
-                target = dIdt + sigma_dot * W
+        else:
+            I_noised = I + sigma * W
+            model_in = torch.cat([x, I_noised], dim=-1)
+            drift = model(model_in, t.float().view(-1, 1), **kwargs)
+            target = dIdt + sigma_dot * W
 
-                loss= self.image_sq_norm(drift - target).mean()
-
-        else:  # ODE case
-            gamma_dot = self.gamma_dot(t)  # shape (b, 1, 1, 1)
-            z = noise 
-
-            if self.antithetic_sampling:
-                I_p = I + self.gamma(t) * z
-                I_m = I - self.gamma(t) * z
-                model_in_p = torch.cat([x, I_p], dim=-1)
-                model_in_m = torch.cat([x, I_m], dim=-1)
-                target_p = dIdt + gamma_dot * z
-                target_m = dIdt - gamma_dot * z
-                drift_p = model(model_in_p, t.float().view(-1, 1), **kwargs)
-                drift_m = model(model_in_m, t.float().view(-1, 1), **kwargs)
-                
-                loss_p = 0.5*torch.sum(drift_p**2) - torch.sum(target_p * drift_p)
-                loss_m = 0.5*torch.sum(drift_m**2) - torch.sum(target_m * drift_m)
-
-                loss = loss_p + loss_m
-            
-            else:
-                I_noised = I + self.gamma(t) * z
-                model_in = torch.cat([x, I_noised], dim=-1)
-                drift = model(model_in, t.float().view(-1, 1), **kwargs)
-                target = dIdt + gamma_dot * z
-
-                loss = torch.sum(drift**2) - 2*torch.sum(target * drift)
+            loss= self.image_sq_norm(drift - target).mean()
 
         return loss
 
@@ -210,9 +150,6 @@ class DriftScheduler(nn.Module):
 
         #timesteps = torch.linspace(0, 1, refinement_steps + 1, device=x.device) # shape (refinement_steps+1,)
         timesteps = torch.linspace(0, 1, refinement_steps + 1, device=x.device)
-
-        if self.rho != 1.0:
-            timesteps = timesteps**(1/self.rho)
         
         # start y at the source distribution after first step
         # We take 1st step analytically since g_T can be singular at t=0 during Euler-Maruyama integration
@@ -226,15 +163,11 @@ class DriftScheduler(nn.Module):
         if self.method == "em":
             y = x + drift_0*dt + sigma_0 * dW # shape (b, nx, ny, d)
         else:
-            if self.use_gF:
-                drift_ode = 0.5 * drift_0
-                y = x + drift_ode*dt
-            else:
-                y = x + drift_0*dt
+            y = x + drift_0*dt
 
         # integrate with euler-maruyama or euler method
         g_fn = lambda t: self.sigma(t, sample=True)
-        y = self.integrator.integrate(x, y, model, timesteps[1:], g_fn, use_gF=self.use_gF, scheduler=self, **kwargs)
+        y = self.integrator.integrate(x, y, model, timesteps[1:], g_fn, **kwargs)
 
         return y
 
