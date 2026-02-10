@@ -99,15 +99,15 @@ class AutoencoderModule(L.LightningModule):
             self.decoder = DecoderHistory(**self.modelconfig["AE_History"]["decoder"])
             self.history = True
             self.decoder_only = True
-        elif self.model_name == "AE_History_SI":
+        elif self.model_name == "AE_SI":
             from modules.AE_Unet import DecoderUnet
             from modules.models.AE_simple import BilinearEncoder, BilinearDecoder
             from modules.diffusion.interpolant import DriftScheduler
-            self.downsample = BilinearEncoder(**self.modelconfig["AE_History"]["encoder"])
-            self.upsample = BilinearDecoder(**self.modelconfig["AE_History"]["encoder"])
+            self.downsample = BilinearEncoder(**self.modelconfig["AE_SI"]["encoder"])
+            self.upsample = BilinearDecoder(**self.modelconfig["AE_SI"]["encoder"])
 
-            self.decoder = DecoderUnet(**self.modelconfig["AE_History"]["decoder"])
-            self.scheduler = DriftScheduler(**self.modelconfig["AE_History_SI"]["scheduler"])
+            self.decoder = DecoderUnet(**self.modelconfig["AE_SI"]["decoder"])
+            self.scheduler = DriftScheduler(**self.modelconfig["AE_SI"]["scheduler"])
             self.history = True
             self.decoder_only = True 
         else:
