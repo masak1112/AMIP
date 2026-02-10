@@ -56,7 +56,8 @@ class WeightedLoss(nn.Module):
                  nsurface=6,
                  nmulti=9,
                  ndiag = 9,
-                 normalize = True
+                 normalize = True,
+                 eps = 1e-3,
                  ):
         super().__init__()
         self.loss_fn = nn.MSELoss(reduction='none')
@@ -106,6 +107,7 @@ class WeightedLoss(nn.Module):
         self.register_buffer('multi_level_variable_weight', multi_level_variable_weight)
 
         self.normalize = normalize
+        self.eps = eps
 
     def forward(self,
                 surface_pred, surface_target,
@@ -129,9 +131,9 @@ class WeightedLoss(nn.Module):
         multi_level_loss = multi_level_loss.sum(dim=-1) # b nlat nlon
 
         if self.normalize:
-            surface_loss = surface_loss / torch.norm(surface_target, p=2, keepdim=True)
-            multi_level_loss = multi_level_loss / torch.norm(multilevel_target, p=2, keepdim=True)
-            diag_loss = diag_loss / torch.norm(diagnostic_target, p=2, keepdim=True)
+            surface_loss = surface_loss / (torch.norm(surface_target, p=2, keepdim=True) + self.eps)
+            multi_level_loss = multi_level_loss / (torch.norm(multilevel_target, p=2, keepdim=True) + self.eps)
+            diag_loss = diag_loss / (torch.norm(diagnostic_target, p=2, keepdim=True) + self.eps)
 
         loss = surface_loss + multi_level_loss + diag_loss # b nlat nlon
         latitude_weight = self.latitude_weight.view(1, -1, 1) # b nlat nlon 
@@ -227,6 +229,7 @@ class SpectralBaseLoss(nn.Module):
         self,
         img_shape = (180, 360),
         grid_type = 'equiangular',
+        eps = 1e-3,
     ):
         super().__init__()
 
@@ -249,6 +252,8 @@ class SpectralBaseLoss(nn.Module):
 
         # use the product weights
         lm_weights = l_weights * m_weights
+
+        self.eps = eps
 
         # register
         self.register_buffer("lm_weights", lm_weights, persistent=False)
@@ -275,6 +280,6 @@ class SpectralBaseLoss(nn.Module):
        
         # perform spatial average of crps score
         crps = torch.sum(crps * spectral_weights_split, dim=-1)
-        norm = torch.sum(norm * spectral_weights_split, dim=-1)
+        norm = torch.sum(norm * spectral_weights_split, dim=-1) 
 
-        return crps.mean() / norm.mean() # dimension 
+        return crps.mean() / (norm.mean() + self.eps) # dimension 
