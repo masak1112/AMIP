@@ -2,7 +2,7 @@ import lightning as L
 import torch
 
 from common.loss import latitude_weighted_rmse, WeightedLoss
-from common.utils import assemble_input
+from common.utils import assemble_input, disassemble_input
 from common.plotting import plot_reconstruction, plot_spectrum
 from data.amip import SURFACE_VARIABLES, MULTILEVEL_VARIABLES, DIAGNOSTIC_VARIABLES
 
@@ -100,11 +100,13 @@ class AutoencoderModule(L.LightningModule):
             self.history = True
             self.decoder_only = True
         elif self.model_name == "AE_History_SI":
-            from modules.AE_decoder import DecoderHistory
-            from modules.models.AE_simple import BilinearEncoder
+            from modules.AE_Unet import DecoderUnet
+            from modules.models.AE_simple import BilinearEncoder, BilinearDecoder
             from modules.diffusion.interpolant import DriftScheduler
-            self.encoder = BilinearEncoder(**self.modelconfig["AE_History"]["encoder"])
-            self.decoder = DecoderHistory(**self.modelconfig["AE_History"]["decoder"])
+            self.downsample = BilinearEncoder(**self.modelconfig["AE_History"]["encoder"])
+            self.upsample = BilinearDecoder(**self.modelconfig["AE_History"]["encoder"])
+
+            self.decoder = DecoderUnet(**self.modelconfig["AE_History"]["decoder"])
             self.scheduler = DriftScheduler(**self.modelconfig["AE_History_SI"]["scheduler"])
             self.history = True
             self.decoder_only = True 
@@ -133,7 +135,14 @@ class AutoencoderModule(L.LightningModule):
     def forward_history(self, surface_history, multilevel_history, diagnostic_history,
                         surface, multilevel, diagnostic):
         
-        if self.separate_diagnostic:
+        if self.scheduler is not None:
+            z_surface, z_multilevel, z_diagnostic = self.upsample(self.downsample(surface, multilevel, diagnostic))
+            x = assemble_input(z_surface, z_multilevel, z_diagnostic)
+            cond = assemble_input(surface_history, multilevel_history, diagnostic_history)
+            y = self.scheduler.sample(x, self.decoder, cond=cond)
+            surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
+
+        elif self.separate_diagnostic:
             multilevel = multilevel[..., :5] # remove cloud and vertical velocity from inputs
             multilevel_history = multilevel_history[..., :5] 
             z_surface, z_multilevel, _ = self.encoder(surface, multilevel, None)
@@ -170,6 +179,25 @@ class AutoencoderModule(L.LightningModule):
     
     def training_step(self, batch, batch_idx):
         
+        if self.scheduler is not None:
+            surface_history = batch['surface'][:, 0] # b nlat nlon c
+            multilevel_history = batch['multilevel'][:, 0]
+            diagnostic_history = batch['diagnostic'][:, 0]
+
+            surface_data = batch['surface'][:, 1] # b nlat nlon c
+            multilevel_data = batch['multilevel'][:, 1]
+            diagnostic_data = batch['diagnostic'][:, 1]
+
+            cond = assemble_input(surface_history, multilevel_history, diagnostic_history)
+            z_surface, z_multilevel, z_diagnostic = self.upsample(self.downsample(surface_data, multilevel_data, diagnostic_data))
+            x = assemble_input(z_surface, z_multilevel, z_diagnostic)
+            y = assemble_input(surface_data, multilevel_data, diagnostic_data)
+
+            loss = self.scheduler.compute_loss(x, y, self.decoder, cond=cond)
+            self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
+
+            return loss 
+
         if not self.history:
             surface_data = batch['surface'][:, 0] # b nlat nlon c
             multilevel_data = batch['multilevel'][:, 0] # b nlevel nlat nlon c

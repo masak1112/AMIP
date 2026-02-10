@@ -1,13 +1,15 @@
-from typing import Any
+from typing import Any, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 from einops import rearrange
-from modules.models.AE_simple import ResnetBlock, Upsample, DCUpsample, make_attn
+from modules.models.AE_simple import ResnetBlock, Upsample, DCUpsample, make_attn, DCDownsample
 from modules.layers.fa_basics import modulate_fused
 from modules.layers.positional_encoding import TimestepEmbedder
 from modules.layers.patchify import PatchEmbed
-from modules.layers.unpatchify import Unpatchify
-import torch.nn.functional as F
+
+
+# Largely based on https://github.com/labmlai/annotated_deep_learning_paper_implementations/blob/master/labml_nn/diffusion/ddpm/unet.py
+# MIT License
 
 TYPE = "group"
 
@@ -303,104 +305,4 @@ class CondResnetBlock(nn.Module):
                 x = self.nin_shortcut(x)
 
         return x+h
-    
 
-class DecoderResNet(nn.Module):
-    def __init__(self,
-                 out_channels, # output channel dim
-                 hidden_channels, # width of network
-                 in_channels, # input latent dim
-                 num_blocks = 4,
-                 dim=2,
-                 padding_mode='zeros',
-                 kernel_size=3,
-                 padding=1,
-                 ):
-        super().__init__()
-        self.hidden_channels = hidden_channels
-        self.out_channels = out_channels
-        self.in_channels = in_channels
-
-        # z to block_in
-        self.conv_in = conv_nd(dim,
-                                in_channels,
-                                hidden_channels,
-                                kernel_size=kernel_size,
-                                stride=1,
-                                padding=padding,
-                                padding_mode=padding_mode)
-        
-        self.t_map = TimestepEmbedder(hidden_channels)
-        
-        self.blocks = nn.ModuleList()
-        for i in range(num_blocks):
-            self.blocks.append(CondResnetBlock(in_channels=hidden_channels,
-                                           out_channels=hidden_channels,
-                                           dropout=0.0,
-                                           dim=dim,
-                                           padding_mode=padding_mode,
-                                           kernel_size=kernel_size,
-                                           padding=padding,))
-
-
-        self.norm_final = Normalize(hidden_channels)
-
-        self.conv_out = conv_nd(dim,
-                            hidden_channels,
-                            out_channels,
-                            kernel_size=kernel_size,
-                            stride=1,
-                            padding=padding,
-                            padding_mode=padding_mode)
-        self.adaLN_modulation = nn.Sequential(
-            nn.Linear(hidden_channels, hidden_channels),
-            nn.SiLU(),
-            nn.Linear(hidden_channels, 2 * hidden_channels)
-        )
-        
-        self._init_weights()
-
-    def _init_weights(self, m):
-        """
-        Applies He (Kaiming) initialization to Conv2d and Linear layers.
-        Initializes normalization layers (LayerNorm, BatchNorm) with scale 1 and bias 0.
-        """
-        if isinstance(m, (nn.Conv2d, nn.Conv3d, nn.Linear)):
-            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        
-        elif isinstance(m, (nn.LayerNorm, nn.BatchNorm2d, nn.GroupNorm)):
-            if m.weight is not None:
-                nn.init.constant_(m.weight, 1)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-
-        nn.init.constant_(self.adaLN_modulation[-1].weight, 0)
-        nn.init.constant_(self.adaLN_modulation[-1].bias, 0)
-        nn.init.constant_(self.adaLN_modulation[0].weight, 0)
-        nn.init.constant_(self.adaLN_modulation[0].bias, 0)
-
-        # Zero-out adaLN modulation layers in blocks:
-        for block in self.blocks:
-            nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
-            nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
-
-    def forward(self, x, t) -> torch.Tensor:
-
-        x = self.conv_in(x)
-
-        if len(t.shape) == 1:
-            t = t.unsqueeze(-1) # (batch_size, 1)
-        t = F.silu(self.t_map(t))
-
-        for block in self.blocks:
-            x = block(x, t)
-        
-        z = self.adaLN_modulation(t) # b, 2*hidden_size
-        z = z.unsqueeze(1).unsqueeze(1) # b, 1, 1, 2*hidden_size
-        shift, scale = z.chunk(2, dim=-1) # b, 1, hidden_size or b, 1, 1, hidden_size
-        x = modulate_fused(self.norm_final(x), shift, scale)
-        x = self.conv_out(x)
-
-        return x

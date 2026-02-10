@@ -22,7 +22,7 @@ class Integrator:
             dt = t_next - t_current 
             g_t = g_fn(t_current.expand(x.shape[0]))  # shape (b, 1, 1, 1)
 
-            drift = model(torch.cat((x, y), dim=-1), t_current.expand(x.shape[0]).unsqueeze(-1), **kwargs)
+            drift = model(torch.cat((x, y), dim=1), t_current.expand(x.shape[0]).unsqueeze(-1), **kwargs)
             
             y = self.step_fn(y, drift, dt, g_t)
         return y
@@ -103,17 +103,17 @@ class DriftScheduler(nn.Module):
         return x.pow(2).sum(-1).sum(-1).sum(-1)
 
     def compute_loss(self, x, y, model, **kwargs):
-        # x: [b nx ny d], source distribution. For PDEs this is u(t)
-        # y: [b nx ny d], target distribution. For PDEs this is u(t+dt)
-        # cond: [b cond_dim]
+        # x: [b c nx ny], source distribution. For PDEs this is u(t)
+        # y: [b c nx ny], target distribution. For PDEs this is u(t+dt)
+        # cond: [b c nx ny]
         
         noise = self.get_noise(size=y.shape, device=y.device).to(y.dtype)
 
         # no need to train on t=1
         t = torch.randint(0, self.num_train_timesteps-1, device=x.device, size=(x.shape[0],)) / (self.num_train_timesteps - 1)  # shape (b,)
 
-        dIdt = self.dIdt(x, y, t) # shape (b, nx, ny, d)
-        I = self.I(x, y, t) # shape (b, nx, ny, d)
+        dIdt = self.dIdt(x, y, t) # shape (b, c, nx, ny)
+        I = self.I(x, y, t) # shape (b, c, nx, ny)
 
         sigma_dot = self.sigma_dot(t) # shape (b, 1, 1, 1) 
         sigma = self.sigma(t) # shape (b, 1, 1, 1)
@@ -123,8 +123,8 @@ class DriftScheduler(nn.Module):
         if self.antithetic_sampling:
             I_p = I + sigma * W
             I_m = I - sigma * W
-            model_in_p = torch.cat([x, I_p], dim=-1)
-            model_in_m = torch.cat([x, I_m], dim=-1)
+            model_in_p = torch.cat([x, I_p], dim=1)
+            model_in_m = torch.cat([x, I_m], dim=1)
             target_p = dIdt + sigma_dot * W
             target_m = dIdt - sigma_dot * W
             drift_p = model(model_in_p, t.float().view(-1, 1), **kwargs)
@@ -135,7 +135,7 @@ class DriftScheduler(nn.Module):
 
         else:
             I_noised = I + sigma * W
-            model_in = torch.cat([x, I_noised], dim=-1)
+            model_in = torch.cat([x, I_noised], dim=1)
             drift = model(model_in, t.float().view(-1, 1), **kwargs)
             target = dIdt + sigma_dot * W
 
@@ -153,7 +153,7 @@ class DriftScheduler(nn.Module):
         
         # start y at the source distribution after first step
         # We take 1st step analytically since g_T can be singular at t=0 during Euler-Maruyama integration
-        input_0 = torch.cat([x, x], dim=-1)  # shape (b, nx, ny, 2d)
+        input_0 = torch.cat([x, x], dim=1)  # shape (b, nx, ny, 2d)
         sigma_0 = self.sigma(timesteps[0].expand(x.shape[0]), sample=True)  # shape (b, 1, 1, 1)
         noise_0 = self.get_noise(size=x.shape, device=x.device)
         dt = timesteps[1] - timesteps[0]
