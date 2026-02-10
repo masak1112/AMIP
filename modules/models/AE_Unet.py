@@ -89,7 +89,7 @@ class AttentionBlock(nn.Module):
 
     """
 
-    def __init__(self, n_channels: int, n_heads: int = 1, d_k: Optional[int] = None, n_groups: int = 1):
+    def __init__(self, n_channels: int, n_heads: int = 1, d_k: Optional[int] = None):
         """ """
         super().__init__()
 
@@ -97,7 +97,6 @@ class AttentionBlock(nn.Module):
         if d_k is None:
             d_k = n_channels
         # Normalization layer
-        self.norm = nn.GroupNorm(n_groups, n_channels)
         # Projections for query, key and values
         self.projection = nn.Linear(n_channels, n_heads * d_k * 3)
         # Linear layer for final transformation
