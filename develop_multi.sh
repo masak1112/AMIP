@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #PBS -N AE_SI_Multi
-#PBS -l select=4:ncpus=64:mpiprocs=4:ngpus=4:mem=384GB
+#PBS -l select=2:ncpus=16:ngpus=4:mem=120G
 #PBS -q develop
 #PBS -l walltime=00:10:00
 #PBS -A UCHI0014
