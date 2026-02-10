@@ -1,6 +1,6 @@
 model:
     model_name: AE_SI
-    lr: 1.0e-5
+    lr: 5.0e-5
     AE_SI:
         encoder:
             downsample_factor: 4

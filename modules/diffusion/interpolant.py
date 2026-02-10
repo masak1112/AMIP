@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 class Integrator:
     def __init__(self,
@@ -139,7 +140,8 @@ class DriftScheduler(nn.Module):
             drift = model(model_in, t.float().view(-1, 1), **kwargs)
             target = dIdt + sigma_dot * W
 
-            loss= self.image_sq_norm(drift - target).mean()
+            #loss= self.image_sq_norm(drift - target).mean()
+            loss = F.mse_loss(drift, target) / F.mse_loss(target, torch.zeros_like(target))
 
         return loss
 
