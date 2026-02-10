@@ -381,7 +381,7 @@ class DecoderResNet(nn.Module):
         nn.init.constant_(self.adaLN_modulation[0].weight, 0)
         nn.init.constant_(self.adaLN_modulation[0].bias, 0)
 
-            # Zero-out adaLN modulation layers in DiT blocks:
+        # Zero-out adaLN modulation layers in blocks:
         for block in self.blocks:
             nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
             nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
