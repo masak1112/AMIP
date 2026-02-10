@@ -100,7 +100,7 @@ class AutoencoderModule(L.LightningModule):
             self.history = True
             self.decoder_only = True
         elif self.model_name == "AE_SI":
-            from modules.AE_Unet import DecoderUnet
+            from modules.models.AE_Unet import DecoderUnet
             from modules.models.AE_simple import BilinearEncoder, BilinearDecoder
             from modules.diffusion.interpolant import DriftScheduler
             self.downsample = BilinearEncoder(**self.modelconfig["AE_SI"]["encoder"])
