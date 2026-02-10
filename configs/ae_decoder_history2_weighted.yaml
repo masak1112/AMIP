@@ -42,6 +42,6 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip
     wandb_mode: online
-    checkpoint: null
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/AE_History2_decoder_history2_weighted_42_2026-02-09T14-20-39/last.ckpt
     description: decoder_history2_weighted
     accumulate_grad_batches: 16
