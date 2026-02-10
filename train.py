@@ -98,6 +98,7 @@ def main(args):
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
     
     trainer = L.Trainer(devices = trainconfig["devices"],
+                        num_nodes = trainconfig.get("num_nodes", 1),
                         accelerator = trainconfig["accelerator"],
                         strategy = trainconfig["strategy"],
                         check_val_every_n_epoch = trainconfig["check_val_every_n_epoch"],
