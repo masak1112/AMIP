@@ -10,7 +10,7 @@ model:
             hidden_channels: 768
             norm: True
             ch_mults: [1, 1, 1]
-            mid_attn: True
+            mid_attn: False
             n_blocks: 2
         scheduler:
             num_refinement_steps: 10
