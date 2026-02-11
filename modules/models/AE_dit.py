@@ -247,3 +247,129 @@ class ClimaDiT(nn.Module):
         surface, multilevel, diagnostic = self.disassemble_input(z, use_diagnostic=(diagnostic_history is not None))
 
         return surface, multilevel, diagnostic
+    
+
+class ClimaSiT(nn.Module):
+
+    def __init__(self, 
+                 in_dim,
+                 out_dim,
+                 dim,
+                 num_heads,
+                 num_blocks,
+                 nlat = 180,
+                 nlon = 360,
+                 dropout = 0,
+                 nsurface=6,
+                 ndiagnostic=9,
+                 nlevels=26
+                 ):
+        super().__init__()
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.dim = dim
+        self.num_heads = num_heads
+        self.num_fa_blocks = num_blocks
+        self.num_ca_blocks = num_blocks
+        self.num_blocks = num_blocks
+        self.nlat = nlat
+        self.nlon = nlon
+        self.dropout = dropout
+        self.nsurface = nsurface
+        self.ndiagnostic = ndiagnostic
+        self.nlevels = nlevels
+
+        self.grid_x = self.nlat 
+        self.grid_y = self.nlon 
+
+        self.with_poles = False
+
+        # input embedding
+        self.x_embed = PatchEmbed(patch_size=1,
+                                      in_chans=self.in_dim,
+                                      hidden_size=self.dim,
+                                      flatten=False)
+
+        # positional embedding
+        l_max = 20
+        self.pe_embed = SphericalHarmonicsPE(l_max, self.dim, self.dim,
+                                             use_mlp=True)
+        self.pe2patch = PatchEmbed(patch_size=1,
+                                   in_chans=self.dim,
+                                   hidden_size=self.dim,
+                                   flatten=False)
+        
+        self.cond_embedder = TimestepEmbedder(self.dim)
+
+        fa_blocks = []
+        for _ in range(self.num_fa_blocks):
+            fa_blocks.append(FADiTBlockS2(self.dim,
+                                       self.dim // self.num_heads,
+                                       self.num_heads,
+                                       self.dim,
+                                       self.dim,
+                                       self.dim,
+                                       use_softmax=True,
+                                       depth_dropout=self.dropout))
+            
+        self.fa_blocks = nn.ModuleList(fa_blocks)
+        
+        self.out_proj = nn.Sequential(
+            nn.LayerNorm(self.dim),
+            nn.Linear(self.dim, self.out_dim))
+        
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        # Initialize transformer layers:
+        def _basic_init(module):
+            if isinstance(module, nn.Linear) or isinstance(module, nn.Conv2d):
+                torch.nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+        self.apply(_basic_init)
+
+    @torch.no_grad()
+    def get_grid(self, nlat, nlon, device):
+        # create lat, lon grid
+        if self.with_poles:
+            lat = torch.linspace(-math.pi / 2, math.pi / 2, nlat).to(device)
+        else:
+            # assume equiangular grid
+            lat_end = (nlat - 1) * (2 * math.pi / nlon) / 2
+            lat = torch.linspace(-lat_end, lat_end, nlat).to(device)
+
+        lon = torch.linspace(0, 2 * math.pi - (2 * math.pi / nlon), nlon).to(device)
+        latlon = torch.stack(torch.meshgrid(lat, lon), dim=-1)
+        return latlon, lat, lon
+
+    def forward(self, x, t=None):
+        # x in shape b nx ny c
+
+        batch_size = x.size(0)
+        nlat, nlon, = x.size(1), x.size(2)
+        _, lat, lon = self.get_grid(nlat, nlon, x.device)
+
+        lat_diff = lat.unsqueeze(0) - lat.unsqueeze(1)
+        lon_diff = lon.unsqueeze(0) - lon.unsqueeze(1)
+
+        # patchify x
+        x = self.x_embed(x) # [b, nlat, nlon, c] -> [b, nlat, nlon, dim]
+
+        # patchify pos embed, lat from 0 to pi, lon from -pi to pi
+        sphere_pe = self.pe_embed(lat + math.pi/2, lon - math.pi).expand(batch_size, -1, -1, -1) # [b, nlat, nlon, dim]
+        sphere_pe = self.pe2patch(sphere_pe) # [b, nlat, nlon, dim]
+
+        x = x + sphere_pe   # [b, nlat, nlon, dim]
+
+        if t is None:
+            t = torch.ones(batch_size, 1, device=x.device)
+
+        c = self.cond_embedder(t)
+
+        for l in range(self.num_blocks):
+            x = self.fa_blocks[l](x, lat, lat_diff, lon_diff, c)
+
+        x = self.out_proj(x) # [b, h, w, out_dim]
+
+        return x
