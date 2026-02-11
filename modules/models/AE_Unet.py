@@ -435,7 +435,7 @@ class DecoderUnet(nn.Module):
     def forward(self, 
                 x: torch.Tensor,
                 t: torch.Tensor,
-                cond: torch.Tensor) -> torch.Tensor:
+                cond: torch.Tensor = None) -> torch.Tensor:
         """
         Args:
             x (torch.Tensor): input tensor of shape [batch, c, x, y]

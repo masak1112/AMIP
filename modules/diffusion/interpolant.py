@@ -155,7 +155,7 @@ class DriftScheduler(nn.Module):
         
         # start y at the source distribution after first step
         # We take 1st step analytically since g_T can be singular at t=0 during Euler-Maruyama integration
-        input_0 = torch.cat([x, x], dim=1)  # shape (b, nx, ny, 2d)
+        input_0 = torch.cat([x, x], dim=1)  # shape (b, 2d nx, ny)
         sigma_0 = self.sigma(timesteps[0].expand(x.shape[0]), sample=True)  # shape (b, 1, 1, 1)
         noise_0 = self.get_noise(size=x.shape, device=x.device)
         dt = timesteps[1] - timesteps[0]
@@ -163,7 +163,7 @@ class DriftScheduler(nn.Module):
         dW = torch.sqrt(dt) * noise_0
 
         if self.method == "em":
-            y = x + drift_0*dt + sigma_0 * dW # shape (b, nx, ny, d)
+            y = x + drift_0*dt + sigma_0 * dW # shape (b, d, nx, ny)
         else:
             y = x + drift_0*dt
 

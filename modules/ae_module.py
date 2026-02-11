@@ -108,7 +108,6 @@ class AutoencoderModule(L.LightningModule):
 
             self.decoder = DecoderUnet(**self.modelconfig["AE_SI"]["decoder"])
             self.scheduler = DriftScheduler(**self.modelconfig["AE_SI"]["scheduler"])
-            self.history = True
             self.decoder_only = True 
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
@@ -121,8 +120,13 @@ class AutoencoderModule(L.LightningModule):
         self.save_hyperparameters()
 
     def forward(self, surface, multilevel, diagnostic):
+        if self.scheduler is not None:
+            z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface, multilevel, diagnostic))
+            x = assemble_input(z_surface, z_multilevel, z_diagnostic)
+            y = self.scheduler.sample(x, self.decoder)
+            surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
 
-        if self.separate_diagnostic:
+        elif self.separate_diagnostic:
             multilevel = multilevel[..., :5] # remove cloud and vertical velocity from inputs
             z_surface, z_multilevel, _ = self.encoder(surface, multilevel, None)
             surface_pred, multilevel_pred, diagnostic_pred = self.decoder(z_surface, z_multilevel, None)
@@ -180,20 +184,31 @@ class AutoencoderModule(L.LightningModule):
     def training_step(self, batch, batch_idx):
         
         if self.scheduler is not None:
-            surface_history = batch['surface'][:, 0] # b nlat nlon c
-            multilevel_history = batch['multilevel'][:, 0]
-            diagnostic_history = batch['diagnostic'][:, 0]
+            if not self.history:
+                surface_data = batch['surface'][:, 0] # b nlat nlon c
+                multilevel_data = batch['multilevel'][:, 0] # b nlevel nlat nlon c
+                diagnostic_data = batch['diagnostic'][:, 0] # b nlat nlon c
 
-            surface_data = batch['surface'][:, 1] # b nlat nlon c
-            multilevel_data = batch['multilevel'][:, 1]
-            diagnostic_data = batch['diagnostic'][:, 1]
+                z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface_data, multilevel_data, diagnostic_data))
+                x = assemble_input(z_surface, z_multilevel, z_diagnostic)
+                y = assemble_input(surface_data, multilevel_data, diagnostic_data)
+                loss = self.scheduler.compute_loss(x, y, self.decoder)
 
-            cond = assemble_input(surface_history, multilevel_history, diagnostic_history)
-            z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface_data, multilevel_data, diagnostic_data))
-            x = assemble_input(z_surface, z_multilevel, z_diagnostic)
-            y = assemble_input(surface_data, multilevel_data, diagnostic_data)
+            else:
+                surface_history = batch['surface'][:, 0] # b nlat nlon c
+                multilevel_history = batch['multilevel'][:, 0]
+                diagnostic_history = batch['diagnostic'][:, 0]
 
-            loss = self.scheduler.compute_loss(x, y, self.decoder, cond=cond)
+                surface_data = batch['surface'][:, 1] # b nlat nlon c
+                multilevel_data = batch['multilevel'][:, 1]
+                diagnostic_data = batch['diagnostic'][:, 1]
+
+                cond = assemble_input(surface_history, multilevel_history, diagnostic_history)
+                z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface_data, multilevel_data, diagnostic_data))
+                x = assemble_input(z_surface, z_multilevel, z_diagnostic)
+                y = assemble_input(surface_data, multilevel_data, diagnostic_data)
+
+                loss = self.scheduler.compute_loss(x, y, self.decoder, cond=cond)
             self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
 
             return loss 
