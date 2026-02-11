@@ -4,7 +4,6 @@ model:
     # [t, u, v, z, q, lwc, iwc, cc, w]
     multi_level_variable_weight: [1.0, 1.0, 1.0, 10.0, 1.0, 0.25, 0.25, 0.25, 1.0]
     level_weight: cosine
-    spectral_loss_weight: 0.05
     AE_History:
         encoder:
             downsample_factor: 4
@@ -43,6 +42,6 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip
     wandb_mode: online
-    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/AE_History2_decoder_history2_weighted_spectral_0.5_42_2026-02-10T08-41-09/last.ckpt
-    description: decoder_history2_weighted_spectral_0.5
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/AE_History2_decoder_history2_weighted_spectral_0.5_42_2026-02-10T19-03-28/last.ckpt
+    description: decoder_history2_weighted_spectral_0.5_ft_0.0
     accumulate_grad_batches: 16
