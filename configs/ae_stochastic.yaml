@@ -15,6 +15,7 @@ model:
             hidden_channels: 512
             z_channels: 249
             noise_dim: 64
+            ch_mult: [1, 1, 2]
             upsample_type: dc
             padding_mode: circular
 
