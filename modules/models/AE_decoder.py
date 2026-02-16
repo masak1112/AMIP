@@ -295,7 +295,7 @@ class CondResnetBlock(nn.Module):
         h = self.conv1(h)
 
         h = self.norm2(h)
-        h = modulate_fused(h, shift2, scale2)
+        h = modulate_fused(h, shift, scale)
         h = nonlinearity(h)
         h = self.dropout(h)
         h = self.conv2(h)
