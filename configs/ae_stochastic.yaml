@@ -14,7 +14,7 @@ model:
             out_channels: 249  # 6 + 26*9 + 9 = 249
             hidden_channels: 512
             z_channels: 249
-            noise_dim: 32
+            noise_dim: 64
             upsample_type: dc
             padding_mode: circular
 
