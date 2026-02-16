@@ -262,7 +262,7 @@ class CondResnetBlock(nn.Module):
         
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
-            nn.Linear(out_channels, 4 * out_channels, bias=True)
+            nn.Linear(out_channels, 2 * out_channels, bias=True)
         )
 
 
@@ -284,16 +284,13 @@ class CondResnetBlock(nn.Module):
                                             padding=0)
 
     def forward(self, x, c):
-        shift1, scale1, shift2, scale2 = self.adaLN_modulation(c).chunk(4, dim=1)
+        shift, scale= self.adaLN_modulation(c).chunk(2, dim=1)
         # Unsqueeze for spatial broadcasting: (B, C) -> (B, C, 1, 1)
-        shift1 = shift1.unsqueeze(-1).unsqueeze(-1)
-        scale1 = scale1.unsqueeze(-1).unsqueeze(-1)
-        shift2 = shift2.unsqueeze(-1).unsqueeze(-1)
-        scale2 = scale2.unsqueeze(-1).unsqueeze(-1)
+        shift = shift.unsqueeze(-1).unsqueeze(-1)
+        scale = scale.unsqueeze(-1).unsqueeze(-1)
 
         h = x
         h = self.norm1(h)
-        h = modulate_fused(h, shift1, scale1)
         h = nonlinearity(h)
         h = self.conv1(h)
 
