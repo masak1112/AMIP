@@ -1,15 +1,8 @@
-from typing import Any, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 from einops import rearrange
-from modules.models.AE_simple import ResnetBlock, Upsample, DCUpsample, make_attn, DCDownsample
-from modules.layers.fa_basics import modulate_fused
-from modules.layers.positional_encoding import TimestepEmbedder
+from modules.models.AE_simple import ResnetBlock, Upsample, DCUpsample, make_attn
 from modules.layers.patchify import PatchEmbed
-
-
-# Largely based on https://github.com/labmlai/annotated_deep_learning_paper_implementations/blob/master/labml_nn/diffusion/ddpm/unet.py
-# MIT License
 
 TYPE = "group"
 
@@ -230,6 +223,127 @@ class DecoderHistory(nn.Module):
 
         return surface_out, multilevel_out, diagnostic_out
     
+
+class ChannelLayerNorm(nn.Module):
+    """
+    Layer Normalization over third-last channel dimension.
+    """
+
+    def __init__(
+        self, n_channels: int, eps: float = 1e-5, elementwise_affine: bool = False
+    ):
+        super(ChannelLayerNorm, self).__init__()
+        self.n_channels = n_channels
+        self.eps = eps
+        self.elementwise_affine = elementwise_affine
+        if self.elementwise_affine:
+            self.weight = nn.Parameter(torch.ones(n_channels))
+            self.bias = nn.Parameter(torch.zeros(n_channels))
+        else:
+            self.weight = None
+            self.bias = None
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        if self.elementwise_affine:
+            torch.nn.init.constant_(self.weight, 1.0)
+            torch.nn.init.constant_(self.bias, 0.0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() < 2:
+            raise ValueError(
+                f"Expected at least 3D input with channel at dim=-3, got shape {tuple(x.shape)}"
+            )
+        if x.size(-3) != self.n_channels:
+            raise ValueError(
+                f"Channel dimension mismatch: got C={x.size(-3)}, expected {self.n_channels}"
+            )
+
+        # Compute per-pixel mean/var across channels without transposing
+        mean = x.mean(dim=-3, keepdim=True)
+        var = x.var(dim=-3, keepdim=True, unbiased=False)
+        inv_std = torch.rsqrt(var + self.eps)
+        y = (x - mean) * inv_std
+
+        if self.weight is not None and self.bias is not None:
+            # Broadcast [C] over [N, C, *spatial]
+            shape = [1, -1] + [1] * (x.dim() - 2)
+            y = y * self.weight.view(*shape) + self.bias.view(*shape)
+        return y
+
+
+class ConditionalLayerNorm(nn.Module):
+    """
+    Conditional Layer Normalization as described in "AdaSpeech: Adaptive
+    Text to Speech for Custom Voice" https://arxiv.org/abs/2103.00993.
+
+    Assumes that the input has shape (batch_size, channels, height, width).
+    """
+
+    def __init__(
+        self,
+        embed_dim: int,
+        n_channels: int,
+        epsilon: float = 1e-5,
+        elementwise_affine: bool = False,
+    ):
+        super(ConditionalLayerNorm, self).__init__()
+        self.n_channels = n_channels
+        self.epsilon = epsilon
+
+        self.W_scale: nn.Linear | None = nn.Linear(
+            embed_dim, self.n_channels
+        )
+        self.W_bias: nn.Linear | None = nn.Linear(
+            embed_dim, self.n_channels
+        )
+
+        self.norm = ChannelLayerNorm(
+            self.n_channels,
+            eps=epsilon,
+            elementwise_affine=elementwise_affine,
+        )
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        torch.nn.init.constant_(self.W_scale.weight, 0.0)
+        torch.nn.init.constant_(self.W_scale.bias, 1.0)
+
+        torch.nn.init.constant_(self.W_bias.weight, 0.0)
+        torch.nn.init.constant_(self.W_bias.bias, 0.0)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        context
+    ) -> torch.Tensor:
+        """
+        Conditional Layer Normalization
+
+        This is a modified version of LayerNorm that allows the scale and bias to be
+        conditioned on a context embedding.
+
+        Args:
+            x: The input tensor to normalize, of shape
+                (batch_size, channels, height, width).
+            context: The context to condition on.
+
+        Returns:
+            The normalized tensor, of shape (batch_size, channels, height, width).
+        """
+
+        scale: torch.Tensor = (
+            self.W_scale(context).unsqueeze(-1).unsqueeze(-1)
+        )
+
+        bias: torch.Tensor = (
+            self.W_bias(context).unsqueeze(-1).unsqueeze(-1)
+        )
+
+        x_norm: torch.Tensor = self.norm(x)
+        return_value = x_norm * scale + bias
+        return return_value
+    
 class CondResnetBlock(nn.Module):
     def __init__(self, in_channels, out_channels=None, cond_channels=None, conv_shortcut=False,
                  dropout=0, dim=2, padding_mode='zeros', kernel_size=3, padding=1):
@@ -241,7 +355,7 @@ class CondResnetBlock(nn.Module):
         self.use_conv_shortcut = conv_shortcut
         self.dim = dim
 
-        self.norm1 = Normalize(in_channels)
+        self.norm1 = ConditionalLayerNorm(cond_channels, in_channels, elementwise_affine=True)
         self.conv1 = conv_nd(dim,
                             in_channels,
                             out_channels,
@@ -250,7 +364,7 @@ class CondResnetBlock(nn.Module):
                             padding=padding,
                             padding_mode=padding_mode)
 
-        self.norm2 = Normalize(out_channels)
+        self.norm2 = ConditionalLayerNorm(cond_channels, out_channels, elementwise_affine=True)
         self.dropout = torch.nn.Dropout(dropout)
         self.conv2 = conv_nd(dim,
                             out_channels,
@@ -260,12 +374,6 @@ class CondResnetBlock(nn.Module):
                             padding=padding,
                             padding_mode=padding_mode)
         
-        self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(out_channels, 2 * out_channels, bias=True)
-        )
-
-
         if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
                 self.conv_shortcut = conv_nd(dim,
@@ -284,18 +392,13 @@ class CondResnetBlock(nn.Module):
                                             padding=0)
 
     def forward(self, x, c):
-        shift, scale= self.adaLN_modulation(c).chunk(2, dim=1)
-        # Unsqueeze for spatial broadcasting: (B, C) -> (B, C, 1, 1)
-        shift = shift.unsqueeze(-1).unsqueeze(-1)
-        scale = scale.unsqueeze(-1).unsqueeze(-1)
 
         h = x
-        h = self.norm1(h)
+        h = self.norm1(h, c)
         h = nonlinearity(h)
         h = self.conv1(h)
 
-        h = self.norm2(h)
-        h = modulate_fused(h, shift, scale)
+        h = self.norm2(h, c)
         h = nonlinearity(h)
         h = self.dropout(h)
         h = self.conv2(h)
