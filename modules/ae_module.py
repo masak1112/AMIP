@@ -121,6 +121,15 @@ class AutoencoderModule(L.LightningModule):
             self.decoder = ClimaSiT(**self.modelconfig["AE_SI"]["decoder"])
             self.scheduler = DriftScheduler(**self.modelconfig["AE_SI"]["scheduler"])
             self.decoder_only = True
+        elif self.model_name == "AE_SI_DDC":
+            from modules.models.SI_DiT import SIDiT
+            from modules.models.AE_simple import BilinearEncoder, BilinearDecoder
+            from modules.diffusion.data_dependent_interpolant import DataDependentInterpolant
+            self.downsample = BilinearEncoder(**self.modelconfig["AE_SI_DDC"]["encoder"])
+            self.upsample = BilinearDecoder(**self.modelconfig["AE_SI_DDC"]["encoder"])
+            self.decoder = SIDiT(**self.modelconfig["AE_SI_DDC"]["decoder"])
+            self.scheduler = DataDependentInterpolant(**self.modelconfig["AE_SI_DDC"]["scheduler"])
+            self.decoder_only = True
         elif self.model_name == "AE_Stochastic":
             from modules.models.AE_decoder import StochasticDecoderHistory
             from modules.models.AE_simple import BilinearEncoder
