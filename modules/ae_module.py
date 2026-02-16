@@ -48,6 +48,8 @@ class AutoencoderModule(L.LightningModule):
 
         self.history = False
         self.decoder_only = False
+        self.stochastic = False
+        self.n_ensemble = 1
         self.scheduler = None
         
         if self.model_name == "DCAE":
@@ -118,7 +120,33 @@ class AutoencoderModule(L.LightningModule):
 
             self.decoder = ClimaSiT(**self.modelconfig["AE_SI"]["decoder"])
             self.scheduler = DriftScheduler(**self.modelconfig["AE_SI"]["scheduler"])
-            self.decoder_only = True 
+            self.decoder_only = True
+        elif self.model_name == "AE_Stochastic":
+            from modules.models.AE_decoder import StochasticDecoderHistory
+            from modules.models.AE_simple import BilinearEncoder
+            from common.loss import SpectralCRPSLoss, FairCRPSLoss
+            self.encoder = BilinearEncoder(**self.modelconfig["AE_Stochastic"]["encoder"])
+            self.decoder = StochasticDecoderHistory(**self.modelconfig["AE_Stochastic"]["decoder"])
+            self.history = True
+            self.decoder_only = True
+            self.stochastic = True
+            self.n_ensemble = config['model'].get('n_ensemble', 2)
+            # Replace criterion with FairCRPSLoss (almost-fair when alpha < 1)
+            self.crps_alpha = config['model'].get('crps_alpha', 1.0)
+            self.criterion = FairCRPSLoss(
+                latitude_resolution=180,
+                longitude_resolution=360,
+                nlevels=26 // self.downsample_levels,
+                level_weight=self.level_weight,
+                surface_variable_weight=self.surface_variable_weight,
+                multi_level_variable_weight=self.multi_level_variable_weight,
+                diag_variable_weight=self.diag_variable_weight,
+                alpha=self.crps_alpha,
+                n_ensemble=self.n_ensemble,
+            )
+            self.spectral_criterion = SpectralCRPSLoss(img_shape=(180, 360),
+                                                       alpha = self.crps_alpha)
+
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
@@ -148,7 +176,7 @@ class AutoencoderModule(L.LightningModule):
     
     def forward_history(self, surface_history, multilevel_history, diagnostic_history,
                         surface, multilevel, diagnostic):
-        
+
         if self.scheduler is not None:
             z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface, multilevel, diagnostic))
             x = assemble_input(z_surface, z_multilevel, z_diagnostic)
@@ -164,9 +192,10 @@ class AutoencoderModule(L.LightningModule):
                                                                 z_surface, z_multilevel, None)
         else:
             z_surface, z_multilevel, z_diagnostic = self.encoder(surface, multilevel, diagnostic)
-            surface_pred, multilevel_pred, diagnostic_pred = self.decoder(surface_history, multilevel_history, diagnostic_history,
-                                                                        z_surface, z_multilevel, z_diagnostic)
-        
+            surface_pred, multilevel_pred, diagnostic_pred = self.decoder(
+                surface_history, multilevel_history, diagnostic_history,
+                z_surface, z_multilevel, z_diagnostic)
+
         return surface_pred, multilevel_pred, diagnostic_pred
     
     def compute_loss(self, 
@@ -193,6 +222,7 @@ class AutoencoderModule(L.LightningModule):
     
     def training_step(self, batch, batch_idx):
         
+        # diffusion training
         if self.scheduler is not None:
             if not self.history:
                 surface_data = batch['surface'][:, 0] # b nlat nlon c
@@ -219,16 +249,16 @@ class AutoencoderModule(L.LightningModule):
                 y = assemble_input(surface_data, multilevel_data, diagnostic_data)
 
                 loss = self.scheduler.compute_loss(x, y, self.decoder, cond=cond)
-            self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
 
-            return loss 
-
-        if not self.history:
+        # standard autoencoder training
+        elif not self.history:
             surface_data = batch['surface'][:, 0] # b nlat nlon c
             multilevel_data = batch['multilevel'][:, 0] # b nlevel nlat nlon c
             diagnostic_data = batch['diagnostic'][:, 0] # b nlat nlon c
 
             surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
+
+        # history-based training for decoder-only
         else:
             surface_history = batch['surface'][:, 0] # b nlat nlon c
             multilevel_history = batch['multilevel'][:, 0]
@@ -238,20 +268,46 @@ class AutoencoderModule(L.LightningModule):
             multilevel_data = batch['multilevel'][:, 1]
             diagnostic_data = batch['diagnostic'][:, 1]
 
-            surface_pred, multilevel_pred, diagnostic_pred = self.forward_history(
-                surface_history, multilevel_history, diagnostic_history,
-                surface_data, multilevel_data, diagnostic_data)
+            if self.stochastic:
+                s_pred1, m_pred1, d_pred1 = self.forward_history(
+                    surface_history, multilevel_history, diagnostic_history,
+                    surface_data, multilevel_data, diagnostic_data)
+                s_pred2, m_pred2, d_pred2 = self.forward_history(
+                    surface_history, multilevel_history, diagnostic_history,
+                    surface_data, multilevel_data, diagnostic_data)
 
-        loss = self.compute_loss(surface_pred, surface_data,
-                                multilevel_pred, multilevel_data,
-                                diagnostic_pred, diagnostic_data)
+                # Fair CRPS loss
+                crps_loss = self.criterion(s_pred1, s_pred2, surface_data,
+                                        m_pred1, m_pred2, multilevel_data,
+                                        d_pred1, d_pred2, diagnostic_data)
+
+                if self.spectral_criterion is not None:
+                    forecasts = torch.stack([assemble_input(s_pred1, m_pred1, d_pred1),
+                                            assemble_input(s_pred2, m_pred2, d_pred2)], dim=1) # b n_ensemble c h w
+                    observation = assemble_input(surface_data, multilevel_data, diagnostic_data) # b c h w
+                    spectral_loss = self.spectral_loss_weight * self.spectral_criterion(forecasts, observation)
+                    loss = crps_loss + spectral_loss
+                    self.log("train/spectral_loss", spectral_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
+                else:
+                    loss = crps_loss
+
+                self.log("train/crps_loss", crps_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
+
+            else:
+                surface_pred, multilevel_pred, diagnostic_pred = self.forward_history(
+                    surface_history, multilevel_history, diagnostic_history,
+                    surface_data, multilevel_data, diagnostic_data)
+
+                loss = self.compute_loss(surface_pred, surface_data,
+                                        multilevel_pred, multilevel_data,
+                                        diagnostic_pred, diagnostic_data)
 
         self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
 
-        return loss 
+        return loss
 
-    def validation_step(self, batch, batch_idx): 
-        
+    def validation_step(self, batch, batch_idx):
+
         if not self.history:
             surface_data = batch['surface'][:, 0] # b nlat nlon c
             multilevel_data = batch['multilevel'][:, 0] # b nlevel nlat nlon c
