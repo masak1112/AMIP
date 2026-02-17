@@ -1,6 +1,6 @@
 model:
     model_name: AE_SI_DDC
-    lr: 5.0e-4
+    lr: 5.0e-5
     AE_SI_DDC:
         encoder:
             downsample_factor: 4
@@ -35,7 +35,7 @@ training:
     devices: 4
     accelerator: gpu
     strategy: ddp
-    precision: bf16-mixed
+    precision: 32-true 
     check_val_every_n_epoch: 1
     log_every_n_steps: 10
     max_epochs: 50
@@ -46,4 +46,4 @@ training:
     wandb_mode: online
     checkpoint: null
     description: SI_DDC_DiT_History
-    accumulate_grad_batches: 8
+    accumulate_grad_batches: 16
