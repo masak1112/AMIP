@@ -7,7 +7,7 @@ model:
         decoder:
             in_dim: 249                  # 6 surface + 9 diagnostic + 26*9 multilevel
             out_dim: 249
-            dim: 512
+            dim: 384
             num_heads: 8                 # dim_head = 64, divisible by 4 for 2D RoPE
             num_blocks: 16
             patch_size_lr: 3            # 45x90 -> 15x30 grid (450 LR tokens)
