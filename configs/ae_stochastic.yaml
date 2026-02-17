@@ -47,6 +47,6 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip
     wandb_mode: online
-    checkpoint: null
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/AE_Stochastic_stochastic_crps_spectral_42_2026-02-16T15-15-29/last.ckpt
     description: stochastic_crps_spectral
     accumulate_grad_batches: 16
