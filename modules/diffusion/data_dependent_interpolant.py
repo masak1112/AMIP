@@ -47,7 +47,7 @@ class DataDependentInterpolant(nn.Module):
         """Time derivative of beta: 1"""
         return torch.ones_like(t)
 
-    def compute_loss(self, x_lowres, x_highres, model):
+    def compute_loss(self, x_lowres, x_highres, model, cond=None):
         """
         Algorithm 1 from the paper: velocity matching training.
 
@@ -60,9 +60,11 @@ class DataDependentInterpolant(nn.Module):
         (equivalent to MSE up to a constant)
 
         Args:
-            x_lowres: [b, c, h, w] — m(x1), the upsampled low-res (source base)
+            x_lowres: [b, c, h, w] — m(x1), the upsampled low-res (source base);
+                      also concatenated channel-wise with I_t as model input
             x_highres: [b, c, h, w] — x1, ground truth (target distribution)
-            model: velocity predictor, called as model(I_t, t, cond=x_lowres)
+            model: velocity predictor, called as model(I_t, t, cond=x_lowres, history=cond)
+            cond: [b, c, h, w] — optional high-res prior state/history for cross-attention
 
         Returns:
             scalar loss
@@ -97,7 +99,7 @@ class DataDependentInterpolant(nn.Module):
         v_target = alpha_dot_t * x0 + beta_dot_t * x1  # = x1 - x0
 
         # Model predicts velocity
-        v_pred = model(I_t, t[:, None], cond=x_lowres)
+        v_pred = model(I_t, t[:, None], cond=x_lowres, history=cond)
 
         # Loss: |b_hat|^2 - 2 * v_target . b_hat  (equivalent to MSE up to constant |v_target|^2)
         loss = (v_pred ** 2 - 2 * v_target * v_pred).mean()
@@ -105,7 +107,7 @@ class DataDependentInterpolant(nn.Module):
         return loss
 
     @torch.no_grad()
-    def sample(self, x_lowres, model, num_steps=None):
+    def sample(self, x_lowres, model, num_steps=None, cond=None):
         """
         Algorithm 2 from the paper: forward Euler ODE integration.
 
@@ -118,6 +120,7 @@ class DataDependentInterpolant(nn.Module):
             x_lowres: [b, c, h, w] — m(x1), upsampled low-res conditioning
             model: velocity predictor
             num_steps: number of integration steps N (default: self.num_refinement_steps)
+            cond: [b, c, h, w] — optional high-res prior state/history for cross-attention
 
         Returns:
             [b, c, h, w] predicted high-res output
@@ -139,10 +142,10 @@ class DataDependentInterpolant(nn.Module):
             t_batch = torch.full((x_lowres.shape[0], 1), t_n,
                                  device=x_lowres.device, dtype=x_lowres.dtype)
 
-            v = model(y, t_batch, cond=x_lowres)
+            v = model(y, t_batch, cond=x_lowres, history=cond)
             y = y + dt * v
 
         return y
 
-    def forward(self, x_lowres, x_highres, model):
-        return self.compute_loss(x_lowres, x_highres, model)
+    def forward(self, x_lowres, x_highres, model, cond=None):
+        return self.compute_loss(x_lowres, x_highres, model, cond=cond)

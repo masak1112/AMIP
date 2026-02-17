@@ -129,6 +129,7 @@ class AutoencoderModule(L.LightningModule):
             self.upsample = BilinearDecoder(**self.modelconfig["AE_SI_DDC"]["encoder"])
             self.decoder = SIDiT(**self.modelconfig["AE_SI_DDC"]["decoder"])
             self.scheduler = DataDependentInterpolant(**self.modelconfig["AE_SI_DDC"]["scheduler"])
+            self.history = self.modelconfig["AE_SI_DDC"]["decoder"].get("use_history", False)
             self.decoder_only = True
         elif self.model_name == "AE_Stochastic":
             from modules.models.AE_decoder import StochasticDecoderHistory

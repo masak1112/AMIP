@@ -91,9 +91,10 @@ class SIDiT(nn.Module):
     Patchified Diffusion Transformer for stochastic interpolant velocity prediction.
 
     Architecture:
-    - PatchEmbed: (2*in_channels) @ nlat x nlon -> dim @ (nlat/p) x (nlon/p) tokens
-      (noised interpolant I_t concatenated channel-wise with downsampled current state)
-    - Separate conditioning encoder for high-res history via cross-attention
+    - PatchEmbed for main input:
+        - use_history=True:  (2*in_channels) — I_t concat with downsampled current state
+        - use_history=False: (in_channels)   — I_t only, with cond via cross-attention
+    - Separate conditioning encoder for cross-attention context
     - Spherical harmonic positional encoding
     - N blocks of: DiTBlock (vanilla self-attn with AdaLN) + CrossAttentionBlock
     - Unpatchify: dim -> out_channels @ nlat x nlon
@@ -110,7 +111,8 @@ class SIDiT(nn.Module):
                  nlat=180,
                  nlon=360,
                  dropout=0.0,
-                 unpatch="vanilla"):
+                 unpatch="vanilla",
+                 use_history=False):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -121,6 +123,7 @@ class SIDiT(nn.Module):
         self.nlat = nlat
         self.nlon = nlon
         self.dropout = dropout
+        self.use_history = use_history
 
         # Pad spatial dims to be divisible by patch_size
         self.nlat_pad = math.ceil(nlat / patch_size) * patch_size
@@ -132,14 +135,17 @@ class SIDiT(nn.Module):
         self.grid_y = self.nlon_pad // patch_size
         self.with_poles = False
 
-        # Patch embedding for [I_t; cond] (noised interpolant concat with downsampled current state)
+        # Patch embedding for main input
+        # use_history: [I_t; cond] channel-wise concat (2*c), cross-attn attends to history
+        # no history:  I_t only (c), cross-attn attends to cond
+        main_in_chans = 2 * in_channels if use_history else in_channels
         self.patch_embed_main = PatchEmbed(
             patch_size=patch_size,
-            in_chans=2 * in_channels,
+            in_chans=main_in_chans,
             hidden_size=dim,
             flatten=False)
 
-        # Patch embedding for high-res history (cross-attention context)
+        # Patch embedding for cross-attention context (history or cond)
         self.patch_embed_cond = PatchEmbed(
             patch_size=patch_size,
             in_chans=in_channels,
@@ -221,12 +227,16 @@ class SIDiT(nn.Module):
         lon = torch.linspace(0, 2 * math.pi - (2 * math.pi / nlon), nlon).to(device)
         return lat, lon
 
-    def forward(self, x_noised, t, cond):
+    def forward(self, x_noised, t, cond, history=None):
         """
         Args:
             x_noised: [b, c, nlat, nlon] — interpolant I_t (channel-first from assemble_input)
             t: [b, 1] — timestep
-            cond: [b, c, nlat, nlon] — x_lowres conditioning (channel-first)
+            cond: [b, c, nlat, nlon] — downsampled current state (channel-first).
+                  When use_history=True: concatenated channel-wise with x_noised.
+                  When use_history=False: used as cross-attention context.
+            history: [b, c, nlat, nlon] — high-res prior state/history (channel-first),
+                     used as cross-attention context when use_history=True. Ignored otherwise.
 
         Returns:
             [b, c, nlat, nlon] — predicted velocity (channel-first)
@@ -234,18 +244,27 @@ class SIDiT(nn.Module):
         batch_size = x_noised.shape[0]
         nlat, nlon = self.nlat, self.nlon
 
+        if self.use_history:
+            # History mode: concat cond channel-wise with I_t, cross-attend to history
+            x_input = torch.cat([x_noised, cond], dim=1)  # [b, 2c, nlat, nlon]
+            ca_context = history if history is not None else cond
+        else:
+            # Standard mode: I_t only as input, cross-attend to cond
+            x_input = x_noised
+            ca_context = cond
+
         # Pad spatial dims to be divisible by patch_size
         if self.pad_lat > 0 or self.pad_lon > 0:
             # F.pad order: (left, right, top, bottom) for last two dims
-            x_noised = F.pad(x_noised, (0, self.pad_lon, 0, self.pad_lat), mode='reflect')
-            cond = F.pad(cond, (0, self.pad_lon, 0, self.pad_lat), mode='reflect')
+            x_input = F.pad(x_input, (0, self.pad_lon, 0, self.pad_lat), mode='reflect')
+            ca_context = F.pad(ca_context, (0, self.pad_lon, 0, self.pad_lat), mode='reflect')
 
         # Get grid coordinates for positional encoding at padded resolution
-        lat, lon = self.get_grid(self.nlat_pad, self.nlon_pad, x_noised.device)
+        lat, lon = self.get_grid(self.nlat_pad, self.nlon_pad, x_input.device)
 
         # Convert channel-first to channel-last for PatchEmbed: [b, c, h, w] -> [b, h, w, c]
-        x_nhwc = x_noised.permute(0, 2, 3, 1)
-        c_nhwc = cond.permute(0, 2, 3, 1)
+        x_nhwc = x_input.permute(0, 2, 3, 1)
+        c_nhwc = ca_context.permute(0, 2, 3, 1)
 
         # Patchify: [b, h, w, c] -> [b, h//p, w//p, dim]
         x = self.patch_embed_main(x_nhwc)
@@ -268,10 +287,10 @@ class SIDiT(nn.Module):
             t = t[:, None]
         t_emb = self.t_embedder(t)  # [b, dim]
 
-        # Transformer blocks: vanilla self-attention + cross-attention with conditioning
+        # Transformer blocks: vanilla self-attention + cross-attention with history
         for sa_block, ca_block in zip(self.sa_blocks, self.ca_blocks):
             x = sa_block(x, t_emb)        # self-attention with AdaLN
-            x = ca_block(x, c)            # cross-attention with conditioning (already flat)
+            x = ca_block(x, c)            # cross-attention with history context
 
         # Unpatchify: [b, n, dim] -> [b, nlat, nlon, dim]
         x = self.unpatchify_layer(x, t_emb)
