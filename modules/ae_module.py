@@ -49,6 +49,7 @@ class AutoencoderModule(L.LightningModule):
         self.history = False
         self.decoder_only = False
         self.stochastic = False
+        self.superres = False
         self.n_ensemble = 1
         self.scheduler = None
         
@@ -141,6 +142,14 @@ class AutoencoderModule(L.LightningModule):
             self.scheduler = ConditionalFlowMatching(**self.modelconfig["AE_Flow"]["scheduler"])
             self.history = self.modelconfig["AE_Flow"]["decoder"].get("use_history", False)
             self.decoder_only = True
+        elif self.model_name == "AE_SuperResDiT":
+            from modules.models.superres_dit import SuperResDiT
+            from modules.models.AE_simple import BilinearEncoder
+            self.encoder = BilinearEncoder(**self.modelconfig["AE_SuperResDiT"]["encoder"])
+            self.decoder = SuperResDiT(**self.modelconfig["AE_SuperResDiT"]["decoder"])
+            self.history = True
+            self.decoder_only = True
+            self.superres = True
         elif self.model_name == "AE_Stochastic":
             from modules.models.AE_decoder import StochasticDecoderHistory
             from modules.models.AE_simple import BilinearEncoder
@@ -204,9 +213,16 @@ class AutoencoderModule(L.LightningModule):
             y = self.scheduler.sample(x, self.decoder, cond=cond)
             surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
 
+        elif self.superres:
+            # Downsample current state to LR; use full-res history as HR context.
+            z_surface, z_multilevel, z_diagnostic = self.encoder(surface, multilevel, diagnostic)
+            x_lr = assemble_input(z_surface, z_multilevel, z_diagnostic)
+            x_hr = assemble_input(surface_history, multilevel_history, diagnostic_history)
+            out = self.decoder(x_lr, x_hr)
+            surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(out)
         elif self.separate_diagnostic:
             multilevel = multilevel[..., :5] # remove cloud and vertical velocity from inputs
-            multilevel_history = multilevel_history[..., :5] 
+            multilevel_history = multilevel_history[..., :5]
             z_surface, z_multilevel, _ = self.encoder(surface, multilevel, None)
             surface_pred, multilevel_pred, diagnostic_pred = self.decoder(surface_history, multilevel_history, None,
                                                                 z_surface, z_multilevel, None)
