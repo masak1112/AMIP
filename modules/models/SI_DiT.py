@@ -91,8 +91,9 @@ class SIDiT(nn.Module):
     Patchified Diffusion Transformer for stochastic interpolant velocity prediction.
 
     Architecture:
-    - PatchEmbed: in_channels @ nlat x nlon -> dim @ (nlat/p) x (nlon/p) tokens
-    - Separate conditioning encoder for x_lowres via cross-attention
+    - PatchEmbed: (2*in_channels) @ nlat x nlon -> dim @ (nlat/p) x (nlon/p) tokens
+      (noised interpolant I_t concatenated channel-wise with downsampled current state)
+    - Separate conditioning encoder for high-res history via cross-attention
     - Spherical harmonic positional encoding
     - N blocks of: DiTBlock (vanilla self-attn with AdaLN) + CrossAttentionBlock
     - Unpatchify: dim -> out_channels @ nlat x nlon
@@ -131,14 +132,14 @@ class SIDiT(nn.Module):
         self.grid_y = self.nlon_pad // patch_size
         self.with_poles = False
 
-        # Patch embedding for I_t (noised interpolant)
+        # Patch embedding for [I_t; cond] (noised interpolant concat with downsampled current state)
         self.patch_embed_main = PatchEmbed(
             patch_size=patch_size,
-            in_chans=in_channels,
+            in_chans=2 * in_channels,
             hidden_size=dim,
             flatten=False)
 
-        # Patch embedding for x_lowres (conditioning)
+        # Patch embedding for high-res history (cross-attention context)
         self.patch_embed_cond = PatchEmbed(
             patch_size=patch_size,
             in_chans=in_channels,

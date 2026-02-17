@@ -14,7 +14,7 @@ model:
             nlat: 180
             nlon: 360
         scheduler:
-            num_refinement_steps: 20
+            num_refinement_steps: 10
             sigma_coupling: 0.5
 
 data:
