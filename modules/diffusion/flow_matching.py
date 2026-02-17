@@ -1,6 +1,121 @@
 import torch
 import torch.nn as nn
 
+
+class ConditionalFlowMatching(nn.Module):
+    """
+    Conditional Flow Matching with low-resolution conditioning.
+
+    Implements optimal transport conditional flow matching where:
+    - Source: x0 ~ N(0, I) (pure noise)
+    - Target: x1 = x_highres (ground truth)
+    - Interpolant: I_t = (1-t)*x0 + t*x1
+    - Velocity target: x1 - x0
+
+    The model is conditioned on the low-resolution state x_lowres,
+    which is concatenated channel-wise with I_t inside the model.
+    Optional history conditioning via cross-attention.
+
+    Interface matches DataDependentInterpolant for drop-in use.
+    """
+
+    def __init__(self,
+                 num_refinement_steps=20,
+                 integrator='euler'):
+        super().__init__()
+        self.num_refinement_steps = num_refinement_steps
+        self.integrator_method = integrator
+        assert integrator in ['euler', 'heun'], f"Integrator '{integrator}' not supported"
+
+    def compute_loss(self, x_lowres, x_highres, model, cond=None):
+        """
+        Conditional flow matching training loss.
+
+        Args:
+            x_lowres: [b, c, h, w] — upsampled low-res conditioning
+            x_highres: [b, c, h, w] — ground truth high-res target
+            model: velocity predictor, called as model(I_t, t, cond=x_lowres, history=cond)
+            cond: [b, c, h, w] — optional history for cross-attention
+
+        Returns:
+            scalar loss
+        """
+        b = x_lowres.shape[0]
+        device = x_lowres.device
+        dtype = x_lowres.dtype
+
+        # Source: pure noise
+        x0 = torch.randn_like(x_highres)
+        x1 = x_highres
+
+        # Sample t ~ U(0, 1)
+        t = torch.rand(b, device=device, dtype=dtype)
+        t_wide = t[:, None, None, None]
+
+        # Interpolant: I_t = (1-t)*x0 + t*x1
+        I_t = (1 - t_wide) * x0 + t_wide * x1
+
+        # Velocity target: x1 - x0
+        v_target = x1 - x0
+
+        x_cond = x_lowres
+
+        # Model predicts velocity
+        v_pred = model(I_t, t[:, None], cond=x_cond, history=cond)
+
+        # MSE loss
+        loss = (v_pred - v_target).pow(2).mean()
+
+        return loss
+
+    @torch.no_grad()
+    def sample(self, x_lowres, model, num_steps=None, cond=None):
+        """
+        ODE sampling via Euler (or Heun) integration from t=0 to t=1.
+
+        Args:
+            x_lowres: [b, c, h, w] — upsampled low-res conditioning
+            model: velocity predictor
+            num_steps: number of integration steps (default: self.num_refinement_steps)
+            cond: [b, c, h, w] — optional history for cross-attention
+
+        Returns:
+            [b, c, h, w] predicted high-res output
+        """
+        if num_steps is None:
+            num_steps = self.num_refinement_steps
+
+        # Start from pure noise
+        y = torch.randn_like(x_lowres)
+
+        x_cond = x_lowres
+
+        dt = 1.0 / num_steps
+
+        for n in range(num_steps):
+            t_n = n / num_steps
+            t_batch = torch.full((x_lowres.shape[0], 1), t_n,
+                                 device=x_lowres.device, dtype=x_lowres.dtype)
+
+            v = model(y, t_batch, cond=x_cond, history=cond)
+
+            if self.integrator_method == 'heun' and n < num_steps - 1:
+                # Heun's method (2nd order)
+                y_euler = y + dt * v
+                t_next = (n + 1) / num_steps
+                t_batch_next = torch.full((x_lowres.shape[0], 1), t_next,
+                                          device=x_lowres.device, dtype=x_lowres.dtype)
+                v_next = model(y_euler, t_batch_next, cond=x_cond, history=cond)
+                y = y + 0.5 * dt * (v + v_next)
+            else:
+                y = y + dt * v
+
+        return y
+
+    def forward(self, x_lowres, x_highres, model, cond=None):
+        return self.compute_loss(x_lowres, x_highres, model, cond=cond)
+
+
 class ODEIntegrator:
     def __init__(self,
                  method='euler',  # 'euler' or 'heun' 

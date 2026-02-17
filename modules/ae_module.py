@@ -131,6 +131,16 @@ class AutoencoderModule(L.LightningModule):
             self.scheduler = DataDependentInterpolant(**self.modelconfig["AE_SI_DDC"]["scheduler"])
             self.history = self.modelconfig["AE_SI_DDC"]["decoder"].get("use_history", False)
             self.decoder_only = True
+        elif self.model_name == "AE_Flow":
+            from modules.models.SI_DiT import SIDiT
+            from modules.models.AE_simple import BilinearEncoder, BilinearDecoder
+            from modules.diffusion.flow_matching import ConditionalFlowMatching
+            self.downsample = BilinearEncoder(**self.modelconfig["AE_Flow"]["encoder"])
+            self.upsample = BilinearDecoder(**self.modelconfig["AE_Flow"]["encoder"])
+            self.decoder = SIDiT(**self.modelconfig["AE_Flow"]["decoder"])
+            self.scheduler = ConditionalFlowMatching(**self.modelconfig["AE_Flow"]["scheduler"])
+            self.history = self.modelconfig["AE_Flow"]["decoder"].get("use_history", False)
+            self.decoder_only = True
         elif self.model_name == "AE_Stochastic":
             from modules.models.AE_decoder import StochasticDecoderHistory
             from modules.models.AE_simple import BilinearEncoder
