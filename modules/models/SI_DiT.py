@@ -121,8 +121,14 @@ class SIDiT(nn.Module):
         self.nlon = nlon
         self.dropout = dropout
 
-        self.grid_x = nlat // patch_size
-        self.grid_y = nlon // patch_size
+        # Pad spatial dims to be divisible by patch_size
+        self.nlat_pad = math.ceil(nlat / patch_size) * patch_size
+        self.nlon_pad = math.ceil(nlon / patch_size) * patch_size
+        self.pad_lat = self.nlat_pad - nlat
+        self.pad_lon = self.nlon_pad - nlon
+
+        self.grid_x = self.nlat_pad // patch_size
+        self.grid_y = self.nlon_pad // patch_size
         self.with_poles = False
 
         # Patch embedding for I_t (noised interpolant)
@@ -164,12 +170,12 @@ class SIDiT(nn.Module):
         # Unpatchify
         if unpatch == "subpixel":
             self.unpatchify_layer = SubPixelConvICNR_2D(
-                img_size=(nlat, nlon),
+                img_size=(self.nlat_pad, self.nlon_pad),
                 patch_size=(patch_size, patch_size),
                 in_chans=dim,
                 out_chans=dim,
                 cond_dim=dim,
-                num_lat=nlat)
+                num_lat=self.nlat_pad)
         elif unpatch == "vanilla":
             self.unpatchify_layer = Unpatchify(
                 grid_size=(self.grid_x, self.grid_y),
@@ -227,8 +233,14 @@ class SIDiT(nn.Module):
         batch_size = x_noised.shape[0]
         nlat, nlon = self.nlat, self.nlon
 
-        # Get grid coordinates for positional encoding
-        lat, lon = self.get_grid(nlat, nlon, x_noised.device)
+        # Pad spatial dims to be divisible by patch_size
+        if self.pad_lat > 0 or self.pad_lon > 0:
+            # F.pad order: (left, right, top, bottom) for last two dims
+            x_noised = F.pad(x_noised, (0, self.pad_lon, 0, self.pad_lat), mode='reflect')
+            cond = F.pad(cond, (0, self.pad_lon, 0, self.pad_lat), mode='reflect')
+
+        # Get grid coordinates for positional encoding at padded resolution
+        lat, lon = self.get_grid(self.nlat_pad, self.nlon_pad, x_noised.device)
 
         # Convert channel-first to channel-last for PatchEmbed: [b, c, h, w] -> [b, h, w, c]
         x_nhwc = x_noised.permute(0, 2, 3, 1)
@@ -240,8 +252,8 @@ class SIDiT(nn.Module):
 
         # Positional encoding
         sphere_pe = self.pe_embed(lat + math.pi / 2, lon - math.pi)
-        sphere_pe = sphere_pe.expand(batch_size, -1, -1, -1)  # [b, nlat, nlon, dim]
-        sphere_pe = self.pe2patch(sphere_pe)  # [b, nlat//p, nlon//p, dim]
+        sphere_pe = sphere_pe.expand(batch_size, -1, -1, -1)  # [b, nlat_pad, nlon_pad, dim]
+        sphere_pe = self.pe2patch(sphere_pe)  # [b, nlat_pad//p, nlon_pad//p, dim]
 
         x = x + sphere_pe
         c = c + sphere_pe
@@ -268,5 +280,9 @@ class SIDiT(nn.Module):
 
         # Convert back to channel-first: [b, h, w, c] -> [b, c, h, w]
         x = x.permute(0, 3, 1, 2)
+
+        # Crop back to original spatial dims
+        if self.pad_lat > 0 or self.pad_lon > 0:
+            x = x[:, :, :nlat, :nlon]
 
         return x
