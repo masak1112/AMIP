@@ -265,7 +265,7 @@ class DecoderHistory(nn.Module):
             h = self.feat_up[i_level](h)
 
         if self.num_out_blocks > 0:
-            for i in range(self.out_blocks):
+            for i in range(len(self.out_blocks)):
                 h = self.out_blocks[i](h)
                 h = self.out_scale[i](h)
 
