@@ -74,7 +74,7 @@ class DecoderHistory(nn.Module):
                  resamp_with_conv = True,
                  kernel_size=3,
                  padding=1,
-                 out_blocks=0
+                 num_out_blocks=0,
                  ):
         super().__init__()
         self.hidden_channels = hidden_channels
@@ -162,11 +162,11 @@ class DecoderHistory(nn.Module):
             self.up.insert(0, up) # prepend to get consistent order
             self.feat_up.insert(0, featscale2(patch_size=init_patch_size, channels=block_in))
 
-        self.out_blocks = out_blocks
-        if out_blocks > 0:
+        self.num_out_blocks = num_out_blocks
+        if num_out_blocks > 0:
             self.out_blocks = nn.ModuleList()
             self.out_scale = nn.ModuleList()
-            for i in range(out_blocks):
+            for i in range(num_out_blocks):
                 self.out_blocks.append(ResnetBlock(in_channels=block_in,
                                                 out_channels=block_in,
                                                 dropout=dropout,
@@ -264,7 +264,7 @@ class DecoderHistory(nn.Module):
                 h = self.up[i_level].upsample(h)
             h = self.feat_up[i_level](h)
 
-        if self.out_blocks > 0:
+        if self.num_out_blocks > 0:
             for i in range(self.out_blocks):
                 h = self.out_blocks[i](h)
                 h = self.out_scale[i](h)
