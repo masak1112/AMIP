@@ -23,8 +23,6 @@ class AutoencoderModule(L.LightningModule):
         self.model_name = self.modelconfig["model_name"]
         self.lr = self.modelconfig["lr"]
         self.log_dir = config['training']['log_dir']
-        self.downsample_levels = config['data'].get('downsample_levels', 1)
-        self.separate_diagnostic = config['model'].get('separate_diagnostic', False)
         self.surface_variable_weight = config['model'].get('surface_variable_weight', None)
         self.multi_level_variable_weight = config['model'].get('multi_level_variable_weight', None)
         self.diag_variable_weight = config['model'].get('diag_variable_weight', None)
@@ -33,7 +31,7 @@ class AutoencoderModule(L.LightningModule):
 
         self.criterion = WeightedLoss(latitude_resolution=180,
                                       longitude_resolution=360,
-                                      nlevels = 26 // self.downsample_levels,
+                                      nlevels = 26,
                                       level_weight=self.level_weight,
                                       surface_variable_weight=self.surface_variable_weight,
                                       multi_level_variable_weight=self.multi_level_variable_weight,
@@ -48,54 +46,13 @@ class AutoencoderModule(L.LightningModule):
 
         self.history = False
         self.decoder_only = False
-        self.stochastic = False
-        self.superres = False
-        self.n_ensemble = 1
         self.scheduler = None
-        
-        if self.model_name == "DCAE":
-            from modules.models.AE import Encoder, Decoder
-            self.encoder = Encoder(**self.modelconfig["DCAE"]["encoder"])
-            self.decoder = Decoder(**self.modelconfig["DCAE"]["decoder"])
-        elif self.model_name == "AE_3D":
-            from modules.models.AE import Encoder3D, Decoder3D
-            self.encoder = Encoder3D(**self.modelconfig["AE_3D"]["encoder"])
-            self.decoder = Decoder3D(**self.modelconfig["AE_3D"]["decoder"])
-        elif self.model_name == "AE_simple":
+   
+        if self.model_name == "AE_simple":
             from modules.models.AE_simple import Encoder, Decoder 
             self.encoder = Encoder(**self.modelconfig["AE_simple"]["encoder"])
             self.decoder = Decoder(**self.modelconfig["AE_simple"]["decoder"])
-        elif self.model_name == "AE_simple_3D":
-            from modules.models.AE_simple import Encoder3D, Decoder3D
-            self.encoder = Encoder3D(**self.modelconfig["AE_simple_3D"]["encoder"])
-            self.decoder = Decoder3D(**self.modelconfig["AE_simple_3D"]["decoder"])
-        elif self.model_name == "AE_Decoder_Only":
-            from modules.models.AE_simple import BilinearEncoder, Decoder 
-            self.encoder = BilinearEncoder(**self.modelconfig["AE_Decoder_Only"]["encoder"])
-            self.decoder = Decoder(**self.modelconfig["AE_Decoder_Only"]["decoder"])
-            self.decoder_only = True
-        elif self.model_name == "AE_Atlas":
-            from modules.models.AE_simple import BilinearEncoder
-            from modules.models.AE_attn import NattenCombineDiT
-            self.encoder = BilinearEncoder(**self.modelconfig["AE_Atlas"]["encoder"])
-            self.decoder = NattenCombineDiT(**self.modelconfig["AE_Atlas"]["decoder"])
-            self.history = True
-            self.decoder_only = True
-        elif self.model_name == "AE_ClimaDiT":
-            from modules.models.AE_dit import ClimaDiT
-            from modules.models.AE_simple import BilinearEncoder
-            self.encoder = BilinearEncoder(**self.modelconfig["AE_ClimaDiT"]["encoder"])
-            self.decoder = ClimaDiT(**self.modelconfig["AE_ClimaDiT"]["decoder"])
-            self.history = True
-            self.decoder_only = True
         elif self.model_name == "AE_History":
-            from modules.models.AE_simple import DecoderHistory
-            from modules.models.AE_simple import BilinearEncoder
-            self.encoder = BilinearEncoder(**self.modelconfig["AE_History"]["encoder"])
-            self.decoder = DecoderHistory(**self.modelconfig["AE_History"]["decoder"])
-            self.history = True
-            self.decoder_only = True
-        elif self.model_name == "AE_History2":
             from modules.models.AE_decoder import DecoderHistory
             from modules.models.AE_simple import BilinearEncoder
             self.encoder = BilinearEncoder(**self.modelconfig["AE_History"]["encoder"])
@@ -109,26 +66,6 @@ class AutoencoderModule(L.LightningModule):
             self.decoder = DecoderHistory(**self.modelconfig["AE_History"]["decoder"])
             self.history = True
             self.decoder_only = True
-        elif self.model_name == "AE_SI":
-            from modules.models.AE_Unet import DecoderUnet
-            from modules.models.AE_simple import BilinearEncoder, BilinearDecoder
-            from modules.diffusion.interpolant import DriftScheduler
-            self.downsample = BilinearEncoder(**self.modelconfig["AE_SI"]["encoder"])
-            self.upsample = BilinearDecoder(**self.modelconfig["AE_SI"]["encoder"])
-
-            self.decoder = DecoderUnet(**self.modelconfig["AE_SI"]["decoder"])
-            self.scheduler = DriftScheduler(**self.modelconfig["AE_SI"]["scheduler"])
-            self.decoder_only = True 
-        elif self.model_name == "AE_SIT":
-            from modules.models.AE_dit import ClimaSiT
-            from modules.models.AE_simple import BilinearEncoder, BilinearDecoder
-            from modules.diffusion.interpolant import DriftScheduler
-            self.downsample = BilinearEncoder(**self.modelconfig["AE_SI"]["encoder"])
-            self.upsample = BilinearDecoder(**self.modelconfig["AE_SI"]["encoder"])
-
-            self.decoder = ClimaSiT(**self.modelconfig["AE_SI"]["decoder"])
-            self.scheduler = DriftScheduler(**self.modelconfig["AE_SI"]["scheduler"])
-            self.decoder_only = True
         elif self.model_name == "AE_SI_DDC":
             from modules.models.SI_DiT import SIDiT
             from modules.models.AE_simple import BilinearEncoder, BilinearDecoder
@@ -139,50 +76,16 @@ class AutoencoderModule(L.LightningModule):
             self.scheduler = DataDependentInterpolant(**self.modelconfig["AE_SI_DDC"]["scheduler"])
             self.history = self.modelconfig["AE_SI_DDC"]["decoder"].get("use_history", False)
             self.decoder_only = True
-        elif self.model_name == "AE_Flow":
-            from modules.models.SI_DiT import SIDiT
+        elif self.model_name == "AE_Flow_Arches":
+            from modules.models.SI_DiT import ArchesSiT
             from modules.models.AE_simple import BilinearEncoder, BilinearDecoder
             from modules.diffusion.flow_matching import ConditionalFlowMatching
-            self.downsample = BilinearEncoder(**self.modelconfig["AE_Flow"]["encoder"])
-            self.upsample = BilinearDecoder(**self.modelconfig["AE_Flow"]["encoder"])
-            self.decoder = SIDiT(**self.modelconfig["AE_Flow"]["decoder"])
-            self.scheduler = ConditionalFlowMatching(**self.modelconfig["AE_Flow"]["scheduler"])
-            self.history = self.modelconfig["AE_Flow"]["decoder"].get("use_history", False)
+            self.downsample = BilinearEncoder(**self.modelconfig["AE_Flow_Arches"]["encoder"])
+            self.upsample = BilinearDecoder(**self.modelconfig["AE_Flow_Arches"]["encoder"])
+            self.decoder = ArchesSiT(**self.modelconfig["AE_Flow_Arches"]["decoder"])
+            self.scheduler = ConditionalFlowMatching(**self.modelconfig["AE_Flow_Arches"]["scheduler"])
+            self.history = self.modelconfig["AE_Flow_Arches"]["decoder"].get("use_history", False)
             self.decoder_only = True
-        elif self.model_name == "AE_SuperResDiT":
-            from modules.models.superres_dit import SuperResDiT
-            from modules.models.AE_simple import BilinearEncoder
-            self.encoder = BilinearEncoder(**self.modelconfig["AE_SuperResDiT"]["encoder"])
-            self.decoder = SuperResDiT(**self.modelconfig["AE_SuperResDiT"]["decoder"])
-            self.history = True
-            self.decoder_only = True
-            self.superres = True
-        elif self.model_name == "AE_Stochastic":
-            from modules.models.AE_decoder import StochasticDecoderHistory
-            from modules.models.AE_simple import BilinearEncoder
-            from common.loss import SpectralCRPSLoss, FairCRPSLoss
-            self.encoder = BilinearEncoder(**self.modelconfig["AE_Stochastic"]["encoder"])
-            self.decoder = StochasticDecoderHistory(**self.modelconfig["AE_Stochastic"]["decoder"])
-            self.history = True
-            self.decoder_only = True
-            self.stochastic = True
-            self.n_ensemble = config['model'].get('n_ensemble', 2)
-            # Replace criterion with FairCRPSLoss (almost-fair when alpha < 1)
-            self.crps_alpha = config['model'].get('crps_alpha', 1.0)
-            self.criterion = FairCRPSLoss(
-                latitude_resolution=180,
-                longitude_resolution=360,
-                nlevels=26 // self.downsample_levels,
-                level_weight=self.level_weight,
-                surface_variable_weight=self.surface_variable_weight,
-                multi_level_variable_weight=self.multi_level_variable_weight,
-                diag_variable_weight=self.diag_variable_weight,
-                alpha=self.crps_alpha,
-                n_ensemble=self.n_ensemble,
-            )
-            self.spectral_criterion = SpectralCRPSLoss(img_shape=(180, 360),
-                                                       alpha = self.crps_alpha)
-
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
@@ -194,16 +97,14 @@ class AutoencoderModule(L.LightningModule):
         self.save_hyperparameters()
 
     def forward(self, surface, multilevel, diagnostic):
+
+        # diffusion sampling
         if self.scheduler is not None:
             z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface, multilevel, diagnostic))
             x = assemble_input(z_surface, z_multilevel, z_diagnostic)
             y = self.scheduler.sample(x, self.decoder)
             surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
-
-        elif self.separate_diagnostic:
-            multilevel = multilevel[..., :5] # remove cloud and vertical velocity from inputs
-            z_surface, z_multilevel, _ = self.encoder(surface, multilevel, None)
-            surface_pred, multilevel_pred, diagnostic_pred = self.decoder(z_surface, z_multilevel, None)
+        # normal forward pass 
         else:
             z_surface, z_multilevel, z_diagnostic = self.encoder(surface, multilevel, diagnostic)
             surface_pred, multilevel_pred, diagnostic_pred = self.decoder(z_surface, z_multilevel, z_diagnostic)
@@ -213,26 +114,13 @@ class AutoencoderModule(L.LightningModule):
     def forward_history(self, surface_history, multilevel_history, diagnostic_history,
                         surface, multilevel, diagnostic):
 
+        # diffusion sampling
         if self.scheduler is not None:
             z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface, multilevel, diagnostic))
             x = assemble_input(z_surface, z_multilevel, z_diagnostic)
             cond = assemble_input(surface_history, multilevel_history, diagnostic_history)
             y = self.scheduler.sample(x, self.decoder, cond=cond)
             surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
-
-        elif self.superres:
-            # Downsample current state to LR; use full-res history as HR context.
-            z_surface, z_multilevel, z_diagnostic = self.encoder(surface, multilevel, diagnostic)
-            x_lr = assemble_input(z_surface, z_multilevel, z_diagnostic)
-            x_hr = assemble_input(surface_history, multilevel_history, diagnostic_history)
-            out = self.decoder(x_lr, x_hr)
-            surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(out)
-        elif self.separate_diagnostic:
-            multilevel = multilevel[..., :5] # remove cloud and vertical velocity from inputs
-            multilevel_history = multilevel_history[..., :5]
-            z_surface, z_multilevel, _ = self.encoder(surface, multilevel, None)
-            surface_pred, multilevel_pred, diagnostic_pred = self.decoder(surface_history, multilevel_history, None,
-                                                                z_surface, z_multilevel, None)
         else:
             z_surface, z_multilevel, z_diagnostic = self.encoder(surface, multilevel, diagnostic)
             surface_pred, multilevel_pred, diagnostic_pred = self.decoder(
@@ -263,44 +151,27 @@ class AutoencoderModule(L.LightningModule):
     
     
     def training_step(self, batch, batch_idx):
-        
-        # diffusion training
-        if self.scheduler is not None:
-            if not self.history:
-                surface_data = batch['surface'][:, 0] # b nlat nlon c
-                multilevel_data = batch['multilevel'][:, 0] # b nlevel nlat nlon c
-                diagnostic_data = batch['diagnostic'][:, 0] # b nlat nlon c
 
-                z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface_data, multilevel_data, diagnostic_data))
-                x = assemble_input(z_surface, z_multilevel, z_diagnostic)
-                y = assemble_input(surface_data, multilevel_data, diagnostic_data)
-                loss = self.scheduler.compute_loss(x, y, self.decoder)
-
-            else:
-                surface_history = batch['surface'][:, 0] # b nlat nlon c
-                multilevel_history = batch['multilevel'][:, 0]
-                diagnostic_history = batch['diagnostic'][:, 0]
-
-                surface_data = batch['surface'][:, 1] # b nlat nlon c
-                multilevel_data = batch['multilevel'][:, 1]
-                diagnostic_data = batch['diagnostic'][:, 1]
-
-                cond = assemble_input(surface_history, multilevel_history, diagnostic_history)
-                z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface_data, multilevel_data, diagnostic_data))
-                x = assemble_input(z_surface, z_multilevel, z_diagnostic)
-                y = assemble_input(surface_data, multilevel_data, diagnostic_data)
-
-                loss = self.scheduler.compute_loss(x, y, self.decoder, cond=cond)
-
-        # standard autoencoder training
-        elif not self.history:
+        # no history
+        if not self.history:
             surface_data = batch['surface'][:, 0] # b nlat nlon c
             multilevel_data = batch['multilevel'][:, 0] # b nlevel nlat nlon c
             diagnostic_data = batch['diagnostic'][:, 0] # b nlat nlon c
 
-            surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
+            # diffusion training
+            if self.scheduler is not None:
+                z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface_data, multilevel_data, diagnostic_data))
+                x = assemble_input(z_surface, z_multilevel, z_diagnostic)
+                y = assemble_input(surface_data, multilevel_data, diagnostic_data)
+                loss = self.scheduler.compute_loss(x, y, self.decoder)
+            # standard loss
+            else:
+                surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
+                loss = self.compute_loss(surface_pred, surface_data,
+                                multilevel_pred, multilevel_data,
+                                diagnostic_pred, diagnostic_data)
 
-        # history-based training for decoder-only
+        # history
         else:
             surface_history = batch['surface'][:, 0] # b nlat nlon c
             multilevel_history = batch['multilevel'][:, 0]
@@ -310,32 +181,17 @@ class AutoencoderModule(L.LightningModule):
             multilevel_data = batch['multilevel'][:, 1]
             diagnostic_data = batch['diagnostic'][:, 1]
 
-            if self.stochastic:
-                s_pred1, m_pred1, d_pred1 = self.forward_history(
-                    surface_history, multilevel_history, diagnostic_history,
-                    surface_data, multilevel_data, diagnostic_data)
-                s_pred2, m_pred2, d_pred2 = self.forward_history(
-                    surface_history, multilevel_history, diagnostic_history,
-                    surface_data, multilevel_data, diagnostic_data)
+            # diffusion training
+            if self.scheduler is not None:
+                cond = assemble_input(surface_history, multilevel_history, diagnostic_history)
+                z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface_data, multilevel_data, diagnostic_data))
+                x = assemble_input(z_surface, z_multilevel, z_diagnostic)
+                y = assemble_input(surface_data, multilevel_data, diagnostic_data)
 
-                # Fair CRPS loss
-                crps_loss = self.criterion(s_pred1, s_pred2, surface_data,
-                                        m_pred1, m_pred2, multilevel_data,
-                                        d_pred1, d_pred2, diagnostic_data)
-
-                if self.spectral_criterion is not None:
-                    forecasts = torch.stack([assemble_input(s_pred1, m_pred1, d_pred1),
-                                            assemble_input(s_pred2, m_pred2, d_pred2)], dim=1) # b n_ensemble c h w
-                    observation = assemble_input(surface_data, multilevel_data, diagnostic_data) # b c h w
-                    spectral_loss = self.spectral_loss_weight * self.spectral_criterion(forecasts, observation)
-                    loss = crps_loss + spectral_loss
-                    self.log("train/spectral_loss", spectral_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
-                else:
-                    loss = crps_loss
-
-                self.log("train/crps_loss", crps_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
-
+                loss = self.scheduler.compute_loss(x, y, self.decoder, cond=cond)
+            # standard loss
             else:
+        
                 surface_pred, multilevel_pred, diagnostic_pred = self.forward_history(
                     surface_history, multilevel_history, diagnostic_history,
                     surface_data, multilevel_data, diagnostic_data)
@@ -349,13 +205,15 @@ class AutoencoderModule(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-
+        
+        # no history
         if not self.history:
             surface_data = batch['surface'][:, 0] # b nlat nlon c
             multilevel_data = batch['multilevel'][:, 0] # b nlevel nlat nlon c
             diagnostic_data = batch['diagnostic'][:, 0] # b nlat nlon c
 
             surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
+        # history
         else:
             surface_history = batch['surface'][:, 0] # b nlat nlon c
             multilevel_history = batch['multilevel'][:, 0]

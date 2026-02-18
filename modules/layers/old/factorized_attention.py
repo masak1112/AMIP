@@ -5,7 +5,7 @@ import numpy as np
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 
-from modules.layers.fa_basics import LayerNorm, GroupNorm, \
+from modules.layers.old.fa_basics import LayerNorm, GroupNorm, \
     bias_dropout_add_scale, \
     bias_dropout_add_scale_fused_train, \
     bias_dropout_add_scale_fused_inference, \

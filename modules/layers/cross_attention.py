@@ -1,6 +1,6 @@
 import torch.nn as nn 
 from einops import rearrange
-from modules.layers.fa_basics import MLP
+from modules.layers.old.fa_basics import MLP
 from torch import einsum
 
 class CrossAttention(nn.Module):

@@ -10,7 +10,7 @@ from modules.layers.positional_encoding import TimestepEmbedder
 
 from modules.layers.spherical_harmonics import SphericalHarmonicsPE
 
-from modules.layers.factorized_attention import FADiTBlockS2
+from modules.layers.old.factorized_attention import FADiTBlockS2
 from modules.layers.unpatchify import SubPixelConvICNR_2D, Unpatchify
 from modules.layers.patchify import PatchEmbed
 from modules.layers.cross_attention import CrossAttentionBlock

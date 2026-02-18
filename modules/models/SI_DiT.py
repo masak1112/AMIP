@@ -10,6 +10,13 @@ from modules.layers.spherical_harmonics import SphericalHarmonicsPE
 from modules.layers.unpatchify import SubPixelConvICNR_2D, Unpatchify
 from modules.layers.patchify import PatchEmbed
 from modules.layers.cross_attention import CrossAttentionBlock
+from modules.layers.arches_layers import (
+    CondBasicLayer,
+    DCDownSample,
+    DCUpSample,
+    Mlp,
+    TimestepEmbedder as ArchesTimestepEmbedder,
+)
 
 
 class DiTBlock(nn.Module):
@@ -302,6 +309,240 @@ class SIDiT(nn.Module):
         x = x.permute(0, 3, 1, 2)
 
         # Crop back to original spatial dims
+        if self.pad_lat > 0 or self.pad_lon > 0:
+            x = x[:, :, :nlat, :nlon]
+
+        return x
+
+
+class ArchesSiT(nn.Module):
+    """
+    Arches-backbone Stochastic Interpolant Transformer.
+
+    Replaces SIDiT's vanilla self-attention + cross-attention with the Arches
+    hierarchical window-attention backbone (CondBasicLayer + DCDownSample/DCUpSample).
+
+    Conditioning (cond) is channel-concatenated with x_noised as the patch-embed input.
+    Timestep t is embedded into a global AdaLN conditioning vector for all layers.
+
+    Interface is identical to SIDiT:
+        __init__(in_channels, out_channels, dim, num_heads, num_blocks, patch_size,
+                 nlat, nlon, dropout, unpatch, use_history)
+        forward(x_noised, t, cond, history=None) -> [b, out_channels, nlat, nlon]
+    """
+
+    def __init__(self,
+                 in_channels=249,
+                 out_channels=249,
+                 dim=384,
+                 num_heads=8,
+                 num_blocks=8,
+                 patch_size=4,
+                 nlat=180,
+                 nlon=360,
+                 dropout=0.0,
+                 unpatch="vanilla",
+                 use_history=False):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.dim = dim
+        self.num_heads = num_heads
+        self.num_blocks = num_blocks
+        self.patch_size = patch_size
+        self.nlat = nlat
+        self.nlon = nlon
+        self.use_history = use_history
+
+        # Pad spatial dims to be divisible by patch_size
+        self.nlat_pad = math.ceil(nlat / patch_size) * patch_size
+        self.nlon_pad = math.ceil(nlon / patch_size) * patch_size
+        self.pad_lat = self.nlat_pad - nlat
+        self.pad_lon = self.nlon_pad - nlon
+
+        # Patch-space grid (treat zdim=1: no pressure levels in flat 2D input)
+        self.zdim = 1
+        self.zlat = self.nlat_pad // patch_size
+        self.zlon = self.nlon_pad // patch_size
+        self.layer1_shape = (self.zlat, self.zlon)
+        self.layer2_shape = (self.zlat // 2, self.zlon // 2)
+
+        # Input channels: concat x_noised + cond, optionally also history
+        in_chans = 3 * in_channels if use_history else 2 * in_channels
+
+        # Patch embedding: (b, in_chans, nlat_pad, nlon_pad) -> (b, dim, zlat, zlon)
+        self.patch_embed = nn.Conv2d(in_chans, dim, kernel_size=patch_size, stride=patch_size)
+
+        # Timestep embedding -> global cond_emb for AdaLN (uses arches embedder)
+        self.t_embedder = ArchesTimestepEmbedder(dim)
+
+        # Depth distribution: [1, 3, 3, 1] scaled by factor (num_blocks=8 -> factor=1)
+        factor = max(1, num_blocks // 8)
+        depth1, depth2, depth3, depth4 = factor, 3 * factor, 3 * factor, factor
+
+        # window_size=(1, 6, 10): EarthSpecificBlock pads internally for non-divisible grids
+        window_size = (1, 6, 10)
+
+        layer_args = dict(
+            cond_dim=dim,
+            window_size=window_size,
+            act_layer=nn.GELU,
+            drop=dropout,
+            mlp_layer=Mlp,
+            mlp_ratio=4.0,
+        )
+
+        self.layer1 = CondBasicLayer(
+            dim=dim,
+            input_resolution=(self.zdim, *self.layer1_shape),
+            depth=depth1,
+            num_heads=num_heads,
+            drop_path=[0.0] * depth1,
+            **layer_args,
+        )
+        self.downsample = DCDownSample(
+            in_dim=dim,
+            out_dim=dim * 2,
+            input_resolution=(self.zdim, *self.layer1_shape),
+            output_resolution=(self.zdim, *self.layer2_shape),
+        )
+        self.layer2 = CondBasicLayer(
+            dim=dim * 2,
+            input_resolution=(self.zdim, *self.layer2_shape),
+            depth=depth2,
+            num_heads=num_heads,
+            drop_path=[0.0] * depth2,
+            **layer_args,
+        )
+        self.layer3 = CondBasicLayer(
+            dim=dim * 2,
+            input_resolution=(self.zdim, *self.layer2_shape),
+            depth=depth3,
+            num_heads=num_heads,
+            drop_path=[0.0] * depth3,
+            **layer_args,
+        )
+        self.upsample = DCUpSample(
+            dim * 2, dim,
+            (self.zdim, *self.layer2_shape),
+            (self.zdim, *self.layer1_shape),
+        )
+        # Skip connection doubles the channel dim for layer4
+        skip_dim = 2 * dim
+        self.layer4 = CondBasicLayer(
+            dim=skip_dim,
+            input_resolution=(self.zdim, *self.layer1_shape),
+            depth=depth4,
+            num_heads=num_heads,
+            drop_path=[0.0] * depth4,
+            **layer_args,
+        )
+
+        # Project skip-connected features back to dim before unpatchify
+        self.skip_proj = nn.Linear(skip_dim, dim)
+
+        # Unpatchify: [b, n, dim] -> [b, nlat_pad, nlon_pad, dim]
+        if unpatch == "subpixel":
+            self.unpatchify_layer = SubPixelConvICNR_2D(
+                img_size=(self.nlat_pad, self.nlon_pad),
+                patch_size=(patch_size, patch_size),
+                in_chans=dim,
+                out_chans=dim,
+                cond_dim=dim,
+                num_lat=self.nlat_pad,
+            )
+        elif unpatch == "vanilla":
+            self.unpatchify_layer = Unpatchify(
+                grid_size=(self.zlat, self.zlon),
+                patch_size=(patch_size, patch_size),
+                in_dim=dim,
+                out_dim=dim,
+                cond_dim=dim,
+            )
+        else:
+            raise ValueError(f"unpatch type '{unpatch}' not supported")
+
+        # Output projection (zero-initialized for stable training start)
+        self.out_proj = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, out_channels),
+        )
+
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        def _basic_init(module):
+            if isinstance(module, (nn.Linear, nn.Conv2d)):
+                torch.nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+        self.apply(_basic_init)
+
+        # Zero-init output projection for stable training
+        nn.init.constant_(self.out_proj[-1].weight, 0)
+        nn.init.constant_(self.out_proj[-1].bias, 0)
+
+    def forward(self, x_noised, t, cond, history=None):
+        """
+        Args:
+            x_noised: [b, c, nlat, nlon] -- interpolant I_t
+            t:        [b, 1] or [b]      -- timestep
+            cond:     [b, c, nlat, nlon] -- conditioning context (always concat'd)
+            history:  [b, c, nlat, nlon] -- extra history (concat'd when use_history=True)
+
+        Returns:
+            [b, out_channels, nlat, nlon]
+        """
+        batch_size = x_noised.shape[0]
+        nlat, nlon = self.nlat, self.nlon
+
+        # Build input tensor
+        if self.use_history and history is not None:
+            x_input = torch.cat([x_noised, cond, history], dim=1)
+        else:
+            x_input = torch.cat([x_noised, cond], dim=1)
+
+        # Pad spatial dims
+        if self.pad_lat > 0 or self.pad_lon > 0:
+            x_input = F.pad(x_input, (0, self.pad_lon, 0, self.pad_lat), mode='reflect')
+
+        # Patch embed: [b, in_chans, nlat_pad, nlon_pad] -> [b, dim, zlat, zlon]
+        x = self.patch_embed(x_input)
+
+        # Add zdim=1 and flatten to token sequence: [b, zlat*zlon, dim]
+        B, C, Lat, Lon = x.shape
+        x = x.unsqueeze(2)                      # [b, dim, 1, zlat, zlon]
+        x = x.reshape(B, C, -1).transpose(1, 2) # [b, n, dim]
+
+        # Timestep -> global AdaLN conditioning; arches embedder expects [b] (1-D)
+        if t is not None and t.dim() > 1:
+            t = t.squeeze(-1)
+        cond_emb = self.t_embedder(t)  # [b, dim]
+
+        # Hierarchical Arches backbone (U-Net with window attention)
+        x = self.layer1(x, cond_emb)
+
+        skip = x
+        x = self.downsample(x)
+
+        x = self.layer2(x, cond_emb)
+        x = self.layer3(x, cond_emb)
+
+        x = self.upsample(x)
+        x = torch.cat([x, skip], dim=-1)  # [b, n, 2*dim]
+        x = self.layer4(x, cond_emb)
+
+        # Project skip-connected features to dim
+        x = self.skip_proj(x)  # [b, n, dim]
+
+        # Unpatchify: [b, n, dim] -> [b, nlat_pad, nlon_pad, dim]
+        x = self.unpatchify_layer(x, cond_emb)
+
+        # Output projection
+        x = self.out_proj(x)  # [b, nlat_pad, nlon_pad, out_channels]
+
+        # Channel-first and crop to original dims
+        x = x.permute(0, 3, 1, 2)  # [b, out_channels, nlat_pad, nlon_pad]
         if self.pad_lat > 0 or self.pad_lon > 0:
             x = x[:, :, :nlat, :nlon]
 

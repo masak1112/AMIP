@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from einops import rearrange
-from modules.layers.fa_basics import modulate_fused
+from modules.layers.old.fa_basics import modulate_fused
 
 class FinalLayer(nn.Module):
     """
