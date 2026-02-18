@@ -25,11 +25,14 @@ def dict2namespace(config):
         setattr(namespace, key, new_value)
     return namespace
 
-def assemble_input(surface, multilevel, diagnostic):
+def assemble_input(surface, multilevel, diagnostic=None):
     multilevel = rearrange(
         multilevel, "b l h w c -> b h w (l c)"
     )
-    out = torch.cat((surface, diagnostic, multilevel), dim=-1) # b h w c
+    if diagnostic is None:
+        out = torch.cat((surface, multilevel), dim=-1) # b h w c
+    else:
+        out = torch.cat((surface, diagnostic, multilevel), dim=-1) # b h w c
     out = rearrange(
         out, "b h w c -> b c h w"
     )

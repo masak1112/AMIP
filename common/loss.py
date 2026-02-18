@@ -3,6 +3,7 @@ import numpy as np
 import torch.nn as nn
 from einops import repeat, rearrange
 import math 
+from common.utils import assemble_input
 
 try:
     import torch_harmonics as th
@@ -350,41 +351,69 @@ class SpectralBaseLoss(nn.Module):
 
     def __init__(
         self,
-        img_shape = (180, 360),
-        grid_type = 'equiangular',
-        eps = 1e-3,
-        absolute = False
+        img_shape=(180, 360),
+        grid_type='equiangular',
+        eps=1e-3,
+        absolute=False,
+        surface_uv_idx=(4, 5),
+        not_surface_uv_idx = (0, 1, 2, 3),
+        multilevel_uv_idx=(1, 2),
+        not_multilevel_uv_idx=(0, 3, 4, 5, 6, 7, 8),
+        vector_loss_weight=0.25,
     ):
         super().__init__()
-
-        self.img_shape = img_shape
-
-        self.sht = th.RealSHT(*img_shape, grid=grid_type).float()
-
-        # get the local l weights
-        lmax = self.sht.lmax
-        # l_weights = 1 / (2*ls+1)
-        l_weights = torch.ones(lmax)
-
-        # get the local m weights
-        mmax = self.sht.mmax
-        m_weights = 2 * torch.ones(mmax)#.reshape(1, -1)
-        m_weights[0] = 1.0
-
-        # get meshgrid of weights:
-        l_weights, m_weights = torch.meshgrid(l_weights, m_weights, indexing="ij")
-
-        # use the product weights
-        lm_weights = l_weights * m_weights
-
         self.eps = eps
         self.absolute = absolute
+        self.vector_loss_weight = vector_loss_weight
 
-        # register
-        self.register_buffer("lm_weights", lm_weights, persistent=False)
+        self.sht  = th.RealSHT(*img_shape, grid=grid_type).float()
+        self.vsht = th.RealVectorSHT(*img_shape, grid=grid_type).float()
 
-    def forward(self, forecasts: torch.Tensor, observations: torch.Tensor) -> torch.Tensor:
+        self.surface_uv_idx = surface_uv_idx
+        self.multilevel_uv_idx = multilevel_uv_idx
+        self.not_surface_uv_idx = not_surface_uv_idx
+        self.not_multilevel_uv_idx = not_multilevel_uv_idx
 
+        self.register_buffer('not_surface_uv_idx_tensor', torch.tensor(not_surface_uv_idx), persistent=False)
+        self.register_buffer('not_multilevel_uv_idx_tensor', torch.tensor(not_multilevel_uv_idx), persistent=False)
+        self.register_buffer('surface_uv_idx_tensor', torch.tensor(surface_uv_idx), persistent=False)
+        self.register_buffer('multilevel_uv_idx_tensor', torch.tensor(multilevel_uv_idx), persistent=False)
+
+        # Spectral weights for scalar SHT: uniform in l, double-weight m>0
+        lmax, mmax = self.sht.lmax, self.sht.mmax
+        l_w = torch.ones(lmax)
+        m_w = 2 * torch.ones(mmax)
+        m_w[0] = 1.0
+        l_w, m_w = torch.meshgrid(l_w, m_w, indexing='ij')
+        self.register_buffer('lm_weights', l_w * m_w, persistent=False)
+
+        # Spectral weights for vector SHT (same convention)
+        lmax_v, mmax_v = self.vsht.lmax, self.vsht.mmax
+        l_w_v = torch.ones(lmax_v)
+        m_w_v = 2 * torch.ones(mmax_v)
+        m_w_v[0] = 1.0
+        l_w_v, m_w_v = torch.meshgrid(l_w_v, m_w_v, indexing='ij')
+        self.register_buffer('lm_weights_v', l_w_v * m_w_v, persistent=False)
+
+    def forward(self, surface_pred, surface_target,
+                    multilevel_pred, multilevel_target,
+                    diagnostic_pred, diagnostic_target) -> torch.Tensor:
+
+        # surface: (B, nlat, nlon, nsurface) — variables in last dim
+        surface_pred_uv = surface_pred[..., self.surface_uv_idx_tensor]         # B nlat nlon 2
+        surface_target_uv = surface_target[..., self.surface_uv_idx_tensor]     # B nlat nlon 2
+        surface_pred_scalar = surface_pred[..., self.not_surface_uv_idx_tensor] # B nlat nlon C_s
+        surface_target_scalar = surface_target[..., self.not_surface_uv_idx_tensor]
+
+        # multilevel: (B, nlevel, nlat, nlon, nmulti) — variables in last dim
+        multilevel_pred_uv = multilevel_pred[..., self.multilevel_uv_idx_tensor]         # B nlevel nlat nlon 2
+        multilevel_target_uv = multilevel_target[..., self.multilevel_uv_idx_tensor]     # B nlevel nlat nlon 2
+        multilevel_pred_scalar = multilevel_pred[..., self.not_multilevel_uv_idx_tensor] # B nlevel nlat nlon C_m
+        multilevel_target_scalar = multilevel_target[..., self.not_multilevel_uv_idx_tensor]
+
+        # --- Scalar SHT loss (all non-wind channels) ---
+        forecasts = assemble_input(surface_pred_scalar, multilevel_pred_scalar, diagnostic_pred)
+        observations = assemble_input(surface_target_scalar, multilevel_target_scalar, diagnostic_target)
         forecasts = self.sht(forecasts) / 4.0 / math.pi
         observations = self.sht(observations) / 4.0 / math.pi
 
@@ -394,29 +423,54 @@ class SpectralBaseLoss(nn.Module):
         else:
             forecasts = torch.view_as_real(forecasts)
             observations = torch.view_as_real(observations)
-
-            # merge complex dimension after channel dimension and flatten
-            # this needs to be undone at the end
+            # (B, C, lmax, mmax, 2) -> (B, C, 2, lmax, mmax) -> (B, 2C, lmax, mmax)
             forecasts = torch.movedim(forecasts, 4, 2).flatten(1, 2)
             observations = torch.movedim(observations, 4, 2).flatten(1, 2)
 
-        # we assume the following shapes:
-        # forecasts: batch, channels, mmax, lmax
-        # observations: batch, channels, mmax, lmax
         B, C, H, W = forecasts.shape
+        spectral_weights_split = self.lm_weights.reshape(1, 1, H * W)
 
-        spectral_weights = self.lm_weights
-
-        # crps w/ E = 1
         crps = torch.abs(observations - forecasts).reshape(B, C, H * W)
         norm = torch.abs(observations).reshape(B, C, H * W)
-        spectral_weights_split = spectral_weights.reshape(1, 1, H * W)
-       
-        # perform spatial average of crps score
-        crps = torch.sum(crps * spectral_weights_split, dim=-1)
-        norm = torch.sum(norm * spectral_weights_split, dim=-1) 
+        scalar_loss = torch.sum(crps * spectral_weights_split, dim=-1).mean() / \
+                      (torch.sum(norm * spectral_weights_split, dim=-1).mean() + self.eps)
 
-        return crps.mean() / (norm.mean() + self.eps) # dimension 
+        # --- Vector SHT loss (u/v wind pairs) ---
+        # Surface: (B, nlat, nlon, 2) -> (B, 2, nlat, nlon)
+        f_surf_uv = surface_pred_uv.permute(0, 3, 1, 2)
+        o_surf_uv = surface_target_uv.permute(0, 3, 1, 2)
+
+        # Multilevel: (B, nlevel, nlat, nlon, 2) -> (B*nlevel, 2, nlat, nlon)
+        nlevel, nlat, nlon = multilevel_pred_uv.shape[1], multilevel_pred_uv.shape[2], multilevel_pred_uv.shape[3]
+        f_multi_uv = multilevel_pred_uv.permute(0, 1, 4, 2, 3).reshape(B * nlevel, 2, nlat, nlon)
+        o_multi_uv = multilevel_target_uv.permute(0, 1, 4, 2, 3).reshape(B * nlevel, 2, nlat, nlon)
+
+        # Combine surface and multilevel pairs into a single batch for one vsht call
+        f_all_uv = torch.cat([f_surf_uv, f_multi_uv], dim=0)  # (B + B*nlevel, 2, nlat, nlon)
+        o_all_uv = torch.cat([o_surf_uv, o_multi_uv], dim=0)
+
+        # Apply vector SHT -> (N, 2, lmax_v, mmax_v) complex; dim 1: [spheroidal, toroidal]
+        f_v = self.vsht(f_all_uv) / 4.0 / math.pi
+        o_v = self.vsht(o_all_uv) / 4.0 / math.pi
+
+        if self.absolute:
+            f_v = torch.abs(f_v)
+            o_v = torch.abs(o_v)
+        else:
+            # (N, 2, lmax_v, mmax_v, 2) -> (N, 2, 2, lmax_v, mmax_v) -> (N, 4, lmax_v, mmax_v)
+            f_v = torch.movedim(torch.view_as_real(f_v), 4, 2).flatten(1, 2)
+            o_v = torch.movedim(torch.view_as_real(o_v), 4, 2).flatten(1, 2)
+
+        N, C_v, H_v, W_v = f_v.shape
+        swv = self.lm_weights_v.reshape(1, 1, H_v * W_v)
+        v_crps = torch.abs(o_v - f_v).reshape(N, C_v, H_v * W_v)
+        v_norm = torch.abs(o_v).reshape(N, C_v, H_v * W_v)
+        vector_loss = torch.sum(v_crps * swv, dim=-1).mean() / \
+                      (torch.sum(v_norm * swv, dim=-1).mean() + self.eps)
+
+        return scalar_loss + self.vector_loss_weight * vector_loss
+
+
 
 def rankdata(x: torch.Tensor, dim: int) -> torch.Tensor:
     """

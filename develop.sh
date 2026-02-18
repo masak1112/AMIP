@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -N AE_SR_DIT
+#PBS -N AE_decoder_hfs
 #PBS -l select=1:ncpus=16:ngpus=4:mem=120G
 #PBS -q develop
 #PBS -l walltime=00:10:00
@@ -9,6 +9,6 @@
 module load conda
 conda activate torch
 
-CONFIG=configs/ae_dit.yaml
+CONFIG=configs/ae_decoder_hfs_spectral.yaml
 
 python train.py --config=$CONFIG

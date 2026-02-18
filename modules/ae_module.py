@@ -102,6 +102,13 @@ class AutoencoderModule(L.LightningModule):
             self.decoder = DecoderHistory(**self.modelconfig["AE_History"]["decoder"])
             self.history = True
             self.decoder_only = True
+        elif self.model_name == "AE_History_HFS":
+            from modules.models.AE_decoder_hfs import DecoderHistory
+            from modules.models.AE_simple import BilinearEncoder
+            self.encoder = BilinearEncoder(**self.modelconfig["AE_History"]["encoder"])
+            self.decoder = DecoderHistory(**self.modelconfig["AE_History"]["decoder"])
+            self.history = True
+            self.decoder_only = True
         elif self.model_name == "AE_SI":
             from modules.models.AE_Unet import DecoderUnet
             from modules.models.AE_simple import BilinearEncoder, BilinearDecoder
@@ -247,11 +254,10 @@ class AutoencoderModule(L.LightningModule):
             mse_loss = self.criterion(surface_pred, surface_target,
                         multilevel_pred, multilevel_target,
                         diagnostic_pred, diagnostic_target)
-            
-            x_pred = assemble_input(surface_pred, multilevel_pred, diagnostic_pred)
-            x_target = assemble_input(surface_target, multilevel_target, diagnostic_target)
 
-            spectral_loss = self.spectral_criterion(x_pred, x_target)
+            spectral_loss = self.spectral_criterion(surface_pred, surface_target,
+                        multilevel_pred, multilevel_target,
+                        diagnostic_pred, diagnostic_target)
 
             return mse_loss + self.spectral_loss_weight * spectral_loss
     
