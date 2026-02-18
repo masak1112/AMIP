@@ -15,7 +15,7 @@ model:
             nlon: 360
         scheduler:
             num_refinement_steps: 10
-            sigma_coupling: 0.5
+            sigma_coupling: 1.0
 
 data:
     train_data_path: /glade/derecho/scratch/ayz/AMIP_train_new.h5
