@@ -17,14 +17,14 @@ class ClimateDataModule(L.LightningDataModule):
         self.train_dataset = AMIPData(data_path=dataconfig["train_data_path"],
                                         norm_stats_path=self.norm_stats_path,
                                         nsteps=dataconfig["training_nsteps"],  
-                                        split='test',
+                                        split=dataconfig.get("train_split", "train"),
                                         downsample_levels=dataconfig.get("downsample_levels", 1),
                                         normalize=self.normalize)
         
         self.val_dataset = AMIPData(data_path=dataconfig["val_data_path"],
                                         norm_stats_path=self.norm_stats_path,
                                         nsteps=dataconfig["val_nsteps"],  
-                                        split='valid',
+                                        split=dataconfig.get("valid_split", "valid"),
                                         horizon=dataconfig.get("val_horizon", -1),
                                         downsample_levels=dataconfig.get("downsample_levels", 1),
                                         normalize=self.normalize)
