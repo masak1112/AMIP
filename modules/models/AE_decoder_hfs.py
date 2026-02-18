@@ -62,7 +62,7 @@ class DecoderHistory(nn.Module):
                  out_channels, # output channel dim
                  hidden_channels, # width of network
                  z_channels, # input latent dim
-                 ch_mult=(1,2,2), 
+                 ch_mult=(1,2,4), 
                  num_res_blocks = 4,
                  resolution = (180, 360), 
                  attn_resolutions = [32], 
@@ -158,8 +158,8 @@ class DecoderHistory(nn.Module):
                 else:
                     up.upsample = Upsample(block_in, resamp_with_conv, dim=dim)
                 curr_res = curr_res * 2
+                init_patch_size = 2*init_patch_size
             self.up.insert(0, up) # prepend to get consistent order
-            init_patch_size = 2*init_patch_size
             self.feat_up.insert(0, featscale2(patch_size=init_patch_size, channels=block_in))
 
         self.out_blocks = out_blocks
