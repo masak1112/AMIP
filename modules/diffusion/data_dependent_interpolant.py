@@ -20,15 +20,17 @@ class DataDependentInterpolant(nn.Module):
 
     With alpha_t = 1-t, beta_t = t: dI_t/dt = x1 - x0.
 
-    Key: no additional gamma_t * z noise in the interpolant. All stochasticity
+    No additional gamma_t * z noise in the interpolant. All stochasticity
     comes from the data-dependent coupling x0 = m(x1) + sigma * zeta.
     """
 
     def __init__(self,
-                 num_refinement_steps=20,
+                 num_refinement_steps=5,
+                 num_train_steps=None,
                  sigma_coupling=0.0):
         super().__init__()
         self.num_refinement_steps = num_refinement_steps
+        self.num_train_timesteps = num_train_steps if num_train_steps is not None else num_refinement_steps + 1
         self.sigma_coupling = sigma_coupling
 
     def alpha(self, t):
@@ -71,7 +73,6 @@ class DataDependentInterpolant(nn.Module):
         """
         b = x_lowres.shape[0]
         device = x_lowres.device
-        dtype = x_lowres.dtype
 
         # Data-dependent coupling: x0 = m(x1) + sigma * zeta
         if self.sigma_coupling > 0:
@@ -82,8 +83,8 @@ class DataDependentInterpolant(nn.Module):
 
         x1 = x_highres
 
-        # Sample t ~ U(eps, 1-eps)
-        t = torch.rand(b, device=device, dtype=dtype)
+        # sample timestep (shape (b, )) no need to train on t=1
+        t = torch.randint(0, self.num_train_timesteps-1, device=device, size=(b,)) / (self.num_train_timesteps - 1)  # shape (b,)
 
         # Reshape for broadcasting: [b, 1, 1, 1]
         t_wide = t[:, None, None, None]

@@ -12,19 +12,22 @@ class ClimateDataModule(L.LightningDataModule):
         self.num_workers = dataconfig["num_workers"]
         self.norm_stats_path = dataconfig['norm_stats_path']
         self.use_climatology = dataconfig.get('use_climatology', False)
+        self.normalize = dataconfig.get('normalize', True)
 
         self.train_dataset = AMIPData(data_path=dataconfig["train_data_path"],
                                         norm_stats_path=self.norm_stats_path,
                                         nsteps=dataconfig["training_nsteps"],  
                                         split='train',
-                                        downsample_levels=dataconfig.get("downsample_levels", 1))
+                                        downsample_levels=dataconfig.get("downsample_levels", 1),
+                                        normalize=self.normalize)
         
         self.val_dataset = AMIPData(data_path=dataconfig["val_data_path"],
                                         norm_stats_path=self.norm_stats_path,
                                         nsteps=dataconfig["val_nsteps"],  
                                         split='valid',
                                         horizon=dataconfig.get("val_horizon", -1),
-                                        downsample_levels=dataconfig.get("downsample_levels", 1))
+                                        downsample_levels=dataconfig.get("downsample_levels", 1),
+                                        normalize=self.normalize)
         if self.use_climatology:
             self.climatology_dataset = ClimatologyData(data_path=dataconfig["train_data_path"],
                                                     norm_stats_path=self.norm_stats_path,
