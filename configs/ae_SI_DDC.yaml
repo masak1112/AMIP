@@ -1,16 +1,16 @@
 model:
-    model_name: AE_SI_DDC
+    model_name: AE_DIT_DDC
     lr: 5.0e-5
-    AE_SI_DDC:
+    AE_DIT_DDC:
         encoder:
             downsample_factor: 4
         decoder:
             in_channels: 249
             out_channels: 249
-            dim: 1024
+            dim: 512
             num_heads: 8
-            num_blocks: 16
-            patch_size: 8
+            num_blocks: 8
+            patch_size: 4
             nlat: 180
             nlon: 360
         scheduler:

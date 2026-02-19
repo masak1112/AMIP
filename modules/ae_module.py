@@ -66,24 +66,24 @@ class AutoencoderModule(L.LightningModule):
             self.decoder = DecoderHistory(**self.modelconfig["AE_History"]["decoder"])
             self.history = True
             self.decoder_only = True
-        elif self.model_name == "AE_SI_DDC":
-            from modules.models.SI_DiT import SIDiT
+        elif self.model_name == "AE_DIT_DDC":
+            from modules.models.DiT import DiT
             from modules.models.AE_simple import BilinearEncoder, BilinearDecoder
             from modules.diffusion.data_dependent_interpolant import DataDependentInterpolant
-            self.downsample = BilinearEncoder(**self.modelconfig["AE_SI_DDC"]["encoder"])
-            self.upsample = BilinearDecoder(**self.modelconfig["AE_SI_DDC"]["encoder"])
-            self.decoder = SIDiT(**self.modelconfig["AE_SI_DDC"]["decoder"])
-            self.scheduler = DataDependentInterpolant(**self.modelconfig["AE_SI_DDC"]["scheduler"])
-            self.history = self.modelconfig["AE_SI_DDC"]["decoder"].get("use_history", False)
+            self.downsample = BilinearEncoder(**self.modelconfig["AE_DIT_DDC"]["encoder"])
+            self.upsample = BilinearDecoder(**self.modelconfig["AE_DIT_DDC"]["encoder"])
+            self.decoder = DiT(**self.modelconfig["AE_DIT_DDC"]["decoder"])
+            self.scheduler = DataDependentInterpolant(**self.modelconfig["AE_DIT_DDC"]["scheduler"])
+            self.history = self.modelconfig["AE_DIT_DDC"]["decoder"].get("use_history", False)
             self.decoder_only = True
-        elif self.model_name == "AE_Flow_Arches":
-            from modules.models.SI_DiT import ArchesSiT
+        elif self.model_name == "AE_Arches_DDC":
+            from modules.models.Arches_SiT import ArchesSiT
             from modules.models.AE_simple import BilinearEncoder, BilinearDecoder
-            from modules.diffusion.flow_matching import ConditionalFlowMatching
+            from modules.diffusion.data_dependent_interpolant import DataDependentInterpolant
             self.downsample = BilinearEncoder(**self.modelconfig["AE_Flow_Arches"]["encoder"])
             self.upsample = BilinearDecoder(**self.modelconfig["AE_Flow_Arches"]["encoder"])
             self.decoder = ArchesSiT(**self.modelconfig["AE_Flow_Arches"]["decoder"])
-            self.scheduler = ConditionalFlowMatching(**self.modelconfig["AE_Flow_Arches"]["scheduler"])
+            self.scheduler = DataDependentInterpolant(**self.modelconfig["AE_Flow_Arches"]["scheduler"])
             self.history = self.modelconfig["AE_Flow_Arches"]["decoder"].get("use_history", False)
             self.decoder_only = True
         else:

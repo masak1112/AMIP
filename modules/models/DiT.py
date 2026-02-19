@@ -1,334 +1,307 @@
-import importlib
+import math
 
-import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F  # noqa N812
-import torch.utils.checkpoint as gradient_checkpoint
+import torch.nn.functional as F
 from einops import rearrange
-from timm.layers.mlp import SwiGLU
 
-from modules.layers.arches_layers import (
-    CondBasicLayer,
-    DCDownSample,
-    LinVert,
-    Mlp,
-    DCUpSample,
-    ICNR_init,
-    TimestepEmbedder
-)
+from modules.layers.positional_encoding import TimestepEmbedder
+from modules.layers.spherical_harmonics import SphericalHarmonicsPE
+from modules.layers.unpatchify import SubPixelConvICNR_2D, Unpatchify
+from modules.layers.patchify import PatchEmbed
+from modules.layers.cross_attention import CrossAttentionBlock
 
-
-class WeatherEncodeDecodeLayer(nn.Module):
+class DiTBlock(nn.Module):
     """
-    gathers layers for the encoder and decoder
+    Vanilla self-attention transformer block with AdaLN-Zero timestep conditioning.
+
+    Input/output shape: [b, n, dim] where n = (nlat//p) * (nlon//p).
     """
 
-    def __init__(
-        self,
-        img_size=(26, 180, 360),
-        emb_dim=192,
-        out_emb_dim=2 * 192,  
-        patch_size=(2, 2, 2),
-        surface_ch=6,
-        level_ch=8,
-        forcing_ch=3,
-        invariant_ch=2,
-        diagnostic_ch=9,
-        encode_noise=True
-    ) -> None:
+    def __init__(self, dim, num_heads, mlp_ratio=4, dropout=0.0):
         super().__init__()
-        
-        self.img_size = img_size
-        self.emb_dim = emb_dim
-        self.patch_size = patch_size
-        self.surface_ch = surface_ch
-        self.level_ch = level_ch
-        self.forcing_ch = forcing_ch
-        self.invariant_ch = invariant_ch
-        self.diagnostic_ch = diagnostic_ch
-        self.encode_noise = encode_noise
+        self.dim = dim
+        self.num_heads = num_heads
+        dim_head = dim // num_heads
 
-        surface_ch_in = surface_ch + forcing_ch + invariant_ch
-        level_ch_in = level_ch 
+        # Self-attention
+        self.norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
+        self.qkv = nn.Linear(dim, 3 * dim, bias=False)
+        self.attn_out = nn.Linear(dim, dim)
+        self.scale = dim_head ** -0.5
 
-        if self.encode_noise:
-            surface_ch_in += diagnostic_ch + surface_ch
-            level_ch_in += level_ch
-
-        self.level_proj = nn.Conv3d(
-            level_ch_in, emb_dim, kernel_size=patch_size, stride=patch_size
-        )
-        self.surface_proj = nn.Conv2d(
-            surface_ch_in, emb_dim, kernel_size=patch_size[1:], stride=patch_size[1:]
+        # Feedforward
+        self.norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
+        hidden_dim = int(dim * mlp_ratio)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            nn.GELU(approximate='tanh'),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim),
         )
 
-        self.surface_deconv = nn.Conv2d(
-            out_emb_dim,
-            (surface_ch + diagnostic_ch) * patch_size[-1] ** 2,
-            kernel_size=3,
-            stride=1,
-            padding=1,
-            bias=0,
-        )
-        self.level_deconv = nn.Conv2d(
-            out_emb_dim // 2,
-            level_ch * patch_size[-1] ** 2,
-            kernel_size=3,
-            stride=1,
-            padding=1,
-            bias=0,
-        )
-        self.pixelshuffle = nn.PixelShuffle(patch_size[-1])
-        # Apply He Initialization
-        self.apply(self._init_weights)
-        ICNR_init(
-            self.surface_deconv.weight,
-            initializer=nn.init.kaiming_normal_,
-            upscale_factor=patch_size[-1],
-        )
-        ICNR_init(
-            self.level_deconv.weight,
-            initializer=nn.init.kaiming_normal_,
-            upscale_factor=patch_size[-1],
+        # AdaLN-Zero modulation: 6 * dim for (shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp)
+        self.adaLN_modulation = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(dim, 6 * dim),
         )
 
-    def _init_weights(self, m):
+        # Zero-init the modulation output
+        nn.init.constant_(self.adaLN_modulation[-1].weight, 0)
+        nn.init.constant_(self.adaLN_modulation[-1].bias, 0)
+
+    def forward(self, x, t_emb):
         """
-        Applies He (Kaiming) initialization to Conv2d and Linear layers.
-        Initializes normalization layers (LayerNorm, BatchNorm) with scale 1 and bias 0.
+        Args:
+            x: [b, n, dim]
+            t_emb: [b, dim] timestep embedding
         """
-        if isinstance(m, (nn.Conv2d, nn.Linear)):
-            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        
-        elif isinstance(m, (nn.LayerNorm, nn.BatchNorm2d, nn.GroupNorm)):
-            if m.weight is not None:
-                nn.init.constant_(m.weight, 1)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
+        # AdaLN modulation parameters
+        mod = self.adaLN_modulation(t_emb).unsqueeze(1)  # [b, 1, 6*dim]
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = mod.chunk(6, dim=-1)
 
-    def encode(self, surface, multilevel, forcing, invariants,
-               surface_noised=None, multi_noised=None, diag_noised=None):
-        """
-        surface: B, nlat, nlon, surface_ch
-        multilevel: B, nlevel, nlat, nlon, level_ch
-        forcing: B, nlat, nlon, forcing_ch
-        invariants: B, nlat, nlon, invariant_ch
-        """
+        # Self-attention with AdaLN
+        h = self.norm1(x)
+        h = h * (1 + scale_msa) + shift_msa
 
-        surface = rearrange(surface, "b nlat nlon c -> b c nlat nlon")
-        multilevel = rearrange(
-            multilevel, "b nlevel nlat nlon c -> b c nlevel nlat nlon"
-        )
-        forcing = rearrange(forcing, "b nlat nlon c -> b c nlat nlon")
-        invariants = rearrange(invariants, "b nlat nlon c -> b c nlat nlon")
-        
-        surface = torch.cat([surface, forcing, invariants], dim=1) # b (surface_ch + forcing_ch + invariant_ch) nlat nlon
-        
-        if self.encode_noise:
-            surface_noised = rearrange(surface_noised, "b nlat nlon c -> b c nlat nlon")
-            diag_noised = rearrange(diag_noised, "b nlat nlon c -> b c nlat nlon")
-            multi_noised = rearrange(multi_noised, "b nlevel nlat nlon c -> b c nlevel nlat nlon")
+        b, n, c = h.shape
+        qkv = self.qkv(h).reshape(b, n, 3, self.num_heads, c // self.num_heads)
+        qkv = qkv.permute(2, 0, 3, 1, 4)  # [3, b, heads, n, dim_head]
+        q, k, v = qkv.unbind(0)
 
-            surface = torch.cat([surface, surface_noised, diag_noised], dim=1) # b (surface_ch + forcing_ch + invariant_ch + surface_noised_ch + diagnostic_ch) nlat nlon
-            multilevel = torch.cat([multilevel, multi_noised], dim=1) # b (level_ch + multi_noised_ch) nlevel nlat nlon
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = attn.softmax(dim=-1) # [b, heads, n, n]
+        h = (attn @ v).transpose(1, 2).reshape(b, n, c) # [b, n, dim]
+        h = self.attn_out(h) # [b, n, dim]
 
-        # patchify
-        surface = self.surface_proj(surface) # b emb_dim zlat zlon
-        level = self.level_proj(multilevel) # b emb_dim zlevel zlat zlon
+        x = x + gate_msa * h
 
-        x = torch.concat([surface.unsqueeze(2), level], dim=2) # b emb_dim (1 + zlevel) zlat zlon
+        # FFN with AdaLN
+        h = self.norm2(x)
+        h = h * (1 + scale_mlp) + shift_mlp
+        h = self.mlp(h)
+        x = x + gate_mlp * h
+
         return x
 
-    def decode(self, x):
-        # x: b, emb_dim, zlevel+1, zlat, zlon
 
-        surface, level = x[:, :, 0], x[:, :, 1:]
+class DiT(nn.Module):
+    """
+    Patchified Diffusion Transformer for stochastic interpolant velocity prediction.
 
-        output_surface = self.surface_deconv(surface) # b, surface_ch * r^2, zlat, zlon
-        output_surface = self.pixelshuffle(output_surface) # b, surface_ch, lat, lon
-        output_surface, output_diagnostic = output_surface[:, :self.surface_ch], output_surface[:, self.surface_ch:]  
+    Architecture:
+    - PatchEmbed for main input:
+        - use_history=True:  (2*in_channels) — I_t concat with downsampled current state
+        - use_history=False: (in_channels)   — I_t only, with cond via cross-attention
+    - Separate conditioning encoder for cross-attention context
+    - Spherical harmonic positional encoding
+    - N blocks of: DiTBlock (vanilla self-attn with AdaLN) + CrossAttentionBlock
+    - Unpatchify: dim -> out_channels @ nlat x nlon
+    - Zero-initialized output projection
+    """
 
-        # b c/2 2 zlevel zlat zlon -> b c/2 2*zlevel zlat zlon
-        level = level.reshape(level.shape[0], level.shape[1] // 2, 2, *level.shape[2:]).flatten(2, 3)
-        level = level.movedim(-3, 1).flatten(0, 1) # b*2*zlevel, c/2, zlat, zlon
-
-        output_level = self.level_deconv(level) # b*2*zlevel, level_ch * r^2, zlat, zlon
-        output_level = self.pixelshuffle(output_level) # b*2*zlevel, level_ch, lat, lon
-        output_level = output_level.reshape(-1, self.img_size[0], *output_level.shape[1:]).movedim(
-            1, -3
-        ) # b, level_ch, nlevel, lat, lon
-
-        output_surface = rearrange(output_surface, "b c nlat nlon -> b nlat nlon c")
-        output_level = rearrange(output_level, "b c nlevel nlat nlon -> b nlevel nlat nlon c")
-        output_diagnostic = rearrange(output_diagnostic, "b c nlat nlon -> b nlat nlon c")
-
-        return output_surface, output_level, output_diagnostic
-
-
-class ArchesDiT(nn.Module):
-    def __init__(
-        self,
-        encode_decode_params: dict,
-        tensor_size=(14, 90, 180),
-        emb_dim=192,
-        cond_dim=256,  # dim of the conditioning
-        num_heads=(6, 12, 12, 6),
-        window_size=(1, 6, 10),
-        droppath_coeff=0.0,
-        depth_multiplier=2,
-        dropout=0.0,
-        mlp_ratio=4.0,
-        use_skip=True,
-        first_interaction_layer="linear",
-        gradient_checkpointing=False,
-        mlp_layer="swiglu",
-        **kwargs,
-    ):
+    def __init__(self,
+                 in_channels=249,
+                 out_channels=249,
+                 dim=384,
+                 num_heads=8,
+                 num_blocks=8,
+                 patch_size=4,
+                 nlat=180,
+                 nlon=360,
+                 dropout=0.0,
+                 unpatch="vanilla",
+                 use_history=False):
         super().__init__()
-        self.use_skip = use_skip
-        self.gradient_checkpointing = gradient_checkpointing
-        self.first_interaction_layer = first_interaction_layer
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.dim = dim
+        self.num_heads = num_heads
+        self.num_blocks = num_blocks
+        self.patch_size = patch_size
+        self.nlat = nlat
+        self.nlon = nlon
+        self.dropout = dropout
+        self.use_history = use_history
 
-        self.encode_decode = WeatherEncodeDecodeLayer(**encode_decode_params)
-        self.zdim = tensor_size[0]
-        
-        drop_path = np.linspace(
-            0, droppath_coeff / depth_multiplier, self.zdim * depth_multiplier
-        ).tolist()
+        # Pad spatial dims to be divisible by patch_size
+        self.nlat_pad = math.ceil(nlat / patch_size) * patch_size
+        self.nlon_pad = math.ceil(nlon / patch_size) * patch_size
+        self.pad_lat = self.nlat_pad - nlat
+        self.pad_lon = self.nlon_pad - nlon
 
-        self.layer1_shape = tensor_size[1:]
+        self.grid_x = self.nlat_pad // patch_size
+        self.grid_y = self.nlon_pad // patch_size
+        self.with_poles = False
 
-        self.layer2_shape = (self.layer1_shape[0] // 2, self.layer1_shape[1] // 2)
+        # Patch embedding for main input
+        # use_history: [I_t; cond] channel-wise concat (2*c), cross-attn attends to history
+        # no history:  I_t only (c), cross-attn attends to cond
+        main_in_chans = 2 * in_channels if use_history else in_channels
+        self.patch_embed_main = PatchEmbed(
+            patch_size=patch_size,
+            in_chans=main_in_chans,
+            hidden_size=dim,
+            flatten=False)
 
-        if first_interaction_layer == "linear":
-            self.interaction_layer = LinVert(in_features=emb_dim,
-                                             n_cols = self.zdim)
+        # Patch embedding for cross-attention context (history or cond)
+        self.patch_embed_cond = PatchEmbed(
+            patch_size=patch_size,
+            in_chans=in_channels,
+            hidden_size=dim,
+            flatten=False)
 
-        layer_args = dict(
-            cond_dim=cond_dim,
-            window_size=window_size,
-            act_layer=nn.GELU,
-            drop=dropout,
-            mlp_layer=Mlp,
-            mlp_ratio=mlp_ratio,
-        )
+        # Spherical harmonic positional encoding
+        l_max = 20
+        self.pe_embed = SphericalHarmonicsPE(l_max, dim, dim, use_mlp=True)
+        self.pe2patch = PatchEmbed(
+            patch_size=patch_size,
+            in_chans=dim,
+            hidden_size=dim,
+            flatten=False)
 
-        if mlp_layer == "swiglu":
-            layer_args["mlp_ratio"] = mlp_ratio * 2 / 3
-            layer_args["mlp_layer"] = SwiGLU
+        # Timestep embedding
+        self.t_embedder = TimestepEmbedder(dim)
 
-        self.layer1 = CondBasicLayer(
-            dim=emb_dim,
-            input_resolution=(self.zdim, *self.layer1_shape),
-            depth=2 * depth_multiplier,
-            num_heads=num_heads[0],
-            drop_path=drop_path[: 2 * depth_multiplier],
-            **layer_args,
-            **kwargs,
-        )
-        self.downsample = DCDownSample(
-            in_dim=emb_dim,
-            out_dim=emb_dim * 2,
-            input_resolution=(self.zdim, *self.layer1_shape),
-            output_resolution=(self.zdim, *self.layer2_shape),
-        )
-        self.layer2 = CondBasicLayer(
-            dim=emb_dim * 2,
-            input_resolution=(self.zdim, *self.layer2_shape),
-            depth=6 * depth_multiplier,
-            num_heads=num_heads[1],
-            drop_path=drop_path[2 * depth_multiplier :],
-            **layer_args,
-            **kwargs,
-        )
-        self.layer3 = CondBasicLayer(
-            dim=emb_dim * 2,
-            input_resolution=(self.zdim, *self.layer2_shape),
-            depth=6 * depth_multiplier,
-            num_heads=num_heads[2],
-            drop_path=drop_path[2 * depth_multiplier :],
-            **layer_args,
-            **kwargs,
-        )
-        self.upsample = DCUpSample(
-            emb_dim * 2, emb_dim, (self.zdim, *self.layer2_shape), (self.zdim, *self.layer1_shape)
-        )
-        out_dim = emb_dim if not self.use_skip else 2 * emb_dim
-        self.layer4 = CondBasicLayer(
-            dim=out_dim,
-            input_resolution=(self.zdim, *self.layer1_shape),
-            depth=2 * depth_multiplier,
-            num_heads=num_heads[3],
-            drop_path=drop_path[: 2 * depth_multiplier],
-            **layer_args,
-            **kwargs,
-        )
+        # Transformer blocks: vanilla self-attention + cross-attention
+        sa_blocks = []
+        ca_blocks = []
+        for _ in range(num_blocks):
+            sa_blocks.append(DiTBlock(dim, num_heads, mlp_ratio=4, dropout=dropout))
+            ca_blocks.append(CrossAttentionBlock(num_heads, dim))
 
-        self.cond_embedders = nn.ModuleList([
-            TimestepEmbedder(cond_dim),
-            TimestepEmbedder(cond_dim),
-            TimestepEmbedder(cond_dim),
-        ])
+        self.sa_blocks = nn.ModuleList(sa_blocks)
+        self.ca_blocks = nn.ModuleList(ca_blocks)
 
-        # Apply He Initialization
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        """
-        Applies He (Kaiming) initialization to Conv2d and Linear layers.
-        Initializes normalization layers (LayerNorm, BatchNorm) with scale 1 and bias 0.
-        """
-        if isinstance(m, (nn.Conv2d, nn.Linear)):
-            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        
-        elif isinstance(m, (nn.LayerNorm, nn.BatchNorm2d, nn.GroupNorm)):
-            if m.weight is not None:
-                nn.init.constant_(m.weight, 1)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-
-    def forward(self, surface, multi, forcing, invariant, cond_emb, 
-                surface_noised=None, multi_noised=None, diag_noised=None):
-        
-        # cond_emb in shape (b, 3)
-        cond_emb = [emb(cond_emb[:, i]) for i, emb in enumerate(self.cond_embedders)]
-        cond_emb = torch.stack(cond_emb, dim=0) # 3, b, cond_dim
-        cond_emb = torch.sum(cond_emb, dim=0) # b, cond_dim
-        
-        x = self.encode_decode.encode(surface, multi, forcing, invariant,
-                                      surface_noised, multi_noised, diag_noised) 
-
-        B, C, Pl, Lat, Lon = x.shape
-        x = x.reshape(B, C, -1).transpose(1, 2) # B, N, C
-
-        if self.first_interaction_layer:
-            x = self.interaction_layer(x)
-
-        x = self.layer1(x, cond_emb)
-
-        skip = x
-        x = self.downsample(x)
-
-        x = self.layer2(x, cond_emb)
-
-        if self.gradient_checkpointing:
-            x = gradient_checkpoint.checkpoint(self.layer3, x, cond_emb, use_reentrant=False)
+        # Unpatchify
+        if unpatch == "subpixel":
+            self.unpatchify_layer = SubPixelConvICNR_2D(
+                img_size=(self.nlat_pad, self.nlon_pad),
+                patch_size=(patch_size, patch_size),
+                in_chans=dim,
+                out_chans=dim,
+                cond_dim=dim,
+                num_lat=self.nlat_pad)
+        elif unpatch == "vanilla":
+            self.unpatchify_layer = Unpatchify(
+                grid_size=(self.grid_x, self.grid_y),
+                patch_size=(patch_size, patch_size),
+                in_dim=dim,
+                out_dim=dim,
+                cond_dim=dim)
         else:
-            x = self.layer3(x, cond_emb)
+            raise ValueError(f"unpatch type '{unpatch}' not supported")
 
-        x = self.upsample(x)
-        if self.use_skip and skip is not None:
-            x = torch.concat([x, skip], dim=-1)
-        x = self.layer4(x, cond_emb)
+        # Output projection (zero-initialized for stable training start)
+        self.out_proj = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, out_channels))
 
-        output = x
-        output = output.transpose(1, 2).reshape(output.shape[0], -1, self.zdim, *self.layer1_shape)
+        self.initialize_weights()
 
-        output_surface, output_level, output_diagnostic = self.encode_decode.decode(output)
+    def initialize_weights(self):
+        def _basic_init(module):
+            if isinstance(module, (nn.Linear, nn.Conv2d)):
+                torch.nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+        self.apply(_basic_init)
 
-        return output_surface, output_level, output_diagnostic
+        # Zero-init output projection for stable training
+        nn.init.constant_(self.out_proj[-1].weight, 0)
+        nn.init.constant_(self.out_proj[-1].bias, 0)
+
+        # Re-zero-init AdaLN modulation outputs (apply overwrites them)
+        for block in self.sa_blocks:
+            nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
+            nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
+
+    @torch.no_grad()
+    def get_grid(self, nlat, nlon, device):
+        if self.with_poles:
+            lat = torch.linspace(-math.pi / 2, math.pi / 2, nlat).to(device)
+        else:
+            lat_end = (nlat - 1) * (2 * math.pi / nlon) / 2
+            lat = torch.linspace(-lat_end, lat_end, nlat).to(device)
+        lon = torch.linspace(0, 2 * math.pi - (2 * math.pi / nlon), nlon).to(device)
+        return lat, lon
+
+    def forward(self, x_noised, t, cond, history=None):
+        """
+        Args:
+            x_noised: [b, c, nlat, nlon] — interpolant I_t (channel-first from assemble_input)
+            t: [b, 1] — timestep
+            cond: [b, c, nlat, nlon] — downsampled current state (channel-first).
+                  When use_history=True: concatenated channel-wise with x_noised.
+                  When use_history=False: used as cross-attention context.
+            history: [b, c, nlat, nlon] — high-res prior state/history (channel-first),
+                     used as cross-attention context when use_history=True. Ignored otherwise.
+
+        Returns:
+            [b, c, nlat, nlon] — predicted velocity (channel-first)
+        """
+        batch_size = x_noised.shape[0]
+        nlat, nlon = self.nlat, self.nlon
+
+        if self.use_history:
+            # History mode: concat cond channel-wise with I_t, cross-attend to history
+            x_input = torch.cat([x_noised, cond], dim=1)  # [b, 2c, nlat, nlon]
+            ca_context = history if history is not None else cond
+        else:
+            # Standard mode: I_t only as input, cross-attend to cond
+            x_input = x_noised
+            ca_context = cond
+
+        # Pad spatial dims to be divisible by patch_size
+        if self.pad_lat > 0 or self.pad_lon > 0:
+            # F.pad order: (left, right, top, bottom) for last two dims
+            x_input = F.pad(x_input, (0, self.pad_lon, 0, self.pad_lat), mode='reflect')
+            ca_context = F.pad(ca_context, (0, self.pad_lon, 0, self.pad_lat), mode='reflect')
+
+        # Get grid coordinates for positional encoding at padded resolution
+        lat, lon = self.get_grid(self.nlat_pad, self.nlon_pad, x_input.device)
+
+        # Convert channel-first to channel-last for PatchEmbed: [b, c, h, w] -> [b, h, w, c]
+        x_nhwc = x_input.permute(0, 2, 3, 1)
+        c_nhwc = ca_context.permute(0, 2, 3, 1)
+
+        # Patchify: [b, h, w, c] -> [b, h//p, w//p, dim]
+        x = self.patch_embed_main(x_nhwc)
+        c = self.patch_embed_cond(c_nhwc)
+
+        # Positional encoding
+        sphere_pe = self.pe_embed(lat + math.pi / 2, lon - math.pi)
+        sphere_pe = sphere_pe.expand(batch_size, -1, -1, -1)  # [b, nlat_pad, nlon_pad, dim]
+        sphere_pe = self.pe2patch(sphere_pe)  # [b, nlat_pad//p, nlon_pad//p, dim]
+
+        x = x + sphere_pe
+        c = c + sphere_pe
+
+        # Flatten spatial dims for sequence processing: [b, h//p, w//p, dim] -> [b, n, dim]
+        x = rearrange(x, 'b ny nx c -> b (ny nx) c')
+        c = rearrange(c, 'b ny nx c -> b (ny nx) c')
+
+        # Timestep embedding
+        if t is not None and len(t.shape) == 1:
+            t = t[:, None]
+        t_emb = self.t_embedder(t)  # [b, dim]
+
+        # Transformer blocks: vanilla self-attention + cross-attention with history
+        for sa_block, ca_block in zip(self.sa_blocks, self.ca_blocks):
+            x = sa_block(x, t_emb)        # self-attention with AdaLN
+            x = ca_block(x, c)            # cross-attention with history context
+
+        # Unpatchify: [b, n, dim] -> [b, nlat, nlon, dim]
+        x = self.unpatchify_layer(x, t_emb)
+
+        # Output projection
+        x = self.out_proj(x)  # [b, nlat, nlon, out_channels]
+
+        # Convert back to channel-first: [b, h, w, c] -> [b, c, h, w]
+        x = x.permute(0, 3, 1, 2)
+
+        # Crop back to original spatial dims
+        if self.pad_lat > 0 or self.pad_lon > 0:
+            x = x[:, :, :nlat, :nlon]
+
+        return x
