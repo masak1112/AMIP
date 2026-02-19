@@ -313,6 +313,9 @@ class ArchesSiT(nn.Module):
         surface, multi, diag = disassemble_input(cond, self.surface_ch, self.diagnostic_ch, self.n_levels) # b nlat nlon ch
         surface_noised, multi_noised, diag_noised = disassemble_input(x, self.surface_ch, self.diagnostic_ch, self.n_levels) # b nlat nlon ch
         
+        if len(t.shape) == 2: # (b, 1)
+            t = t[:, 0] # (b,)
+
         cond_emb = self.t_embed(t) # b, cond_dim
         
         x = self.encode_decode.encode(surface, multi, diag,
