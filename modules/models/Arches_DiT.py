@@ -148,7 +148,7 @@ class WeatherEncodeDecodeLayer(nn.Module):
             diag_noised = rearrange(diag_noised, "b nlat nlon c -> b c nlat nlon")
             multi_noised = rearrange(multi_noised, "b nlevel nlat nlon c -> b c nlevel nlat nlon")
 
-            surface = torch.cat([surface, surface_noised, diag_noised], dim=1) # b (surface_ch + forcing_ch + invariant_ch + surface_noised_ch + diagnostic_ch) nlat nlon
+            surface = torch.cat([surface, surface_noised], dim=1) # b (surface_ch + forcing_ch + invariant_ch + surface_noised_ch + diagnostic_ch) nlat nlon
             multilevel = torch.cat([multilevel, multi_noised], dim=1) # b (level_ch + multi_noised_ch) nlevel nlat nlon
             diagnostic = torch.cat([diagnostic, diag_noised], dim=1) # b (diagnostic_ch + diag_noised_ch) nlat nlon
 
@@ -213,6 +213,9 @@ class ArchesDiT(nn.Module):
         super().__init__()
         self.use_skip = use_skip
         self.first_interaction_layer = first_interaction_layer
+
+        if cond_dim is None:
+            cond_dim = emb_dim
 
         self.encode_decode = WeatherEncodeDecodeLayer(emb_dim=emb_dim,
                                                       out_emb_dim=2*emb_dim,# 2x since skip connection
