@@ -36,7 +36,7 @@ class DecoderHistory(nn.Module):
                  out_channels, # output channel dim
                  hidden_channels, # width of network
                  z_channels, # input latent dim
-                 ch_mult=(1,2,2), 
+                 ch_mult=(1,2,4), 
                  num_res_blocks = 4,
                  resolution = (180, 360), 
                  attn_resolutions = [32], 
