@@ -1,31 +1,29 @@
 model:
-    model_name: AE_Flow_Arches
+    model_name: AE_DIT_DDC
     lr: 5.0e-5
-    AE_Flow_Arches:
+    AE_DIT_DDC:
         encoder:
             downsample_factor: 4
         decoder:
             in_channels: 249
             out_channels: 249
-            dim: 384
+            dim: 512
             num_heads: 8
             num_blocks: 8
             patch_size: 4
             nlat: 180
             nlon: 360
-            dropout: 0.0
-            unpatch: vanilla
-            use_history: false
         scheduler:
-            num_refinement_steps: 10
-            integrator: euler
+            num_refinement_steps: 5
+            num_train_steps: 11
+            sigma_coupling: 1.0
 
 data:
     train_data_path: /glade/derecho/scratch/ayz/AMIP_train_new.h5
     val_data_path: /glade/derecho/scratch/ayz/AMIP_valid_new.h5
     norm_stats_path: /glade/derecho/scratch/ayz/norm_stats_dict_new.pkl
-    training_nsteps: 2
-    val_nsteps: 2
+    training_nsteps: 1
+    val_nsteps: 1
     val_horizon: 1460
     use_climatology: False
     downsample_levels: 1
@@ -37,7 +35,7 @@ training:
     devices: 4
     accelerator: gpu
     strategy: ddp
-    precision: 32-true
+    precision: 32-true 
     check_val_every_n_epoch: 1
     log_every_n_steps: 10
     max_epochs: 50
@@ -47,5 +45,5 @@ training:
     project: amip
     wandb_mode: online
     checkpoint: null
-    description: Flow_ArchesSiT
+    description: SI_DDC_DiT
     accumulate_grad_batches: 16

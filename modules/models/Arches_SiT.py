@@ -195,6 +195,7 @@ class ArchesSiT(nn.Module):
         level_ch=9,
         diagnostic_ch=9,
         n_levels=26,
+        encode_noise=True,
         **kwargs,
     ):
         super().__init__()
@@ -215,7 +216,9 @@ class ArchesSiT(nn.Module):
                                                       out_emb_dim=emb_dim * 2,
                                                       surface_ch=surface_ch,
                                                       level_ch=level_ch,
-                                                      diagnostic_ch=diagnostic_ch)
+                                                      diagnostic_ch=diagnostic_ch,
+                                                      encode_noise=encode_noise)
+        
         self.zdim = tensor_size[0]
 
         self.layer1_shape = tensor_size[1:]
