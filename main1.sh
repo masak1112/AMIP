@@ -9,6 +9,6 @@
 module load conda
 conda activate torch
 
-CONFIG=configs/ae_DI_DDC.yaml
+CONFIG=configs/ae_SI_DDC.yaml
 
 python train.py --config=$CONFIG
