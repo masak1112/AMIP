@@ -37,8 +37,8 @@ class TrainModule(L.LightningModule):
         elif self.model_name == 'SI':
             from modules.models.Arches_DiT import ArchesDiT
             from modules.diffusion.dynamic_interpolant import DriftScheduler
-            self.model = ArchesDiT(**self.modelconfig["dit"])
-            self.scheduler = DriftScheduler(**self.modelconfig["SI"])
+            self.model = ArchesDiT(**self.modelconfig['SI']["model"])
+            self.scheduler = DriftScheduler(**self.modelconfig["SI"]['scheduler'])
             self.diffusion=True 
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")

@@ -9,17 +9,23 @@ class Integrator:
                  ):
         self.method = method
 
+    @staticmethod
+    def _w(val, x):
+        """Reshape batch coefficient (b,) to broadcast against x's spatial dims."""
+        return val.view(-1, *([1] * (x.ndim - 1)))
+
     def step_fn(self,
                 surface_state, multilevel_state, diagnostic_state,
                 drift_surface, drift_multilevel, drift_diagnostic,
                 dt, g_t):
+        # g_t: (b,) scalar sigma per sample; broadcast per-tensor to handle different ndims
         if self.method == 'em':  # Euler-Maruyama
             dW_surface = torch.sqrt(dt) * torch.randn_like(surface_state)
             dW_multilevel = torch.sqrt(dt) * torch.randn_like(multilevel_state)
             dW_diagnostic = torch.sqrt(dt) * torch.randn_like(diagnostic_state)
-            surface_next = surface_state + dt * drift_surface + g_t * dW_surface
-            multilevel_next = multilevel_state + dt * drift_multilevel + g_t * dW_multilevel
-            diagnostic_next = diagnostic_state + dt * drift_diagnostic + g_t * dW_diagnostic
+            surface_next = surface_state + dt * drift_surface + self._w(g_t, surface_state) * dW_surface
+            multilevel_next = multilevel_state + dt * drift_multilevel + self._w(g_t, multilevel_state) * dW_multilevel
+            diagnostic_next = diagnostic_state + dt * drift_diagnostic + self._w(g_t, diagnostic_state) * dW_diagnostic
         elif self.method == 'euler':  # ODE
             surface_next = surface_state + dt * drift_surface
             multilevel_next = multilevel_state + dt * drift_multilevel
@@ -64,7 +70,6 @@ class DriftScheduler(nn.Module):
                  beta_fn="t",
                  antithetic_sampling=False,
                  sigma_sample=None,
-                 ndim=2,
                  ):
         super(DriftScheduler, self).__init__()
 
@@ -74,7 +79,6 @@ class DriftScheduler(nn.Module):
         self.method = integrator
         self.integrator = Integrator(method=integrator)
 
-        self.ndim = ndim
         self.beta_fn = beta_fn
         self.antithetic_sampling = antithetic_sampling
         self.sigma_sample = sigma_sample if sigma_sample is not None else sigma_coef
@@ -82,47 +86,47 @@ class DriftScheduler(nn.Module):
         print(f'Scheduler initialized with {self.num_train_timesteps} training steps and {self.num_refinement_steps} refinement steps.')
         print(f"sigma_coef: {self.sigma_coef}, integrator: {integrator}, beta_fn: {self.beta_fn}, antithetic_sampling: {self.antithetic_sampling}")
 
-    def wide(self, t):
-        if self.ndim == 2:
+    def wide(self, t, ndim=2):
+        if ndim == 2:
             return t[:, None, None, None]
-        elif self.ndim == 3:
+        elif ndim == 3:
             return t[:, None, None, None, None]
 
-    def alpha(self, t):
-        return self.wide(1 - t)
+    def alpha(self, t, ndim=2):
+        return self.wide(1 - t, ndim)
 
-    def alpha_dot(self, t):
-        return self.wide(-1.0 * torch.ones_like(t))
+    def alpha_dot(self, t, ndim=2):
+        return self.wide(-1.0 * torch.ones_like(t), ndim)
 
-    def beta(self, t):
+    def beta(self, t, ndim=2):
         if self.beta_fn == "t":
-            return self.wide(t)
+            return self.wide(t, ndim)
         elif self.beta_fn == "t^2":
-            return self.wide(t ** 2)
+            return self.wide(t ** 2, ndim)
 
-    def beta_dot(self, t):
+    def beta_dot(self, t, ndim=2):
         if self.beta_fn == "t":
-            return self.wide(torch.ones_like(t))
+            return self.wide(torch.ones_like(t), ndim)
         elif self.beta_fn == "t^2":
-            return self.wide(2.0 * t)
+            return self.wide(2.0 * t, ndim)
 
-    def sigma(self, t, sample=False):
+    def sigma(self, t, sample=False, ndim=2):
         if sample:
-            return self.sigma_sample * self.wide(1 - t)
+            return self.sigma_sample * self.wide(1 - t, ndim)
         else:
-            return self.sigma_coef * self.wide(1 - t)
+            return self.sigma_coef * self.wide(1 - t, ndim)
 
-    def sigma_dot(self, t, sample=False):
+    def sigma_dot(self, t, sample=False, ndim=2):
         if sample:
-            return self.sigma_sample * self.wide(-1.0 * torch.ones_like(t))
+            return self.sigma_sample * self.wide(-1.0 * torch.ones_like(t), ndim)
         else:
-            return self.sigma_coef * self.wide(-1.0 * torch.ones_like(t))
+            return self.sigma_coef * self.wide(-1.0 * torch.ones_like(t), ndim)
 
-    def I(self, x0, x1, t):
-        return self.alpha(t) * x0 + self.beta(t) * x1
+    def I(self, x0, x1, t, ndim=2):
+        return self.alpha(t, ndim) * x0 + self.beta(t, ndim) * x1
 
-    def dIdt(self, x0, x1, t):
-        return self.alpha_dot(t) * x0 + self.beta_dot(t) * x1
+    def dIdt(self, x0, x1, t, ndim=2):
+        return self.alpha_dot(t, ndim) * x0 + self.beta_dot(t, ndim) * x1
 
     def get_noise(self, x):
         return torch.randn(x.shape, device=x.device, dtype=x.dtype)
@@ -149,30 +153,30 @@ class DriftScheduler(nn.Module):
         W_t = self.wide(torch.sqrt(t))   # shape (b, 1, 1, 1)
 
         I_surface = self.I(surface_input, surface_target, t)
-        I_multilevel = self.I(multilevel_input, multilevel_target, t)
+        I_multilevel = self.I(multilevel_input, multilevel_target, t, ndim=3)
         I_diagnostic = self.I(diagnostic_input, diagnostic_target, t)
 
         dIdt_surface = self.dIdt(surface_input, surface_target, t)
-        dIdt_multilevel = self.dIdt(multilevel_input, multilevel_target, t)
+        dIdt_multilevel = self.dIdt(multilevel_input, multilevel_target, t, ndim=3)
         dIdt_diagnostic = self.dIdt(diagnostic_input, diagnostic_target, t)
 
         scalar_in = torch.cat([scalar_input, t.view(-1, 1)], dim=-1)
 
         if self.antithetic_sampling:
             surface_noised_p = I_surface + sigma_t * W_t * noise_surface
-            multilevel_noised_p = I_multilevel + sigma_t * W_t * noise_multilevel
+            multilevel_noised_p = I_multilevel + sigma_t.unsqueeze(-1) * W_t.unsqueeze(-1) * noise_multilevel
             diagnostic_noised_p = I_diagnostic + sigma_t * W_t * noise_diagnostic
 
             surface_noised_m = I_surface - sigma_t * W_t * noise_surface
-            multilevel_noised_m = I_multilevel - sigma_t * W_t * noise_multilevel
+            multilevel_noised_m = I_multilevel - sigma_t.unsqueeze(-1) * W_t.unsqueeze(-1) * noise_multilevel
             diagnostic_noised_m = I_diagnostic - sigma_t * W_t * noise_diagnostic
 
             target_surface_p = dIdt_surface + sigma_dot_t * W_t * noise_surface
-            target_multilevel_p = dIdt_multilevel + sigma_dot_t * W_t * noise_multilevel
+            target_multilevel_p = dIdt_multilevel + sigma_dot_t.unsqueeze(-1) * W_t.unsqueeze(-1) * noise_multilevel
             target_diagnostic_p = dIdt_diagnostic + sigma_dot_t * W_t * noise_diagnostic
 
             target_surface_m = dIdt_surface - sigma_dot_t * W_t * noise_surface
-            target_multilevel_m = dIdt_multilevel - sigma_dot_t * W_t * noise_multilevel
+            target_multilevel_m = dIdt_multilevel - sigma_dot_t.unsqueeze(-1) * W_t.unsqueeze(-1) * noise_multilevel
             target_diagnostic_m = dIdt_diagnostic - sigma_dot_t * W_t * noise_diagnostic
 
             surface_pred_p, multi_pred_p, diag_pred_p = model(
@@ -192,11 +196,11 @@ class DriftScheduler(nn.Module):
                                     diag_pred_m, target_diagnostic_m)
         else:
             surface_noised = I_surface + sigma_t * W_t * noise_surface
-            multilevel_noised = I_multilevel + sigma_t * W_t * noise_multilevel
+            multilevel_noised = I_multilevel + sigma_t.unsqueeze(-1) * W_t.unsqueeze(-1) * noise_multilevel
             diagnostic_noised = I_diagnostic + sigma_t * W_t * noise_diagnostic
 
             target_surface = dIdt_surface + sigma_dot_t * W_t * noise_surface
-            target_multilevel = dIdt_multilevel + sigma_dot_t * W_t * noise_multilevel
+            target_multilevel = dIdt_multilevel + sigma_dot_t.unsqueeze(-1) * W_t.unsqueeze(-1) * noise_multilevel
             target_diagnostic = dIdt_diagnostic + sigma_dot_t * W_t * noise_diagnostic
 
             surface_pred, multi_pred, diag_pred = model(
