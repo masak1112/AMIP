@@ -25,7 +25,7 @@ class WeatherEncodeDecodeLayer(nn.Module):
         self,
         emb_dim=256,
         out_emb_dim=512,  
-        patch_size=(1, 2, 2),
+        patch_size=(2, 2, 2),
         encode_noise=True,
         surface_ch=6,
         level_ch=9,
@@ -80,8 +80,9 @@ class WeatherEncodeDecodeLayer(nn.Module):
             bias=False
         )
 
+        self.level_patch = patch_size[0]
         self.level_deconv = nn.Conv2d(
-            out_emb_dim,
+            out_emb_dim // self.level_patch,
             level_ch * patch_size[-1] ** 2,
             kernel_size=3,
             stride=1,
@@ -99,6 +100,11 @@ class WeatherEncodeDecodeLayer(nn.Module):
         )
         ICNR_init(
             self.level_deconv.weight,
+            initializer=nn.init.kaiming_normal_,
+            upscale_factor=patch_size[-1],
+        )
+        ICNR_init(
+            self.diag_deconv.weight,
             initializer=nn.init.kaiming_normal_,
             upscale_factor=patch_size[-1],
         )
@@ -162,8 +168,11 @@ class WeatherEncodeDecodeLayer(nn.Module):
         output_diagnostic = self.diag_deconv(diagnostic) # b, diagnostic_ch * r^2, zlat, zlon
         output_diagnostic = self.pixelshuffle(output_diagnostic) # b, diagnostic_ch, lat, lon
 
-        # level in shape b, emb_dim, zlevel, zlat, zlon 
-        output_level = rearrange(level, "b c zlevel zlat zlon -> (b zlevel) c zlat zlon") # b*zlevel, emb_dim, zlat, zlon
+        # do channel to level expansion
+        output_level = rearrange(level, 'b (c p) zlevel zlat zlon -> b c (p zlevel) zlat zlon', p = self.level_patch)
+
+        # lump levels into batch dim for deconv
+        output_level = rearrange(level, "b c zlevel zlat zlon -> (b zlevel) c zlat zlon")
         output_level = self.level_deconv(output_level) # b*zlevel, level_ch * r^2, zlat, zlon
         output_level = self.pixelshuffle(output_level) # b*zlevel, level_ch, lat, lon
         output_level = rearrange(output_level, "(b zlevel) c zlat zlon -> b c zlevel zlat zlon", b=b) # b, level_ch, zlevel, lat, lon
@@ -189,7 +198,6 @@ class ArchesSiT(nn.Module):
         mlp_ratio=4.0,
         use_skip=True,
         first_interaction_layer="linear",
-        gradient_checkpointing=False,
         mlp_layer="swiglu",
         surface_ch=6,
         level_ch=9,
@@ -200,7 +208,6 @@ class ArchesSiT(nn.Module):
     ):
         super().__init__()
         self.use_skip = use_skip
-        self.gradient_checkpointing = gradient_checkpointing
         self.first_interaction_layer = first_interaction_layer
 
         self.surface_ch = surface_ch    
