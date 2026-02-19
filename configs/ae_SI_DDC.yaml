@@ -19,8 +19,7 @@ model:
             sigma_coupling: 1.0
 
 data:
-    train_data_path: /glade/derecho/scratch/ayz/AMIP_test_new.h5
-    train_split: test
+    train_data_path: /glade/derecho/scratch/ayz/AMIP_train_new.h5
     val_data_path: /glade/derecho/scratch/ayz/AMIP_valid_new.h5
     norm_stats_path: /glade/derecho/scratch/ayz/norm_stats_dict_new.pkl
     training_nsteps: 1
