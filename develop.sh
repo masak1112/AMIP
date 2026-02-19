@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -N AE_SI_DDC
+#PBS -N AE_Arches_DDC
 #PBS -l select=1:ncpus=16:ngpus=4:mem=120G
 #PBS -q develop
 #PBS -l walltime=00:10:00
@@ -9,6 +9,6 @@
 module load conda
 conda activate torch
 
-CONFIG=configs/ae_SI_DDC.yaml
+CONFIG=configs/ae_SI_arches.yaml
 
 python train.py --config=$CONFIG
