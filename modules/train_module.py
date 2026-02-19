@@ -2,7 +2,7 @@ import lightning as L
 import torch
 from tqdm import tqdm
 
-from modules.models.DiT import ArchesDiT
+from modules.models.Arches_DiT import ArchesDiT
 from modules.diffusion.flow_matching import FlowScheduler
 from common.loss import latitude_weighted_rmse, WeightedLoss
 from common.plotting import plot_result, plot_spectrum, plot_bias

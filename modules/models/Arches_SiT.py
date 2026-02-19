@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
+import numpy as np
 
 from modules.layers.arches_layers import (
     CondBasicLayer,
