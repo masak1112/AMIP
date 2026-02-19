@@ -10,7 +10,7 @@ model:
             num_heads: [4, 8, 8, 4]
             window_size: [1, 5, 10]
             tensor_size: [15, 90, 180] # after patchify/encode
-            depth_multiplier: 1
+            depth_multiplier: 2
         scheduler:
             num_refinement_steps: 5
             num_train_steps: 11
