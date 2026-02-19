@@ -159,7 +159,6 @@ class WeatherEncodeDecodeLayer(nn.Module):
     def decode(self, x):
         # x: b, emb_dim, zlevel+2, zlat, zlon
         b = x.shape[0]
-
         surface, diagnostic, level = x[:, :, 0], x[:, :, 1], x[:, :, 2:]
 
         output_surface = self.surface_deconv(surface) # b, surface_ch * r^2, zlat, zlon
@@ -172,7 +171,7 @@ class WeatherEncodeDecodeLayer(nn.Module):
         output_level = rearrange(level, 'b (c p) zlevel zlat zlon -> b c (p zlevel) zlat zlon', p = self.level_patch)
 
         # lump levels into batch dim for deconv
-        output_level = rearrange(level, "b c zlevel zlat zlon -> (b zlevel) c zlat zlon")
+        output_level = rearrange(output_level, "b c zlevel zlat zlon -> (b zlevel) c zlat zlon")
         output_level = self.level_deconv(output_level) # b*zlevel, level_ch * r^2, zlat, zlon
         output_level = self.pixelshuffle(output_level) # b*zlevel, level_ch, lat, lon
         output_level = rearrange(output_level, "(b zlevel) c zlat zlon -> b c zlevel zlat zlon", b=b) # b, level_ch, zlevel, lat, lon
