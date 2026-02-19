@@ -80,11 +80,11 @@ class AutoencoderModule(L.LightningModule):
             from modules.models.Arches_SiT import ArchesSiT
             from modules.models.AE_simple import BilinearEncoder, BilinearDecoder
             from modules.diffusion.data_dependent_interpolant import DataDependentInterpolant
-            self.downsample = BilinearEncoder(**self.modelconfig["AE_Flow_Arches"]["encoder"])
-            self.upsample = BilinearDecoder(**self.modelconfig["AE_Flow_Arches"]["encoder"])
-            self.decoder = ArchesSiT(**self.modelconfig["AE_Flow_Arches"]["decoder"])
-            self.scheduler = DataDependentInterpolant(**self.modelconfig["AE_Flow_Arches"]["scheduler"])
-            self.history = self.modelconfig["AE_Flow_Arches"]["decoder"].get("use_history", False)
+            self.downsample = BilinearEncoder(**self.modelconfig["AE_Arches_DDC"]["encoder"])
+            self.upsample = BilinearDecoder(**self.modelconfig["AE_Arches_DDC"]["encoder"])
+            self.decoder = ArchesSiT(**self.modelconfig["AE_Arches_DDC"]["decoder"])
+            self.scheduler = DataDependentInterpolant(**self.modelconfig["AE_Arches_DDC"]["scheduler"])
+            self.history = self.modelconfig["AE_Arches_DDC"]["decoder"].get("use_history", False)
             self.decoder_only = True
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")

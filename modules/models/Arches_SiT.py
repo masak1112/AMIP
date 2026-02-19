@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from einops import rearrange
 import numpy as np
 from timm.layers.mlp import SwiGLU
+from common.utils import assemble_input, disassemble_input
 
 from modules.layers.arches_layers import (
     CondBasicLayer,
@@ -25,10 +26,11 @@ class WeatherEncodeDecodeLayer(nn.Module):
         emb_dim=256,
         out_emb_dim=512,  
         patch_size=(1, 2, 2),
+        encode_noise=True,
         surface_ch=6,
         level_ch=9,
         diagnostic_ch=9,
-        encode_noise=True
+
     ) -> None:
         super().__init__()
         
@@ -189,6 +191,10 @@ class ArchesSiT(nn.Module):
         first_interaction_layer="linear",
         gradient_checkpointing=False,
         mlp_layer="swiglu",
+        surface_ch=6,
+        level_ch=9,
+        diagnostic_ch=9,
+        n_levels=26,
         **kwargs,
     ):
         super().__init__()
@@ -196,12 +202,20 @@ class ArchesSiT(nn.Module):
         self.gradient_checkpointing = gradient_checkpointing
         self.first_interaction_layer = first_interaction_layer
 
+        self.surface_ch = surface_ch    
+        self.level_ch = level_ch
+        self.diagnostic_ch = diagnostic_ch
+        self.n_levels = n_levels
+
         if cond_dim is None:
             cond_dim = emb_dim
 
         self.encode_decode = WeatherEncodeDecodeLayer(patch_size=patch_size,
                                                       emb_dim=emb_dim,
-                                                      out_emb_dim=emb_dim * 2)
+                                                      out_emb_dim=emb_dim * 2,
+                                                      surface_ch=surface_ch,
+                                                      level_ch=level_ch,
+                                                      diagnostic_ch=diagnostic_ch)
         self.zdim = tensor_size[0]
 
         self.layer1_shape = tensor_size[1:]
@@ -288,13 +302,18 @@ class ArchesSiT(nn.Module):
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
-    def forward(self, surface, multi, diag, t,
-                surface_noised=None, multi_noised=None, diag_noised=None):
+    def forward(self, x, t, cond, history=None):
+        # x is flattened, noised state
+        # cond is flattened, conditioning field
+        # history is flattened, optional high-res prior state 
+
+        surface, multi, diag = disassemble_input(cond, self.surface_ch, self.diagnostic_ch, self.n_levels) # b nlat nlon ch
+        surface_noised, multi_noised, diag_noised = disassemble_input(x, self.surface_ch, self.diagnostic_ch, self.n_levels) # b nlat nlon ch
         
         cond_emb = self.t_embed(t) # b, cond_dim
         
         x = self.encode_decode.encode(surface, multi, diag,
-                                      surface_noised, multi_noised, diag_noised) 
+                                      surface_noised, multi_noised, diag_noised) # B C zlevel+2 zlat zlon
 
         B, C, Pl, Lat, Lon = x.shape
         x = x.reshape(B, C, -1).transpose(1, 2) # B, N, C
@@ -321,4 +340,6 @@ class ArchesSiT(nn.Module):
 
         output_surface, output_level, output_diagnostic = self.encode_decode.decode(output)
 
-        return output_surface, output_level, output_diagnostic
+        output = assemble_input(output_surface, output_level, output_diagnostic)
+
+        return output

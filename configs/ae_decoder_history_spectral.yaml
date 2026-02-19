@@ -45,6 +45,6 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip
     wandb_mode: online
-    checkpoint: None
+    checkpoint: null
     description: decoder_history_spectral_0.05
     accumulate_grad_batches: 16
