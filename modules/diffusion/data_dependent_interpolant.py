@@ -103,7 +103,7 @@ class DataDependentInterpolant(nn.Module):
         v_pred = model(I_t, t[:, None], cond=x_lowres, history=cond)
 
         # Loss: |b_hat|^2 - 2 * v_target . b_hat  (equivalent to MSE up to constant |v_target|^2)
-        loss = (v_pred ** 2 - 2 * v_target * v_pred).mean()
+        loss = F.mse_loss(v_pred, v_target, reduction='mean')
 
         return loss
 
