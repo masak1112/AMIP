@@ -178,12 +178,12 @@ class WeatherEncodeDecodeLayer(nn.Module):
 class ArchesSiT(nn.Module):
     def __init__(
         self,
-        tensor_size=(28, 180, 360),
+        tensor_size=(28, 90, 180), # post patchify/encoding
         emb_dim=256,
         patch_size=(1, 2, 2),
         cond_dim=None,  # dim of the conditioning
         num_heads=(6, 12, 12, 6),
-        window_size=(1, 6, 10),
+        window_size=(1, 5, 10),
         depth_multiplier=1,
         dropout=0.0,
         mlp_ratio=4.0,

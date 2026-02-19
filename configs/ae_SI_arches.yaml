@@ -7,9 +7,9 @@ model:
         decoder:
             emb_dim: 256
             patch_size: [1, 2, 2]
-            num_heads: [6, 12, 12, 6]
-            window_size: [1, 6, 10]
-            tensor_size: [28, 180, 360]
+            num_heads: [4, 8, 8, 4]
+            window_size: [1, 5, 10]
+            tensor_size: [28, 90, 180] # after patchify/encode
             depth_multiplier: 1
         scheduler:
             num_refinement_steps: 5
