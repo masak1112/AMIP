@@ -2,40 +2,67 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class Integrator:
     def __init__(self,
-                 method='em', 
+                 method='em',
                  ):
         self.method = method
 
-    def step_fn(self, x, drift, dt, g):
-        if self.method == 'em': # Euler-Maruyama
-            dW = torch.sqrt(dt)*torch.randn_like(x, device=x.device)
-            return x + dt*drift + g*dW
-        elif self.method == "euler": # ODE
-            return x + dt*drift 
+    def step_fn(self,
+                surface_state, multilevel_state, diagnostic_state,
+                drift_surface, drift_multilevel, drift_diagnostic,
+                dt, g_t):
+        if self.method == 'em':  # Euler-Maruyama
+            dW_surface = torch.sqrt(dt) * torch.randn_like(surface_state)
+            dW_multilevel = torch.sqrt(dt) * torch.randn_like(multilevel_state)
+            dW_diagnostic = torch.sqrt(dt) * torch.randn_like(diagnostic_state)
+            surface_next = surface_state + dt * drift_surface + g_t * dW_surface
+            multilevel_next = multilevel_state + dt * drift_multilevel + g_t * dW_multilevel
+            diagnostic_next = diagnostic_state + dt * drift_diagnostic + g_t * dW_diagnostic
+        elif self.method == 'euler':  # ODE
+            surface_next = surface_state + dt * drift_surface
+            multilevel_next = multilevel_state + dt * drift_multilevel
+            diagnostic_next = diagnostic_state + dt * drift_diagnostic
+        return surface_next, multilevel_next, diagnostic_next
 
-    def integrate(self, x, y, model, timesteps, g_fn, **kwargs):
+    def integrate(self,
+                  surface_input, multilevel_input, diagnostic_input,
+                  forcing_input, invariant_input, scalar_input,
+                  surface_state, multilevel_state, diagnostic_state,
+                  model, timesteps, g_fn):
 
-        for i_t in range(len(timesteps)-1):
+        for i_t in range(len(timesteps) - 1):
             t_current = timesteps[i_t]
-            t_next = timesteps[i_t+1] 
-            dt = t_next - t_current 
-            g_t = g_fn(t_current.expand(x.shape[0]))  # shape (b, 1, 1, 1)
+            t_next = timesteps[i_t + 1]
+            dt = t_next - t_current
+            g_t = g_fn(t_current.expand(surface_input.shape[0]))  # shape (b, 1, 1, 1)
 
-            drift = model(torch.cat((x, y), dim=1), t_current.expand(x.shape[0]).unsqueeze(-1), **kwargs)
-            
-            y = self.step_fn(y, drift, dt, g_t)
-        return y
+            scalar_in = torch.cat([scalar_input, t_current.float().expand(surface_input.shape[0]).unsqueeze(-1)], dim=-1)
+
+            drift_surface, drift_multilevel, drift_diagnostic = model(
+                surface_input, multilevel_input, diagnostic_input,
+                forcing_input, invariant_input, scalar_in,
+                surface_state, multilevel_state, diagnostic_state
+            )
+
+            surface_state, multilevel_state, diagnostic_state = self.step_fn(
+                surface_state, multilevel_state, diagnostic_state,
+                drift_surface, drift_multilevel, drift_diagnostic,
+                dt, g_t
+            )
+
+        return surface_state, multilevel_state, diagnostic_state
+
 
 class DriftScheduler(nn.Module):
     def __init__(self,
                  num_refinement_steps,  # this corresponds to physical time steps
                  num_train_steps=None,  # number of training steps
-                 integrator='em', 
-                 sigma_coef=1.0,  
-                 beta_fn = "t",
-                 antithetic_sampling=True,
+                 integrator='em',
+                 sigma_coef=1.0,
+                 beta_fn="t",
+                 antithetic_sampling=False,
                  sigma_sample=None,
                  ndim=2,
                  ):
@@ -46,7 +73,7 @@ class DriftScheduler(nn.Module):
         self.sigma_coef = sigma_coef
         self.method = integrator
         self.integrator = Integrator(method=integrator)
-   
+
         self.ndim = ndim
         self.beta_fn = beta_fn
         self.antithetic_sampling = antithetic_sampling
@@ -62,116 +89,173 @@ class DriftScheduler(nn.Module):
             return t[:, None, None, None, None]
 
     def alpha(self, t):
-        return self.wide(1-t) 
+        return self.wide(1 - t)
 
     def alpha_dot(self, t):
         return self.wide(-1.0 * torch.ones_like(t))
 
-    def beta(self, t):  
+    def beta(self, t):
         if self.beta_fn == "t":
             return self.wide(t)
         elif self.beta_fn == "t^2":
-            return self.wide(t**2)
+            return self.wide(t ** 2)
 
     def beta_dot(self, t):
         if self.beta_fn == "t":
             return self.wide(torch.ones_like(t))
         elif self.beta_fn == "t^2":
             return self.wide(2.0 * t)
-    
+
     def sigma(self, t, sample=False):
         if sample:
-            return self.sigma_sample * self.wide(1-t)
+            return self.sigma_sample * self.wide(1 - t)
         else:
-            return self.sigma_coef * self.wide(1-t)
+            return self.sigma_coef * self.wide(1 - t)
 
     def sigma_dot(self, t, sample=False):
         if sample:
             return self.sigma_sample * self.wide(-1.0 * torch.ones_like(t))
         else:
             return self.sigma_coef * self.wide(-1.0 * torch.ones_like(t))
-    
+
     def I(self, x0, x1, t):
         return self.alpha(t) * x0 + self.beta(t) * x1
-    
+
     def dIdt(self, x0, x1, t):
         return self.alpha_dot(t) * x0 + self.beta_dot(t) * x1
 
-    def get_noise(self, size, device):
-        return torch.randn(size, device=device)
-    
-    def image_sq_norm(self, x):
-        return x.pow(2).sum(-1).sum(-1).sum(-1)
+    def get_noise(self, x):
+        return torch.randn(x.shape, device=x.device, dtype=x.dtype)
 
-    def compute_loss(self, x, y, model, **kwargs):
-        # x: [b c nx ny], source distribution. For PDEs this is u(t)
-        # y: [b c nx ny], target distribution. For PDEs this is u(t+dt)
-        # cond: [b c nx ny]
-        
-        noise = self.get_noise(size=y.shape, device=y.device).to(y.dtype)
+    def compute_loss(self, model, criterion,
+                     surface_input, multilevel_input, diagnostic_input,
+                     forcing_input, invariant_input, scalar_input,
+                     surface_target, multilevel_target, diagnostic_target):
+        # surface/multilevel_input: source state (x0), shape [b nx ny d]
+        # surface/multilevel/diagnostic_target: target state (x1), shape [b nx ny d]
+        # diagnostic has no corresponding input, so a noise draw is used as its source
 
-        # no need to train on t=1
-        t = torch.randint(0, self.num_train_timesteps-1, device=x.device, size=(x.shape[0],)) / (self.num_train_timesteps - 1)  # shape (b,)
+        device = surface_input.device
 
-        dIdt = self.dIdt(x, y, t) # shape (b, c, nx, ny)
-        I = self.I(x, y, t) # shape (b, c, nx, ny)
+        noise_surface = self.get_noise(surface_target)
+        noise_multilevel = self.get_noise(multilevel_target)
+        noise_diagnostic = self.get_noise(diagnostic_target)
 
-        sigma_dot = self.sigma_dot(t) # shape (b, 1, 1, 1) 
-        sigma = self.sigma(t) # shape (b, 1, 1, 1)
+        # sample timestep, no need to train on t=1
+        t = torch.randint(0, self.num_train_timesteps - 1, device=device, size=(surface_input.shape[0],)).float() / (self.num_train_timesteps - 1)
 
-        W = self.wide(torch.sqrt(t)) * noise
+        sigma_t = self.sigma(t)          # shape (b, 1, 1, 1)
+        sigma_dot_t = self.sigma_dot(t)  # shape (b, 1, 1, 1)
+        W_t = self.wide(torch.sqrt(t))   # shape (b, 1, 1, 1)
+
+        I_surface = self.I(surface_input, surface_target, t)
+        I_multilevel = self.I(multilevel_input, multilevel_target, t)
+        I_diagnostic = self.I(diagnostic_input, diagnostic_target, t)
+
+        dIdt_surface = self.dIdt(surface_input, surface_target, t)
+        dIdt_multilevel = self.dIdt(multilevel_input, multilevel_target, t)
+        dIdt_diagnostic = self.dIdt(diagnostic_input, diagnostic_target, t)
+
+        scalar_in = torch.cat([scalar_input, t.view(-1, 1)], dim=-1)
 
         if self.antithetic_sampling:
-            I_p = I + sigma * W
-            I_m = I - sigma * W
-            model_in_p = torch.cat([x, I_p], dim=1)
-            model_in_m = torch.cat([x, I_m], dim=1)
-            target_p = dIdt + sigma_dot * W
-            target_m = dIdt - sigma_dot * W
-            drift_p = model(model_in_p, t.float().view(-1, 1), **kwargs)
-            drift_m = model(model_in_m, t.float().view(-1, 1), **kwargs)
-            loss_p = 0.5 * self.image_sq_norm(drift_p - target_p).mean()
-            loss_m = 0.5 * self.image_sq_norm(drift_m - target_m).mean()
-            loss = loss_p + loss_m
+            surface_noised_p = I_surface + sigma_t * W_t * noise_surface
+            multilevel_noised_p = I_multilevel + sigma_t * W_t * noise_multilevel
+            diagnostic_noised_p = I_diagnostic + sigma_t * W_t * noise_diagnostic
 
+            surface_noised_m = I_surface - sigma_t * W_t * noise_surface
+            multilevel_noised_m = I_multilevel - sigma_t * W_t * noise_multilevel
+            diagnostic_noised_m = I_diagnostic - sigma_t * W_t * noise_diagnostic
+
+            target_surface_p = dIdt_surface + sigma_dot_t * W_t * noise_surface
+            target_multilevel_p = dIdt_multilevel + sigma_dot_t * W_t * noise_multilevel
+            target_diagnostic_p = dIdt_diagnostic + sigma_dot_t * W_t * noise_diagnostic
+
+            target_surface_m = dIdt_surface - sigma_dot_t * W_t * noise_surface
+            target_multilevel_m = dIdt_multilevel - sigma_dot_t * W_t * noise_multilevel
+            target_diagnostic_m = dIdt_diagnostic - sigma_dot_t * W_t * noise_diagnostic
+
+            surface_pred_p, multi_pred_p, diag_pred_p = model(
+                surface_input, multilevel_input, forcing_input, invariant_input, scalar_in,
+                surface_noised_p, multilevel_noised_p, diagnostic_noised_p
+            )
+            surface_pred_m, multi_pred_m, diag_pred_m = model(
+                surface_input, multilevel_input, forcing_input, invariant_input, scalar_in,
+                surface_noised_m, multilevel_noised_m, diagnostic_noised_m
+            )
+
+            loss = criterion(surface_pred_p, target_surface_p,
+                             multi_pred_p, target_multilevel_p,
+                             diag_pred_p, target_diagnostic_p)
+            loss = loss + criterion(surface_pred_m, target_surface_m,
+                                    multi_pred_m, target_multilevel_m,
+                                    diag_pred_m, target_diagnostic_m)
         else:
-            I_noised = I + sigma * W
-            model_in = torch.cat([x, I_noised], dim=1)
-            drift = model(model_in, t.float().view(-1, 1), **kwargs)
-            target = dIdt + sigma_dot * W
+            surface_noised = I_surface + sigma_t * W_t * noise_surface
+            multilevel_noised = I_multilevel + sigma_t * W_t * noise_multilevel
+            diagnostic_noised = I_diagnostic + sigma_t * W_t * noise_diagnostic
 
-            #loss= self.image_sq_norm(drift - target).mean()
-            loss = F.mse_loss(drift, target) / F.mse_loss(target, torch.zeros_like(target))
+            target_surface = dIdt_surface + sigma_dot_t * W_t * noise_surface
+            target_multilevel = dIdt_multilevel + sigma_dot_t * W_t * noise_multilevel
+            target_diagnostic = dIdt_diagnostic + sigma_dot_t * W_t * noise_diagnostic
+
+            surface_pred, multi_pred, diag_pred = model(
+                surface_input, multilevel_input, diagnostic_input, 
+                forcing_input, invariant_input, scalar_in,
+                surface_noised, multilevel_noised, diagnostic_noised
+            )
+
+            loss = criterion(surface_pred, target_surface,
+                             multi_pred, target_multilevel,
+                             diag_pred, target_diagnostic)
 
         return loss
 
-    def sample(self, x, model, refinement_steps=None, **kwargs):
-        
+    def sample(self, model, surface_input, multilevel_input, diagnostic_input,
+               forcing_input, invariant_input, scalar_input, refinement_steps=None):
+
         if refinement_steps is None:
             refinement_steps = self.num_refinement_steps
 
-        #timesteps = torch.linspace(0, 1, refinement_steps + 1, device=x.device) # shape (refinement_steps+1,)
-        timesteps = torch.linspace(0, 1, refinement_steps + 1, device=x.device)
-        
-        # start y at the source distribution after first step
-        # We take 1st step analytically since g_T can be singular at t=0 during Euler-Maruyama integration
-        input_0 = torch.cat([x, x], dim=1)  # shape (b, 2d nx, ny)
-        sigma_0 = self.sigma(timesteps[0].expand(x.shape[0]), sample=True)  # shape (b, 1, 1, 1)
-        noise_0 = self.get_noise(size=x.shape, device=x.device)
-        dt = timesteps[1] - timesteps[0]
-        drift_0 = model(input_0, timesteps[0].expand(x.shape[0]).unsqueeze(-1), **kwargs)
-        dW = torch.sqrt(dt) * noise_0
+        timesteps = torch.linspace(0, 1, refinement_steps + 1, device=surface_input.device)
 
-        if self.method == "em":
-            y = x + drift_0*dt + sigma_0 * dW # shape (b, d, nx, ny)
+        # source distribution at t=0: inputs for surface/multi, noise for diagnostic
+        surface_state = surface_input.clone()
+        multilevel_state = multilevel_input.clone()
+        diagnostic_state = diagnostic_input.clone()
+
+        # first step taken analytically to avoid g_T singularity issues at t=0 with EM
+        sigma_0 = self.sigma(timesteps[0].expand(surface_input.shape[0]), sample=True)  # shape (b, 1, 1, 1)
+        dt_0 = timesteps[1] - timesteps[0]
+        scalar_in_0 = torch.cat([scalar_input, timesteps[0].float().expand(surface_input.shape[0]).unsqueeze(-1)], dim=-1)
+
+        drift_surface, drift_multilevel, drift_diagnostic = model(
+            surface_input, multilevel_input, diagnostic_input,
+            forcing_input, invariant_input, scalar_in_0,
+            surface_state, multilevel_state, diagnostic_state
+        )
+
+        if self.method == 'em':
+            dW = torch.sqrt(dt_0)
+            surface_state = surface_state + drift_surface * dt_0 + sigma_0 * dW * torch.randn_like(surface_state)
+            multilevel_state = multilevel_state + drift_multilevel * dt_0 + sigma_0 * dW * torch.randn_like(multilevel_state)
+            diagnostic_state = diagnostic_state + drift_diagnostic * dt_0 + sigma_0 * dW * torch.randn_like(diagnostic_state)
         else:
-            y = x + drift_0*dt
+            surface_state = surface_state + drift_surface * dt_0
+            multilevel_state = multilevel_state + drift_multilevel * dt_0
+            diagnostic_state = diagnostic_state + drift_diagnostic * dt_0
 
-        # integrate with euler-maruyama or euler method
         g_fn = lambda t: self.sigma(t, sample=True)
-        y = self.integrator.integrate(x, y, model, timesteps[1:], g_fn, **kwargs)
+        surface_pred, multi_pred, diag_pred = self.integrator.integrate(
+            surface_input, multilevel_input, diagnostic_input,
+            forcing_input, invariant_input, scalar_input,
+            surface_state, multilevel_state, diagnostic_state,
+            model, timesteps[1:], g_fn
+        )
 
-        return y
+        return surface_pred, multi_pred, diag_pred
 
-    def forward(self, x, y, model, **kwargs):
-        return self.compute_loss(x, y, model, **kwargs)
+    def forward(self, model, surface_input, multilevel_input, forcing_input, invariant_input, scalar_input,
+                diagnostic_channels, refinement_steps=None):
+        return self.sample(model, surface_input, multilevel_input, forcing_input, invariant_input, scalar_input,
+                           diagnostic_channels, refinement_steps)

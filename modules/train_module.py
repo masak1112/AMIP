@@ -2,8 +2,6 @@ import lightning as L
 import torch
 from tqdm import tqdm
 
-from modules.models.Arches_DiT import ArchesDiT
-from modules.diffusion.flow_matching import FlowScheduler
 from common.loss import latitude_weighted_rmse, WeightedLoss
 from common.plotting import plot_result, plot_spectrum, plot_bias
 from data.amip import SURFACE_VARIABLES, MULTILEVEL_VARIABLES, DIAGNOSTIC_VARIABLES
@@ -36,10 +34,11 @@ class TrainModule(L.LightningModule):
             self.model = SphericalFourierNeuralOperatorNet(params={},
                                                            **self.modelconfig["sfno"])
             self.diffusion=False 
-        elif self.model_name == 'flow':
+        elif self.model_name == 'SI':
+            from modules.models.Arches_DiT import ArchesDiT
+            from modules.diffusion.dynamic_interpolant import DriftScheduler
             self.model = ArchesDiT(**self.modelconfig["dit"])
-            self.scheduler = FlowScheduler(**self.modelconfig["flow"])
-            self.diagnostic_channels = self.modelconfig["dit"]['encode_decode_params']['diagnostic_ch']
+            self.scheduler = DriftScheduler(**self.modelconfig["SI"])
             self.diffusion=True 
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
@@ -51,10 +50,11 @@ class TrainModule(L.LightningModule):
 
         self.save_hyperparameters()
 
-    def forward(self, surface, multilevel, forcing, invariant, scalars):
+    def forward(self, surface, multilevel, diagnostic, forcing, invariant, scalars):
         if self.diffusion:
-            surface_pred, multilevel_pred, diagnostic_pred = self.scheduler.sample(self.model, surface, multilevel, forcing, invariant, 
-                                                                                   scalars, self.diagnostic_channels)
+            surface_pred, multilevel_pred, diagnostic_pred = self.scheduler.sample(self.model, 
+                                                                                   surface, multilevel, diagnostic,
+                                                                                   forcing, invariant, scalars)
         else: # directly predict
             surface_pred, multilevel_pred, diagnostic_pred = self.model(surface, multilevel, forcing, invariant, scalars)
 
@@ -81,6 +81,7 @@ class TrainModule(L.LightningModule):
 
         surface_input = surface_data[:, 0] # b nlat nlon c
         multilevel_input = multilevel_data[:, 0] # b nlevel nlat nlon c
+        diagnostic_input = diagnostic_data[:, 0] # b nlat nlon c
         forcing_input = forcing_data[:, 0] # b nlat nlon c
         scalar_input = scalar_data[:, 0] # b 2
 
@@ -93,6 +94,7 @@ class TrainModule(L.LightningModule):
                                                self.criterion,
                                                surface_input,
                                                multilevel_input,
+                                               diagnostic_input,
                                                forcing_input,
                                                invariant_input,
                                                scalar_input,
@@ -327,6 +329,7 @@ class TrainModule(L.LightningModule):
                 
         surface_input = surface_data[:, 0] # b nlat nlon c
         multilevel_input = multilevel_data[:, 0] # b nlevel nlat nlon c
+        diagnostic_input = diagnostic_data[:, 0] # b nlat nlon c
 
         surface_target = surface_data[:, 1:] # b t nlat nlon c
         multilevel_target = multilevel_data[:, 1:] # b t nlevel nlat nlon c
@@ -369,6 +372,7 @@ class TrainModule(L.LightningModule):
             surface_pred, multilevel_pred, diagnostic_pred \
                 = self.forward(surface_input,
                             multilevel_input,
+                            diagnostic_input,
                             forcing_input,
                             invariant_input,
                             scalar_input,)
@@ -421,6 +425,7 @@ class TrainModule(L.LightningModule):
             # update inputs
             surface_input = surface_pred
             multilevel_input = multilevel_pred
+            diagnostic_input = diagnostic_pred
 
             if t in t_plot:
                 i_plot += 1
