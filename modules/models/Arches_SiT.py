@@ -189,7 +189,7 @@ class ArchesSiT(nn.Module):
         self,
         tensor_size=(28, 90, 180), # post patchify/encoding
         emb_dim=256,
-        patch_size=(1, 2, 2),
+        patch_size=(2, 2, 2),
         cond_dim=None,  # dim of the conditioning
         num_heads=(6, 12, 12, 6),
         window_size=(1, 5, 10),
