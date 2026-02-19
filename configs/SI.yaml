@@ -35,7 +35,7 @@ training:
     devices: 4
     accelerator: gpu
     strategy: ddp
-    precision: 32-true
+    precision: 16-mixed
     check_val_every_n_epoch: 2
     log_every_n_steps: 10
     max_epochs: 50
