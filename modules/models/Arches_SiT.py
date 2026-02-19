@@ -265,7 +265,7 @@ class ArchesSiT(nn.Module):
         self.layer2 = CondBasicLayer(
             dim=emb_dim * 2,
             input_resolution=(self.zdim, *self.layer2_shape),
-            depth=4 * depth_multiplier,
+            depth=6 * depth_multiplier,
             num_heads=num_heads[1],
             **layer_args,
             **kwargs,
@@ -273,7 +273,7 @@ class ArchesSiT(nn.Module):
         self.layer3 = CondBasicLayer(
             dim=emb_dim * 2,
             input_resolution=(self.zdim, *self.layer2_shape),
-            depth=4 * depth_multiplier,
+            depth=6 * depth_multiplier,
             num_heads=num_heads[2],
             **layer_args,
             **kwargs,
