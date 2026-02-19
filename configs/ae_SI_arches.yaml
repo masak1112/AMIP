@@ -1,7 +1,7 @@
 model:
     model_name: AE_Arches_DDC
     lr: 5.0e-5
-    AE_DIT_DDC:
+    AE_Arches_DDC:
         encoder:
             downsample_factor: 4
         decoder:
