@@ -48,6 +48,7 @@ class DecoderHistory(nn.Module):
                  resamp_with_conv = True,
                  kernel_size=3,
                  padding=1,
+                 num_out_blocks=0,
                  ):
         super().__init__()
         self.hidden_channels = hidden_channels
@@ -128,6 +129,18 @@ class DecoderHistory(nn.Module):
                     up.upsample = Upsample(block_in, resamp_with_conv, dim=dim)
                 curr_res = curr_res * 2
             self.up.insert(0, up) # prepend to get consistent order
+
+        self.num_out_blocks = num_out_blocks
+        if num_out_blocks > 0:
+            self.out_blocks = nn.ModuleList()
+            for i in range(num_out_blocks):
+                self.out_blocks.append(ResnetBlock(in_channels=block_in,
+                                                out_channels=block_in,
+                                                dropout=dropout,
+                                                dim=dim,
+                                                padding_mode=padding_mode,
+                                                padding=padding,
+                                                kernel_size=kernel_size))
 
         self.norm_out = Normalize(block_in) 
         self.conv_out = conv_nd(dim,
@@ -214,6 +227,9 @@ class DecoderHistory(nn.Module):
             if i_level != 0:
                 h = self.up[i_level].upsample(h)
 
+        if self.num_out_blocks > 0:
+            for i in range(len(self.out_blocks)):
+                h = self.out_blocks[i](h)
 
         h = self.norm_out(h)
         h = nonlinearity(h)
