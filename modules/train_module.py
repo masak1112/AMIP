@@ -25,8 +25,6 @@ class TrainModule(L.LightningModule):
         self.lr = self.modelconfig["lr"]
         self.log_dir = config['training']['log_dir']
 
-        self.criterion = WeightedLoss(latitude_resolution=180,
-                                      longitude_resolution=360)
         self.n = normalizer
         self.climatology = None
         self.diffusion=False 
@@ -66,6 +64,10 @@ class TrainModule(L.LightningModule):
             self.encoder = BilinearDownsample(**self.modelconfig['SI_Latent_DiT']["encoder"])
             self.decoder = DecoderHistory(**self.modelconfig['SI_Latent_DiT']["decoder"])
             self.initialize_decoder()
+
+            self.criterion = WeightedLoss(latitude_resolution=45,longitude_resolution=90)
+        else:
+            self.criterion = WeightedLoss(latitude_resolution=180, longitude_resolution=360)
 
         if config['training']['strategy'] == 'ddp' or config['training']['strategy'] == 'ddp_find_unused_parameters_true':
             self.ddp = True
