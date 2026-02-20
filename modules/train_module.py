@@ -5,7 +5,7 @@ from tqdm import tqdm
 from common.loss import latitude_weighted_rmse, WeightedLoss
 from common.plotting import plot_result, plot_spectrum, plot_bias
 from data.amip import SURFACE_VARIABLES, MULTILEVEL_VARIABLES, DIAGNOSTIC_VARIABLES
-from common.utils import assemble_forcing, disassemble_input, assemble_input
+from common.utils import assemble_forcing, disassemble_input, assemble_input, fix_state_dict
 
 class TrainModule(L.LightningModule):
     def __init__(self,
@@ -76,8 +76,10 @@ class TrainModule(L.LightningModule):
 
     def initialize_decoder(self):
         checkpoint_path = self.modelconfig['SI_Latent_DiT']["decoder_checkpoint"]
-        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
-        self.decoder.load_state_dict(checkpoint['state_dict'])
+        state_dict = torch.load(checkpoint_path, map_location=self.device, weights_only=False)['state_dict']
+        state_dict = fix_state_dict(state_dict, prefix="decoder.")
+
+        self.decoder.load_state_dict(state_dict)
 
         # freeze decoder
         for param in self.decoder.parameters():

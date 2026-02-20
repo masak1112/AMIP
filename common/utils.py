@@ -93,6 +93,13 @@ def disassemble_forcing(x, nforcing=3, ninvariant=2):
 
     return forcing, invariant
 
+def fix_state_dict(state_dict, prefix="decoder."):
+    return {
+        k[len(prefix):]: v
+        for k, v in state_dict.items()
+        if k.startswith(prefix)
+    }
+
 
     
     
