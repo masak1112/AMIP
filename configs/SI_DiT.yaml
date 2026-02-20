@@ -5,9 +5,9 @@ model:
         model:
             in_channels: 503 # 249 + 249 + 2 + 3
             out_channels: 249
-            dim: 768
+            dim: 1024
             num_heads: 16
-            num_blocks: 8
+            num_blocks: 16
             patch_size: 4
             scalar_dim: 3
         scheduler:
