@@ -125,12 +125,12 @@ class DriftScheduler(nn.Module):
         sigma_dot_t = self.sigma_dot(t)  # shape (b, 1, 1, 1)
         W_t = self.wide(torch.sqrt(t))   # shape (b, 1, 1, 1)
 
-        I = self.I(x, y, t)  # shape (b, nx, ny, d)
-        dIdt = self.dIdt(x, y, t)  # shape (b, nx, ny, d)
+        I = self.I(x, y, t)  # shape (b, d, nx, ny)
+        dIdt = self.dIdt(x, y, t)  # shape (b, d, nx, ny)
 
         c_scalar = torch.cat([c_scalar, t.view(-1, 1)], dim=-1) # shape (b, c_dim + 1)
         # use current state + forcing as conditioning
-        c = torch.cat([x, c_grid], dim=-1) # shape (b, nx, ny, d + c_dim)
+        c = torch.cat([x, c_grid], dim=1) # shape (b, d + c_dim, nx, ny)
 
         if self.antithetic_sampling:
             I_noised_p = I + sigma_t * W_t * noise
@@ -182,7 +182,7 @@ class DriftScheduler(nn.Module):
         y = x.clone()
 
         # assemble conditioning, which is current prognostic + forcing state
-        c = torch.cat([x, c_grid], dim=-1) # shape (b, nx, ny, d + c_dim)
+        c = torch.cat([x, c_grid], dim=1) # shape (b, d + c_dim, nx, ny)
 
         # first step taken analytically to avoid g_T singularity issues at t=0 with EM
         sigma_0 = self.sigma(timesteps[0].expand(x.shape[0]), sample=True)  # shape (b, 1, 1, 1)
