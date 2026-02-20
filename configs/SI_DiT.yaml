@@ -1,6 +1,6 @@
 model:
     model_name: SI_DiT
-    lr: 5.0e-5
+    lr: 1.0e-5
     SI_DiT:
         model:
             in_channels: 503 # 249 + 249 + 2 + 3
