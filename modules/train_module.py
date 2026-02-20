@@ -75,16 +75,16 @@ class TrainModule(L.LightningModule):
         self.save_hyperparameters()
 
     def initialize_decoder(self):
-        checkpoint = self.modelconfig['SI_Latent_DiT']["decoder_checkpoint"]
-        state_dict = torch.load(checkpoint, map_location=self.device, weights_only=False)
-        self.decoder.load_state_dict(state_dict)
+        checkpoint_path = self.modelconfig['SI_Latent_DiT']["decoder_checkpoint"]
+        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
+        self.decoder.load_state_dict(checkpoint['state_dict'])
 
         # freeze decoder
         for param in self.decoder.parameters():
             param.requires_grad = False
         self.decoder.eval()
 
-        print(f"Initialized decoder from checkpoint {checkpoint}")
+        print(f"Initialized decoder from checkpoint {checkpoint_path}")
 
     def forward(self, x, c_grid, c_scalar):
         # x is flattened state, c is scalar conditioning

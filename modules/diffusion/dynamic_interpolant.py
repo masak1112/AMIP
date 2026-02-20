@@ -147,12 +147,13 @@ class DriftScheduler(nn.Module):
             target_surface_p, target_multilevel_p, target_diagnostic_p = disassemble_input(target_p)
             target_surface_m, target_multilevel_m, target_diagnostic_m = disassemble_input(target_m)
 
-            loss = criterion(surface_pred_p, target_surface_p,
+            loss_p = criterion(surface_pred_p, target_surface_p,
                              multi_pred_p, target_multilevel_p,
                              diag_pred_p, target_diagnostic_p)
-            loss = loss + criterion(surface_pred_m, target_surface_m,
+            loss_m = criterion(surface_pred_m, target_surface_m,
                                     multi_pred_m, target_multilevel_m,
                                     diag_pred_m, target_diagnostic_m)
+            loss = 0.5 * (loss_p + loss_m)
         else:
             I_noised = I + sigma_t * W_t * noise
             target = dIdt + sigma_dot_t * W_t * noise
@@ -189,7 +190,7 @@ class DriftScheduler(nn.Module):
         dt_0 = timesteps[1] - timesteps[0]
         scalar_in = torch.cat([c_scalar, timesteps[0].float().expand(x.shape[0]).unsqueeze(-1)], dim=-1)
 
-        drift = model(x, c, scalar_in)
+        drift = model(y, c, scalar_in)
 
         if self.method == 'em':
             dW = torch.sqrt(dt_0)
