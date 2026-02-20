@@ -71,12 +71,12 @@ class TrainModule(L.LightningModule):
             self.ddp = True
         else:
             self.ddp = False
-            
+
         self.save_hyperparameters()
 
     def initialize_decoder(self):
         checkpoint = self.modelconfig['SI_Latent_DiT']["decoder_checkpoint"]
-        state_dict = torch.load(checkpoint, map_location=self.device)
+        state_dict = torch.load(checkpoint, map_location=self.device, weights_only=False)
         self.decoder.load_state_dict(state_dict)
 
         # freeze decoder
