@@ -5,10 +5,10 @@ model:
         model:
             in_channels: 503 # 249 + 249 + 2 + 3
             out_channels: 249
-            dim: 1024
+            dim: 512
             num_heads: 16
-            num_blocks: 12
-            patch_size: 8
+            num_blocks: 8
+            patch_size: 4
             scalar_dim: 3
         scheduler:
             num_refinement_steps: 10
