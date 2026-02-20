@@ -41,7 +41,7 @@ training:
     log_every_n_steps: 10
     max_epochs: 50
     ema_decay: 0.99
-    num_sanity_val_steps: 0
+    num_sanity_val_steps: 1
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online

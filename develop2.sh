@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -N SI
+#PBS -N SI_DiT
 #PBS -l select=1:ncpus=16:ngpus=4:mem=120G
 #PBS -q develop
 #PBS -l walltime=00:10:00
@@ -9,6 +9,6 @@
 module load conda
 conda activate torch
 
-CONFIG=configs/SI.yaml
+CONFIG=configs/SI_DiT.yaml
 
 python train.py --config=$CONFIG

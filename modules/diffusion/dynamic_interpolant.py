@@ -201,9 +201,7 @@ class DriftScheduler(nn.Module):
         noise_fn = lambda t: self.sigma(t, sample=True)
         y = self.integrator.integrate(y, c, c_scalar, model, timesteps[1:], noise_fn)
 
-        surface_pred, multi_pred, diag_pred = disassemble_input(y)
-
-        return surface_pred, multi_pred, diag_pred
+        return y
 
     def forward(self, model, x, c_grid, c_scalar, refinement_steps=None):
         return self.sample(model, x, c_grid, c_scalar, refinement_steps)
