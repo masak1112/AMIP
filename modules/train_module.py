@@ -5,6 +5,7 @@ from tqdm import tqdm
 from common.loss import latitude_weighted_rmse, WeightedLoss
 from common.plotting import plot_result, plot_spectrum, plot_bias
 from data.amip import SURFACE_VARIABLES, MULTILEVEL_VARIABLES, DIAGNOSTIC_VARIABLES
+from common.utils import assemble_forcing, disassemble_input, assemble_input
 
 class TrainModule(L.LightningModule):
     def __init__(self,
@@ -34,12 +35,18 @@ class TrainModule(L.LightningModule):
             self.model = SphericalFourierNeuralOperatorNet(params={},
                                                            **self.modelconfig["sfno"])
             self.diffusion=False 
-        elif self.model_name == 'SI':
+        elif self.model_name == 'SI_Arches':
             from modules.models.Arches_DiT import ArchesDiT
             from modules.diffusion.dynamic_interpolant import DriftScheduler
-            self.model = ArchesDiT(**self.modelconfig['SI']["model"])
-            self.scheduler = DriftScheduler(**self.modelconfig["SI"]['scheduler'])
+            self.model = ArchesDiT(**self.modelconfig['SI_Arches']["model"])
+            self.scheduler = DriftScheduler(**self.modelconfig["SI_Arches"]['scheduler'])
             self.diffusion=True 
+        elif self.model_name == "SI_DiT":
+            from modules.models.DiT import DiT
+            from modules.diffusion.dynamic_interpolant import DriftScheduler
+            self.model = DiT(**self.modelconfig['SI_DiT']["model"])
+            self.scheduler = DriftScheduler(**self.modelconfig["SI_DiT"]['scheduler'])
+            self.diffusion=True
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
@@ -50,14 +57,15 @@ class TrainModule(L.LightningModule):
 
         self.save_hyperparameters()
 
-    def forward(self, surface, multilevel, diagnostic, forcing, invariant, scalars):
-        if self.diffusion:
-            surface_pred, multilevel_pred, diagnostic_pred = self.scheduler.sample(self.model, 
-                                                                                   surface, multilevel, diagnostic,
-                                                                                   forcing, invariant, scalars)
-        else: # directly predict
-            surface_pred, multilevel_pred, diagnostic_pred = self.model(surface, multilevel, forcing, invariant, scalars)
+    def forward(self, x, c_grid, c_scalar):
+        # x is flattened state, c is scalar conditioning
 
+        if self.diffusion:
+            y = self.scheduler.sample(self.model, x, c_grid, c_scalar)
+        else: # directly predict
+            y = self.model(x, c_grid, c_scalar)
+            
+        surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
         return surface_pred, multilevel_pred, diagnostic_pred
     
     def compute_loss(self, 
@@ -83,32 +91,21 @@ class TrainModule(L.LightningModule):
         multilevel_input = multilevel_data[:, 0] # b nlevel nlat nlon c
         diagnostic_input = diagnostic_data[:, 0] # b nlat nlon c
         forcing_input = forcing_data[:, 0] # b nlat nlon c
-        scalar_input = scalar_data[:, 0] # b 2
 
         surface_target = surface_data[:, 1] # b nlat nlon c
         multilevel_target = multilevel_data[:, 1] # b nlevel nlat nlon c
         diagnostic_target = diagnostic_data[:, 1] # b nlat nlon c
 
-        if self.diffusion:
-            loss = self.scheduler.compute_loss(self.model,
-                                               self.criterion,
-                                               surface_input,
-                                               multilevel_input,
-                                               diagnostic_input,
-                                               forcing_input,
-                                               invariant_input,
-                                               scalar_input,
-                                               surface_target,
-                                               multilevel_target,
-                                               diagnostic_target)   
-        else:
-            surface_pred, multilevel_pred, diagnostic_pred \
-                = self.forward(surface_input,
-                            multilevel_input,
-                            forcing_input,
-                            invariant_input,
-                            scalar_input,) 
+        x = assemble_input(surface_input, multilevel_input, diagnostic_input) # b c h w
+        c_grid = assemble_forcing(forcing_input, invariant_input) # b c h w
+        c_scalar = scalar_data[:, 0] # b 2
+        y = assemble_input(surface_target, multilevel_target, diagnostic_target) # b c h w
 
+        if self.diffusion:
+            loss = self.scheduler.compute_loss(self.model, self.criterion,
+                                               x, c_grid, c_scalar, y)   
+        else:
+            surface_pred, multilevel_pred, diagnostic_pred= self.forward(x, c_grid, c_scalar) 
 
             loss = self.compute_loss(surface_pred, surface_target,
                                     multilevel_pred, multilevel_target,
@@ -168,6 +165,7 @@ class TrainModule(L.LightningModule):
                 
         surface_input = surface_data[:, 0] # b nlat nlon c
         multilevel_input = multilevel_data[:, 0] # b nlevel nlat nlon c
+        diagnostic_input = diagnostic_data[:, 0] # b nlat nlon c
 
         surface_target = surface_data[:, 1:] # b t nlat nlon c
         multilevel_target = multilevel_data[:, 1:] # b t nlevel nlat nlon c
@@ -180,15 +178,12 @@ class TrainModule(L.LightningModule):
         for t in range(surface_target.shape[1]):
             # assemble forcings
             forcing_input = forcing_data[:, t] # b nlat nlon c
-            scalar_input = scalar_data[:, t] # b 2
-            
+            c_scalar = scalar_data[:, t] # b 2
+            c_grid = assemble_forcing(forcing_input, invariant_input) # b c h w
+            x = assemble_input(surface_input, multilevel_input, diagnostic_input) # b c h w
+
             # make prediction
-            surface_pred, multilevel_pred, diagnostic_pred \
-                = self.forward(surface_input,
-                            multilevel_input,
-                            forcing_input,
-                            invariant_input,
-                            scalar_input,)
+            surface_pred, multilevel_pred, diagnostic_pred = self.forward(x, c_grid, c_scalar)
 
             # save prediction
             surface_pred_all[:, t] = surface_pred
@@ -198,6 +193,7 @@ class TrainModule(L.LightningModule):
             # update inputs
             surface_input = surface_pred
             multilevel_input = multilevel_pred
+            diagnostic_input = diagnostic_pred
 
         # denormalize
         surface_pred_all = self.n.denormalize_surface(surface_pred_all)
@@ -236,18 +232,17 @@ class TrainModule(L.LightningModule):
         # assume these are normalized
 
         forcing_input = batch['forcing'][:, 0] # b nlat nlon c
-        scalar_input = batch['scalars'] # b 2
 
         surface_input = self.surface_state # b nlat nlon c
         multilevel_input = self.multilevel_state # b nlevel nlat nlon c
+        diagnostic_input = self.diagnostic_state # b nlat nlon c
         invariant_input = self.invariant_state # b nlat nlon c
 
-        surface_pred, multilevel_pred, diagnostic_pred \
-                        = self.forward(surface_input,
-                                    multilevel_input,
-                                    forcing_input,
-                                    invariant_input,
-                                    scalar_input,)
+        x = assemble_input(surface_input, multilevel_input, diagnostic_input) # b c h w
+        c_grid = assemble_forcing(forcing_input, invariant_input) # b c h w
+        c_scalar = batch['scalars'] # b 2
+
+        surface_pred, multilevel_pred, diagnostic_pred = self.forward(x, c_grid, c_scalar)
         
         self.surface_state = surface_pred
         self.multilevel_state = multilevel_pred
@@ -366,16 +361,13 @@ class TrainModule(L.LightningModule):
         for t in range(surface_target.shape[1]):
             # assemble forcings
             forcing_input = forcing_data[:, t] # b nlat nlon c
-            scalar_input = scalar_data[:, t] # b 2
+            c_scalar = scalar_data[:, t] # b 2
+
+            x = assemble_input(surface_input, multilevel_input, diagnostic_input) # b c h w
+            c_grid = assemble_forcing(forcing_input, invariant_input) # b c h w
             
             # make prediction
-            surface_pred, multilevel_pred, diagnostic_pred \
-                = self.forward(surface_input,
-                            multilevel_input,
-                            diagnostic_input,
-                            forcing_input,
-                            invariant_input,
-                            scalar_input,)
+            surface_pred, multilevel_pred, diagnostic_pred = self.forward(x, c_grid, c_scalar)
 
             surface_pred_denorm = self.n.denormalize_surface(surface_pred)
             surface_true_denorm = self.n.denormalize_surface(surface_target[:, t])  

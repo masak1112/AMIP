@@ -100,7 +100,7 @@ class DataDependentInterpolant(nn.Module):
         v_target = alpha_dot_t * x0 + beta_dot_t * x1  # = x1 - x0
 
         # Model predicts velocity
-        v_pred = model(I_t, t[:, None], cond=x_lowres, history=cond)
+        v_pred = model(I_t, x_lowres, t=t[:, None], history=cond)
 
         # Loss: |b_hat|^2 - 2 * v_target . b_hat  (equivalent to MSE up to constant |v_target|^2)
         loss = F.mse_loss(v_pred, v_target, reduction='mean')
@@ -143,7 +143,7 @@ class DataDependentInterpolant(nn.Module):
             t_batch = torch.full((x_lowres.shape[0], 1), t_n,
                                  device=x_lowres.device, dtype=x_lowres.dtype)
 
-            v = model(y, t_batch, cond=x_lowres, history=cond)
+            v = model(y, x_lowres, t_batch, history=cond)
             y = y + dt * v
 
         return y

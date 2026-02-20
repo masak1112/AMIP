@@ -699,8 +699,14 @@ class SphericalFourierNeuralOperatorNet(torch.nn.Module):
 
         return x
 
-    def forward(self, x):
+    def forward(self, x, c_grid, c_scalar):
         # save big skip
+
+        # expand c_scalar from b c -> b c h w
+        c_scalar = c_scalar.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, self.img_shape[0], self.img_shape[1])
+        
+        x = torch.cat((x, c_grid, c_scalar), dim=1) # b c h w
+
         if self.big_skip:
             residual = x
 

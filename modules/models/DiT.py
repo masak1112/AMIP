@@ -9,7 +9,6 @@ from modules.layers.positional_encoding import TimestepEmbedder
 from modules.layers.spherical_harmonics import SphericalHarmonicsPE
 from modules.layers.unpatchify import SubPixelConvICNR_2D, Unpatchify
 from modules.layers.patchify import PatchEmbed
-from modules.layers.cross_attention import CrossAttentionBlock
 
 class DiTBlock(nn.Module):
     """
@@ -111,7 +110,7 @@ class DiT(nn.Module):
                  nlon=360,
                  dropout=0.0,
                  unpatch="vanilla",
-                 use_history=False):
+                 scalar_dim=1):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -122,7 +121,6 @@ class DiT(nn.Module):
         self.nlat = nlat
         self.nlon = nlon
         self.dropout = dropout
-        self.use_history = use_history
 
         # Pad spatial dims to be divisible by patch_size
         self.nlat_pad = math.ceil(nlat / patch_size) * patch_size
@@ -134,18 +132,7 @@ class DiT(nn.Module):
         self.grid_y = self.nlon_pad // patch_size
         self.with_poles = False
 
-        # Patch embedding for main input
-        # use_history: [I_t; cond] channel-wise concat (2*c), cross-attn attends to history
-        # no history:  I_t only (c), cross-attn attends to cond
-        main_in_chans = 2 * in_channels if use_history else in_channels
         self.patch_embed_main = PatchEmbed(
-            patch_size=patch_size,
-            in_chans=main_in_chans,
-            hidden_size=dim,
-            flatten=False)
-
-        # Patch embedding for cross-attention context (history or cond)
-        self.patch_embed_cond = PatchEmbed(
             patch_size=patch_size,
             in_chans=in_channels,
             hidden_size=dim,
@@ -161,17 +148,14 @@ class DiT(nn.Module):
             flatten=False)
 
         # Timestep embedding
-        self.t_embedder = TimestepEmbedder(dim)
+        self.t_embedder = TimestepEmbedder(dim, num_conds = scalar_dim)
 
         # Transformer blocks: vanilla self-attention + cross-attention
         sa_blocks = []
-        ca_blocks = []
         for _ in range(num_blocks):
             sa_blocks.append(DiTBlock(dim, num_heads, mlp_ratio=4, dropout=dropout))
-            ca_blocks.append(CrossAttentionBlock(num_heads, dim))
 
         self.sa_blocks = nn.ModuleList(sa_blocks)
-        self.ca_blocks = nn.ModuleList(ca_blocks)
 
         # Unpatchify
         if unpatch == "subpixel":
@@ -226,16 +210,13 @@ class DiT(nn.Module):
         lon = torch.linspace(0, 2 * math.pi - (2 * math.pi / nlon), nlon).to(device)
         return lat, lon
 
-    def forward(self, x_noised, t, cond, history=None):
+    def forward(self, x_noised, cond, t, history=None):
         """
         Args:
             x_noised: [b, c, nlat, nlon] — interpolant I_t (channel-first from assemble_input)
-            t: [b, 1] — timestep
-            cond: [b, c, nlat, nlon] — downsampled current state (channel-first).
-                  When use_history=True: concatenated channel-wise with x_noised.
-                  When use_history=False: used as cross-attention context.
+            cond: [b, c, nlat, nlon] — conditional information
+            t: [b, n_scalar] — timestep
             history: [b, c, nlat, nlon] — high-res prior state/history (channel-first),
-                     used as cross-attention context when use_history=True. Ignored otherwise.
 
         Returns:
             [b, c, nlat, nlon] — predicted velocity (channel-first)
@@ -243,31 +224,24 @@ class DiT(nn.Module):
         batch_size = x_noised.shape[0]
         nlat, nlon = self.nlat, self.nlon
 
-        if self.use_history:
-            # History mode: concat cond channel-wise with I_t, cross-attend to history
-            x_input = torch.cat([x_noised, cond], dim=1)  # [b, 2c, nlat, nlon]
-            ca_context = history if history is not None else cond
-        else:
-            # Standard mode: I_t only as input, cross-attend to cond
-            x_input = x_noised
-            ca_context = cond
+        x_input = torch.cat([x_noised, cond], dim=1)
+
+        if history is not None:
+            x_input = torch.cat([x_input, history], dim=1)
 
         # Pad spatial dims to be divisible by patch_size
         if self.pad_lat > 0 or self.pad_lon > 0:
             # F.pad order: (left, right, top, bottom) for last two dims
             x_input = F.pad(x_input, (0, self.pad_lon, 0, self.pad_lat), mode='reflect')
-            ca_context = F.pad(ca_context, (0, self.pad_lon, 0, self.pad_lat), mode='reflect')
 
         # Get grid coordinates for positional encoding at padded resolution
         lat, lon = self.get_grid(self.nlat_pad, self.nlon_pad, x_input.device)
 
         # Convert channel-first to channel-last for PatchEmbed: [b, c, h, w] -> [b, h, w, c]
         x_nhwc = x_input.permute(0, 2, 3, 1)
-        c_nhwc = ca_context.permute(0, 2, 3, 1)
 
         # Patchify: [b, h, w, c] -> [b, h//p, w//p, dim]
         x = self.patch_embed_main(x_nhwc)
-        c = self.patch_embed_cond(c_nhwc)
 
         # Positional encoding
         sphere_pe = self.pe_embed(lat + math.pi / 2, lon - math.pi)
@@ -275,21 +249,19 @@ class DiT(nn.Module):
         sphere_pe = self.pe2patch(sphere_pe)  # [b, nlat_pad//p, nlon_pad//p, dim]
 
         x = x + sphere_pe
-        c = c + sphere_pe
 
         # Flatten spatial dims for sequence processing: [b, h//p, w//p, dim] -> [b, n, dim]
         x = rearrange(x, 'b ny nx c -> b (ny nx) c')
-        c = rearrange(c, 'b ny nx c -> b (ny nx) c')
 
         # Timestep embedding
-        if t is not None and len(t.shape) == 1:
+        if len(t.shape) == 1:
             t = t[:, None]
+
         t_emb = self.t_embedder(t)  # [b, dim]
 
         # Transformer blocks: vanilla self-attention + cross-attention with history
-        for sa_block, ca_block in zip(self.sa_blocks, self.ca_blocks):
+        for sa_block in self.sa_blocks:
             x = sa_block(x, t_emb)        # self-attention with AdaLN
-            x = ca_block(x, c)            # cross-attention with history context
 
         # Unpatchify: [b, n, dim] -> [b, nlat, nlon, dim]
         x = self.unpatchify_layer(x, t_emb)

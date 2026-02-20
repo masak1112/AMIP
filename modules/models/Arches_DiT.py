@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from timm.layers.mlp import SwiGLU
+from common.utils import disassemble_input, disassemble_prognostic_forcing, assemble_input
 
 from modules.layers.arches_layers import (
     CondBasicLayer,
@@ -123,15 +124,14 @@ class WeatherEncodeDecodeLayer(nn.Module):
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
-    def encode(self, surface, multilevel, diagnostic,
-               forcing, invariants,
-               surface_noised=None, multi_noised=None, diag_noised=None):
+    def encode(self, x, cond):
         """
-        surface: B, nlat, nlon, surface_ch
-        multilevel: B, nlevel, nlat, nlon, level_ch
-        forcing: B, nlat, nlon, forcing_ch
-        invariants: B, nlat, nlon, invariant_ch
+        x is the noised state
+        cond is the conditioning state
         """
+
+        surface_noised, multi_noised, diag_noised = disassemble_input(x)
+        surface, multilevel, diagnostic, forcing, invariants = disassemble_prognostic_forcing(cond)
 
         surface = rearrange(surface, "b nlat nlon c -> b c nlat nlon")
         multilevel = rearrange(
@@ -316,18 +316,16 @@ class ArchesDiT(nn.Module):
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
-    def forward(self, surface, multi, diag, 
-                forcing, invariant, cond_emb, 
-                surface_noised, multi_noised, diag_noised):
-        
+    def forward(self, x, cond, cond_emb):
+        # x is noised, prognostic state in shape (b, c, lat, lon)
+        # cond is the conditioning state (prognostic + forcing) in shape (b, c, lat, lon)
         # cond_emb in shape (b, 3)
+        
         cond_emb = [emb(cond_emb[:, i]) for i, emb in enumerate(self.cond_embedders)]
         cond_emb = torch.stack(cond_emb, dim=0) # 3, b, cond_dim
         cond_emb = torch.sum(cond_emb, dim=0) # b, cond_dim
         
-        x = self.encode_decode.encode(surface, multi, diag,
-                                      forcing, invariant,
-                                      surface_noised, multi_noised, diag_noised) 
+        x = self.encode_decode.encode(x, cond) 
 
         B, C, Pl, Lat, Lon = x.shape
         x = x.reshape(B, C, -1).transpose(1, 2) # B, N, C
@@ -354,4 +352,6 @@ class ArchesDiT(nn.Module):
 
         output_surface, output_level, output_diagnostic = self.encode_decode.decode(output)
 
-        return output_surface, output_level, output_diagnostic
+        y = assemble_input(output_surface, output_level, output_diagnostic)
+
+        return y
