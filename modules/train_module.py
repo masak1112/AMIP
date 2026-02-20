@@ -29,12 +29,13 @@ class TrainModule(L.LightningModule):
                                       longitude_resolution=360)
         self.n = normalizer
         self.climatology = None
+        self.diffusion=False 
+        self.latent=False 
 
         if self.model_name == "sfno":
             from modules.models.SFNO import SphericalFourierNeuralOperatorNet
             self.model = SphericalFourierNeuralOperatorNet(params={},
                                                            **self.modelconfig["sfno"])
-            self.diffusion=False 
         elif self.model_name == 'SI_Arches':
             from modules.models.Arches_DiT import ArchesDiT
             from modules.diffusion.dynamic_interpolant import DriftScheduler
@@ -47,15 +48,43 @@ class TrainModule(L.LightningModule):
             self.model = DiT(**self.modelconfig['SI_DiT']["model"])
             self.scheduler = DriftScheduler(**self.modelconfig["SI_DiT"]['scheduler'])
             self.diffusion=True
+        elif self.model_name == "SI_Latent_DiT":
+            from modules.models.DiT import DiT
+            from modules.diffusion.dynamic_interpolant import DriftScheduler
+
+            self.model = DiT(**self.modelconfig['SI_Latent_DiT']["model"])
+            self.scheduler = DriftScheduler(**self.modelconfig["SI_Latent_DiT"]['scheduler'])
+            self.diffusion=True
+            self.latent = True
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
+
+        if self.latent:
+            from modules.models.AE_simple import BilinearDownsample
+            from modules.models.AE_decoder_hfs import DecoderHistory
+
+            self.encoder = BilinearDownsample(**self.modelconfig['SI_Latent_DiT']["encoder"])
+            self.decoder = DecoderHistory(**self.modelconfig['SI_Latent_DiT']["decoder"])
+            self.initialize_decoder()
 
         if config['training']['strategy'] == 'ddp' or config['training']['strategy'] == 'ddp_find_unused_parameters_true':
             self.ddp = True
         else:
             self.ddp = False
-
+            
         self.save_hyperparameters()
+
+    def initialize_decoder(self):
+        checkpoint = self.modelconfig['SI_Latent_DiT']["decoder_checkpoint"]
+        state_dict = torch.load(checkpoint, map_location=self.device)
+        self.decoder.load_state_dict(state_dict)
+
+        # freeze decoder
+        for param in self.decoder.parameters():
+            param.requires_grad = False
+        self.decoder.eval()
+
+        print(f"Initialized decoder from checkpoint {checkpoint}")
 
     def forward(self, x, c_grid, c_scalar):
         # x is flattened state, c is scalar conditioning
@@ -100,6 +129,11 @@ class TrainModule(L.LightningModule):
         c_grid = assemble_forcing(forcing_input, invariant_input) # b c h w
         c_scalar = scalar_data[:, 0] # b 2
         y = assemble_input(surface_target, multilevel_target, diagnostic_target) # b c h w
+
+        if self.latent:
+            x = self.encoder(x)
+            y = self.encoder(y)
+            c_grid = self.encoder(c_grid)
 
         if self.diffusion:
             loss = self.scheduler.compute_loss(self.model, self.criterion,
@@ -326,6 +360,16 @@ class TrainModule(L.LightningModule):
         multilevel_input = multilevel_data[:, 0] # b nlevel nlat nlon c
         diagnostic_input = diagnostic_data[:, 0] # b nlat nlon c
 
+        if self.latent:
+            surface_history = surface_input.copy()
+            multilevel_history = multilevel_input.copy()
+            diagnostic_history = diagnostic_input.copy()
+
+            surface_input = self.encoder(surface_input)
+            multilevel_input = self.encoder(multilevel_input)
+            diagnostic_input = self.encoder(diagnostic_input)
+            invariant_input = self.encoder(invariant_input)
+
         surface_target = surface_data[:, 1:] # b t nlat nlon c
         multilevel_target = multilevel_data[:, 1:] # b t nlevel nlat nlon c
         diagnostic_target = diagnostic_data[:, 1:] # b t nlat nlon c
@@ -363,17 +407,29 @@ class TrainModule(L.LightningModule):
             forcing_input = forcing_data[:, t] # b nlat nlon c
             c_scalar = scalar_data[:, t] # b 2
 
+            if self.latent:
+                forcing_input = self.encoder(forcing_input)
+
             x = assemble_input(surface_input, multilevel_input, diagnostic_input) # b c h w
             c_grid = assemble_forcing(forcing_input, invariant_input) # b c h w
             
             # make prediction
             surface_pred, multilevel_pred, diagnostic_pred = self.forward(x, c_grid, c_scalar)
 
-            surface_pred_denorm = self.n.denormalize_surface(surface_pred)
+            if self.latent:
+                surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = \
+                    self.decoder(surface_history, multilevel_history, diagnostic_history,
+                                 surface_pred, multilevel_pred, diagnostic_pred)
+            else:
+                surface_pred_decoded = surface_pred
+                multilevel_pred_decoded = multilevel_pred
+                diagnostic_pred_decoded = diagnostic_pred
+
+            surface_pred_denorm = self.n.denormalize_surface(surface_pred_decoded)
             surface_true_denorm = self.n.denormalize_surface(surface_target[:, t])  
-            multilevel_pred_denorm = self.n.denormalize_multilevel(multilevel_pred)
+            multilevel_pred_denorm = self.n.denormalize_multilevel(multilevel_pred_decoded)
             multilevel_true_denorm = self.n.denormalize_multilevel(multilevel_target[:, t])
-            diagnostic_pred_denorm = self.n.denormalize_diagnostic(diagnostic_pred)
+            diagnostic_pred_denorm = self.n.denormalize_diagnostic(diagnostic_pred_decoded)
             diagnostic_true_denorm = self.n.denormalize_diagnostic(diagnostic_target[:, t])
 
             # get losses
@@ -418,6 +474,11 @@ class TrainModule(L.LightningModule):
             surface_input = surface_pred
             multilevel_input = multilevel_pred
             diagnostic_input = diagnostic_pred
+
+            if self.latent: # update the history with the high-res pred
+                surface_history = surface_pred_decoded
+                multilevel_history = multilevel_pred_decoded
+                diagnostic_history = diagnostic_pred_decoded
 
             if t in t_plot:
                 i_plot += 1

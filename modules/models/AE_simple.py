@@ -636,6 +636,20 @@ class Encoder3D(Encoder):
 
         return z_surface, z_multilevel,  z_diagnostic
     
+class BilinearDownsample():
+    def __init__(self,
+                 downsample_factor = 4):
+        super().__init__()
+        self.downsample_factor = downsample_factor
+
+    def __call__(self, x) -> Any:
+        return self.forward(x)
+    
+    def forward(self, x) -> torch.Tensor:
+        # x in shape b c nlat nlon
+        x = F.interpolate(x, scale_factor=1/self.downsample_factor, mode='bilinear', align_corners=False)
+        return x 
+    
 class BilinearEncoder():
     def __init__(self,
                  downsample_factor = 4):
