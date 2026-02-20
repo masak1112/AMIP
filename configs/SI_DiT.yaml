@@ -8,7 +8,7 @@ model:
             dim: 512
             num_heads: 16
             num_blocks: 8
-            patch_size: 4
+            patch_size: 6
             scalar_dim: 3
         scheduler:
             num_refinement_steps: 10
