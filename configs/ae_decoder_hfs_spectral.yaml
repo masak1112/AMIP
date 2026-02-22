@@ -45,6 +45,6 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip
     wandb_mode: online
-    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/AE_History_HFS_decoder_history2_hfs_42_2026-02-21T04-44-23/last.ckpt
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/AE_History_HFS_decoder_history2_hfs_42_2026-02-21T15-55-32/last.ckpt
     description: decoder_history2_hfs
     accumulate_grad_batches: 16
