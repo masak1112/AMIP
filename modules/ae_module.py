@@ -28,6 +28,7 @@ class AutoencoderModule(L.LightningModule):
         self.diag_variable_weight = config['model'].get('diag_variable_weight', None)
         self.level_weight = config['model'].get('level_weight', "equal")
         self.spectral_loss_weight = config['model'].get('spectral_loss_weight', 0.0)
+        self.z500_weight = config['model'].get('z500_weight', 1.0)
 
         self.criterion = WeightedLoss(latitude_resolution=180,
                                       longitude_resolution=360,
@@ -40,7 +41,8 @@ class AutoencoderModule(L.LightningModule):
         self.spectral_criterion = None
         if self.spectral_loss_weight > 0.0:
             from common.loss import SpectralBaseLoss
-            self.spectral_criterion = SpectralBaseLoss(img_shape=(180, 360))
+            self.spectral_criterion = SpectralBaseLoss(img_shape=(180, 360),
+                                                       z500_weight= self.z500_weight)
 
         self.n = normalizer
 

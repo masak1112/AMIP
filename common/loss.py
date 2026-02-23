@@ -360,6 +360,7 @@ class SpectralBaseLoss(nn.Module):
         multilevel_uv_idx=(1, 2),
         not_multilevel_uv_idx=(0, 3, 4, 5, 6, 7, 8),
         vector_loss_weight=0.25,
+        z500_weight=1.0,
     ):
         super().__init__()
         self.eps = eps
@@ -373,6 +374,7 @@ class SpectralBaseLoss(nn.Module):
         self.multilevel_uv_idx = multilevel_uv_idx
         self.not_surface_uv_idx = not_surface_uv_idx
         self.not_multilevel_uv_idx = not_multilevel_uv_idx
+        self.z500_weight = z500_weight
 
         self.register_buffer('not_surface_uv_idx_tensor', torch.tensor(not_surface_uv_idx), persistent=False)
         self.register_buffer('not_multilevel_uv_idx_tensor', torch.tensor(not_multilevel_uv_idx), persistent=False)
@@ -467,6 +469,29 @@ class SpectralBaseLoss(nn.Module):
         v_norm = torch.abs(o_v).reshape(N, C_v, H_v * W_v)
         vector_loss = torch.sum(v_crps * swv, dim=-1).mean() / \
                       (torch.sum(v_norm * swv, dim=-1).mean() + self.eps)
+        
+
+        if self.z500_weight != 1.0:
+            z500_pred = multilevel_pred[..., 3]  # B nlevel nlat nlon
+            z500_target = multilevel_target[..., 3]
+
+            z500_forecasts = self.sht(z500_pred) / 4.0 / math.pi
+            z500_observations = self.sht(z500_target) / 4.0 / math.pi
+
+            z500_forecasts = torch.view_as_real(z500_forecasts)
+            z500_observations = torch.view_as_real(z500_observations)
+            # (B, C, lmax, mmax, 2) -> (B, C, 2, lmax, mmax) -> (B, 2C, lmax, mmax)
+            z500_forecasts = torch.movedim(z500_forecasts, 4, 2).flatten(1, 2)
+            z500_observations = torch.movedim(z500_observations, 4, 2).flatten(1, 2)
+            
+            B, C, H, W = z500_forecasts.shape
+            spectral_weights_split = self.lm_weights.reshape(1, 1, H * W)
+
+            crps_z500 = torch.abs(z500_observations - z500_forecasts).reshape(B, C, H * W)
+            z500_loss = torch.sum(crps_z500 * spectral_weights_split, dim=-1).mean() / \
+                        (torch.sum(norm * spectral_weights_split, dim=-1).mean() + self.eps)
+
+            return scalar_loss + self.vector_loss_weight * vector_loss + self.z500_weight * z500_loss
 
         return scalar_loss + self.vector_loss_weight * vector_loss
 
