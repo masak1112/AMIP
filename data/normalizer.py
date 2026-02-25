@@ -5,7 +5,8 @@ import pickle
 
 class Normalizer:
     def __init__(self, stat_path,
-                 downsample_levels=1):
+                 downsample_levels=1,
+                 clouds = True):
         
         with open(stat_path, 'rb') as file:
             self.stat_dict = pickle.load(file)
@@ -27,6 +28,11 @@ class Normalizer:
         zero_mean_mask = (self.multilevel_means.abs() < eps)
         self.multilevel_stds[zero_std_mask] = 1.0
         self.multilevel_means[zero_mean_mask] = 0.0
+
+        if not clouds:
+            # cloud variables are the last 5 channels in the multilevel data
+            self.multilevel_means = self.multilevel_means[..., :5]
+            self.multilevel_stds = self.multilevel_stds[..., :5]
 
         self.forcing_means = torch.tensor(self.stat_dict['forcing_mean'], dtype=torch.float32)  # shape (forcing_channels,)
         self.forcing_stds = torch.tensor(self.stat_dict['forcing_std'], dtype=torch.float32)    # shape (forcing_channels,)

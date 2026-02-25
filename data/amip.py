@@ -47,7 +47,8 @@ class AMIPData(Dataset):
                  normalize=True,
                  nsteps=1,   # how many steps to load
                  horizon=-1,
-                 downsample_levels=1
+                 downsample_levels=1,
+                 clouds=True
                  ):
 
         self.data_path = data_path 
@@ -56,11 +57,13 @@ class AMIPData(Dataset):
         self.normalize = normalize
         self.split = split 
         self.downsample_levels = downsample_levels
+        self.clouds = clouds    
 
         self.file = h5f.File(self.data_path, 'r') # has keys of 'split'
         self.data = self.file[split] # has keys of 'surface', 'multilevel', 'forcing', 'forcing_invariant', 'diagnostic', lat', 'lon', 'hour', 'day'
         self.n = Normalizer(norm_stats_path,
-                            downsample_levels=downsample_levels)
+                            downsample_levels=downsample_levels,
+                            clouds=clouds)
 
         # load refs
         self.surface = self.data['surface'] # t nlat nlon nsurface_channels
@@ -97,6 +100,9 @@ class AMIPData(Dataset):
 
         if self.downsample_levels > 1:
             multilevel = multilevel[:, ::self.downsample_levels]
+
+        if not self.clouds:
+            multilevel = multilevel[..., :5] # remove cloud variables
 
         if self.normalize:
             surface = self.n.normalize_surface(surface)

@@ -2,16 +2,16 @@ model:
     model_name: AE_History_HFS
     lr: 5.0e-5
     # [t, u, v, z, q, lwc, iwc, cc, w]
-    multi_level_variable_weight: [1.0, 1.0, 1.0, 10.0, 1.0, 0.25, 0.25, 0.25, 1.0]
+    multi_level_variable_weight: [1.0, 1.0, 1.0, 10.0, 1.0]
     level_weight: cosine
     spectral_loss_weight: 0.05
     AE_History:
         encoder:
             downsample_factor: 4
         decoder:
-            out_channels: 249  # 6 + 26*9 + 9 = 249
+            out_channels: 145  # 6 + 26*5 + 9 = 145
             hidden_channels: 512
-            z_channels: 249
+            z_channels: 145
             upsample_type: dc
             padding_mode: circular
             num_out_blocks: 3
@@ -27,6 +27,7 @@ data:
     val_horizon: 1460 # 1 year
     use_climatology: False
     downsample_levels: 1
+    clouds: False
 
     batch_size: 1
     num_workers: 4
