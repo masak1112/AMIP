@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -N SI_DiT
+#PBS -N AE_Decoder_no_clouds
 #PBS -l select=1:ncpus=16:ngpus=4:mem=120G
 #PBS -q develop
 #PBS -l walltime=00:10:00
@@ -9,6 +9,6 @@
 module load conda
 conda activate torch
 
-CONFIG=configs/SI_DiT.yaml
+CONFIG=configs/ae_decoder_hfs_no_clouds.yaml
 
 python train.py --config=$CONFIG
