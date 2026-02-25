@@ -183,6 +183,9 @@ class AutoencoderModule(L.LightningModule):
             multilevel_data = batch['multilevel'][:, 1]
             diagnostic_data = batch['diagnostic'][:, 1]
 
+
+            print(multilevel_history.shape, surface_history.shape, diagnostic_history.shape)
+
             # diffusion training
             if self.scheduler is not None:
                 cond = assemble_input(surface_history, multilevel_history, diagnostic_history)
