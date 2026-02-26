@@ -58,6 +58,7 @@ class AMIPData(Dataset):
         self.split = split 
         self.downsample_levels = downsample_levels
         self.clouds = clouds    
+        print(self.clouds)
 
         self.file = h5f.File(self.data_path, 'r') # has keys of 'split'
         self.data = self.file[split] # has keys of 'surface', 'multilevel', 'forcing', 'forcing_invariant', 'diagnostic', lat', 'lon', 'hour', 'day'
