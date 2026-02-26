@@ -5,7 +5,7 @@ model:
         encoder:
             downsample_factor: 4
         decoder:
-            in_channels: 145
+            in_channels: 290
             out_channels: 145
             dim: 512
             num_heads: 8
