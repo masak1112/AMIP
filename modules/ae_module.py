@@ -4,7 +4,7 @@ import torch
 from common.loss import latitude_weighted_rmse, WeightedLoss
 from common.utils import assemble_input, disassemble_input
 from common.plotting import plot_reconstruction, plot_spectrum
-from data.amip import SURFACE_VARIABLES, MULTILEVEL_VARIABLES, DIAGNOSTIC_VARIABLES
+from data.amip import SURFACE_VARIABLES, MULTILEVEL_VARIABLES_2, DIAGNOSTIC_VARIABLES
 
 class AutoencoderModule(L.LightningModule):
     def __init__(self,
@@ -263,7 +263,7 @@ class AutoencoderModule(L.LightningModule):
             pred_feat_dict[surface_feat_name] = surface_pred[..., c] # b nlat nlon
             target_feat_dict[surface_feat_name] = surface_data[..., c]
 
-        for c, multilevel_feat_name in enumerate(MULTILEVEL_VARIABLES):
+        for c, multilevel_feat_name in enumerate(MULTILEVEL_VARIABLES_2):
             pred_feat_dict[multilevel_feat_name] = multilevel_pred[..., c] # b nlevel nlat nlon 
             target_feat_dict[multilevel_feat_name] = multilevel_data[..., c]
 

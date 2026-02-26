@@ -22,6 +22,12 @@ MULTILEVEL_VARIABLES = ["temperature",
                   "fraction_of_cloud_cover",
                   "vertical_velocity"]
 
+MULTILEVEL_VARIABLES_2 = ["temperature",
+                  "u_component_of_wind",
+                  "v_component_of_wind",
+                  "geopotential",
+                  "specific_humidity"]
+
 FORCING_VARIABLES = ["DSWRFtoa", 
                      "sea_surface_temperature", # has nans
                      "sea_ice_cover"]  # has nans
