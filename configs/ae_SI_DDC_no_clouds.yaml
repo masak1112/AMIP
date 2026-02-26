@@ -7,10 +7,10 @@ model:
         decoder:
             in_channels: 290
             out_channels: 145
-            dim: 512
+            dim: 768
             num_heads: 8
-            num_blocks: 8
-            patch_size: 6
+            num_blocks: 12
+            patch_size: 8
             nlat: 180
             nlon: 360
         scheduler:
