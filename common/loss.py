@@ -55,7 +55,7 @@ class WeightedLoss(nn.Module):
                  diag_variable_weight=None,
                  nlevels=26,
                  nsurface=6,
-                 nmulti=9,
+                 nmulti=5,
                  ndiag = 9,
                  normalize = True,
                  eps = 1e-3,
@@ -358,7 +358,7 @@ class SpectralBaseLoss(nn.Module):
         surface_uv_idx=(4, 5),
         not_surface_uv_idx = (0, 1, 2, 3),
         multilevel_uv_idx=(1, 2),
-        not_multilevel_uv_idx=(0, 3, 4, 5, 6, 7, 8),
+        not_multilevel_uv_idx=(0, 3, 4),
         vector_loss_weight=0.25,
         z500_weight=1.0,
     ):
