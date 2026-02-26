@@ -10,7 +10,7 @@ model:
             dim: 512
             num_heads: 8
             num_blocks: 8
-            patch_size: 4
+            patch_size: 6
             nlat: 180
             nlon: 360
         scheduler:
