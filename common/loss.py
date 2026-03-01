@@ -358,7 +358,7 @@ class SpectralBaseLoss(nn.Module):
         surface_uv_idx=(4, 5),
         not_surface_uv_idx = (0, 1, 2, 3),
         multilevel_uv_idx=(1, 2),
-        not_multilevel_uv_idx=(0, 3, 4),
+        not_multilevel_uv_idx=(0, 3, 4, 5),
         vector_loss_weight=0.25,
         z500_weight=1.0,
     ):

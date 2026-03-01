@@ -2,16 +2,16 @@ model:
     model_name: AE_History_HFS
     lr: 5.0e-5
     # [t, u, v, z, q, lwc, iwc, cc, w]
-    multi_level_variable_weight: [1.0, 1.0, 1.0, 10.0, 1.0]
+    multi_level_variable_weight: [1.0, 1.0, 1.0, 10.0, 1.0, 1.0]
     level_weight: cosine
     spectral_loss_weight: 0.05
     AE_History:
         encoder:
             downsample_factor: 4
         decoder:
-            out_channels: 145  # 6 + 26*5 + 9 = 145
+            out_channels: 171 #145  # 6 + 26*5 + 9 = 145
             hidden_channels: 512
-            z_channels: 145
+            z_channels: 171 #145
             upsample_type: dc
             padding_mode: circular
             num_out_blocks: 3

@@ -26,7 +26,8 @@ MULTILEVEL_VARIABLES_2 = ["temperature",
                   "u_component_of_wind",
                   "v_component_of_wind",
                   "geopotential",
-                  "specific_humidity"]
+                  "specific_humidity",
+                  "vertical_velocity"]
 
 FORCING_VARIABLES = ["DSWRFtoa", 
                      "sea_surface_temperature", # has nans
@@ -109,7 +110,8 @@ class AMIPData(Dataset):
             multilevel = multilevel[:, ::self.downsample_levels]
 
         if not self.clouds:
-            multilevel = multilevel[..., :5] # remove cloud variables
+            multi_idx = torch.tensor([0, 1, 2, 3, 4, 8])
+            multilevel = multilevel[..., multi_idx] # remove cloud variables
 
         if self.normalize:
             surface = self.n.normalize_surface(surface)
