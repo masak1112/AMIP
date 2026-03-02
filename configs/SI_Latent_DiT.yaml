@@ -1,10 +1,10 @@
 model:
     model_name: SI_Latent_DiT
-    lr: 1.0e-6
+    lr: 1.0e-5
     SI_Latent_DiT:
         model:
-            in_channels: 503 # 249 + 249 + 2 + 3
-            out_channels: 249
+            in_channels: 295 # 145+145+2+3
+            out_channels: 145
             dim: 1024
             num_heads: 16
             num_blocks: 12
@@ -13,7 +13,7 @@ model:
             nlat: 45
             nlon: 90
         scheduler:
-            num_refinement_steps: 10
+            num_refinement_steps: 2
             num_train_steps: 21
             integrator: em
         encoder:
@@ -59,4 +59,5 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: null
-    accumulate_grad_batches: 4
+    accumulate_grad_batches: 8
+    optimizer: adam
