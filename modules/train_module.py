@@ -645,7 +645,6 @@ class TrainModule(L.LightningModule):
                 weight_decay=1e-06,
                 max_preconditioner_dim=8192,
                 precondition_frequency=100,
-                use_decoupled_weight_decay=True,
                 preconditioner_config=DefaultSOAPConfig,
             )
         else:
