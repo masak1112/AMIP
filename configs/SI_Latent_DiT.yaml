@@ -61,4 +61,4 @@ training:
     wandb_mode: online
     checkpoint: null
     accumulate_grad_batches: 8
-    optimizer: soap
+    optimizer: adam
