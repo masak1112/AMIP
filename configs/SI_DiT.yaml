@@ -21,7 +21,7 @@ data:
     norm_stats_path: /glade/derecho/scratch/ayz/norm_stats_dict_new.pkl
     climatology_path: /glade/derecho/scratch/ayz/climatology_1990_1996.pkl
         
-    training_nsteps: 1
+    training_nsteps: 2
     val_nsteps: 41 # 10 days
     val_horizon: 1460 # 1 year
     use_climatology: False
