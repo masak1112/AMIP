@@ -409,15 +409,9 @@ class TrainModule(L.LightningModule):
             x = assemble_input(surface_input, multilevel_input, diagnostic_input) # b c h w
             c_grid = assemble_forcing(forcing_input, invariant_input) # b c h w
 
-            print("x shape:", x.shape)
-            print("c_grid shape:", c_grid.shape)
-
             if self.latent:
-                x = self.encoder(x)
+                x = self.encoder(x) if t == 0 else x
                 c_grid = self.encoder(c_grid)
-
-            print("encoded x shape:", x.shape)
-            print("encoded c_grid shape:", c_grid.shape)
             
             # make prediction
             surface_pred, multilevel_pred, diagnostic_pred = self.forward(x, c_grid, c_scalar)
