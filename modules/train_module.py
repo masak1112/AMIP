@@ -24,6 +24,7 @@ class TrainModule(L.LightningModule):
         self.model_name = self.modelconfig["model_name"]
         self.lr = self.modelconfig["lr"]
         self.log_dir = config['training']['log_dir']
+        self.optimizer_name = config['training']['optimizer']
 
         self.n = normalizer
         self.climatology = None
@@ -602,8 +603,16 @@ class TrainModule(L.LightningModule):
         self.log('val/q850_240', q850_loss[39].item(), on_step=False, on_epoch=True, sync_dist=self.ddp)
     
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
+        if self.optimizer_name == "adam":
+            optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
+        elif self.optimizer_name == "soap":
+            pass 
+        elif self.optimizer_name == "muon":
+            pass 
+        else:
+            raise NotImplementedError(f"Optimizer {self.optimizer_name} not implemented")
+
 
         return [optimizer], [scheduler]
     
