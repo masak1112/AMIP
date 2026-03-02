@@ -147,7 +147,7 @@ class DiT(nn.Module):
             hidden_size=dim,
             flatten=False)
         
-        lat_init, lon_init = self.get_grid(self.nlat_pad, self.nlon_pad, torch.device('cpu'))                                                                                                                                                                                │     
+        lat_init, lon_init = self.get_grid(self.nlat_pad, self.nlon_pad, torch.device('cpu'))
         self.pe_embed.cache_precomputed_sph_harmonics(lat_init + math.pi / 2, lon_init - math.pi)  
 
         # Timestep embedding
