@@ -3,15 +3,15 @@ model:
     lr: 1.0e-5
     SI_DiT:
         model:
-            in_channels: 503 # 249 + 249 + 2 + 3
-            out_channels: 249
+            in_channels: 295 # 145+145+2+3
+            out_channels: 145
             dim: 1024
             num_heads: 16
             num_blocks: 12
             patch_size: 4
             scalar_dim: 3
         scheduler:
-            num_refinement_steps: 10
+            num_refinement_steps: 2
             num_train_steps: 21
             integrator: em
 
@@ -21,12 +21,13 @@ data:
     norm_stats_path: /glade/derecho/scratch/ayz/norm_stats_dict_new.pkl
     climatology_path: /glade/derecho/scratch/ayz/climatology_1990_1996.pkl
         
-    training_nsteps: 2
+    training_nsteps: 1
     val_nsteps: 41 # 10 days
     val_horizon: 1460 # 1 year
     use_climatology: False
     climatology_horizon: 7308 # 5year #1460 # 1 year
     climatology_start: 16072 # 1990-01-01
+    clouds: False
 
     batch_size: 1
     num_workers: 1 

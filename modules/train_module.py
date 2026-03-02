@@ -4,7 +4,7 @@ from tqdm import tqdm
 
 from common.loss import latitude_weighted_rmse, WeightedLoss
 from common.plotting import plot_result, plot_spectrum, plot_bias
-from data.amip import SURFACE_VARIABLES, MULTILEVEL_VARIABLES, DIAGNOSTIC_VARIABLES
+from data.amip import SURFACE_VARIABLES, MULTILEVEL_VARIABLES_2, DIAGNOSTIC_VARIABLES
 from common.utils import assemble_forcing, disassemble_input, assemble_input, fix_state_dict
 
 class TrainModule(L.LightningModule):
@@ -248,7 +248,7 @@ class TrainModule(L.LightningModule):
             pred_feat_dict[surface_feat_name] = surface_pred_all[..., c] # b t nlat nlon
             target_feat_dict[surface_feat_name] = surface_target[..., c]
 
-        for c, multilevel_feat_name in enumerate(MULTILEVEL_VARIABLES):
+        for c, multilevel_feat_name in enumerate(MULTILEVEL_VARIABLES_2):
             pred_feat_dict[multilevel_feat_name] = multilevel_pred_all[..., c] # b t nlevel nlat nlon 
             target_feat_dict[multilevel_feat_name] = multilevel_target[..., c]
 
@@ -302,7 +302,7 @@ class TrainModule(L.LightningModule):
         for c, surface_feat_name in enumerate(SURFACE_VARIABLES):
             pred_feat_dict[surface_feat_name] = surface_climatology[..., c] # b nlat nlon 
 
-        for c, multilevel_feat_name in enumerate(MULTILEVEL_VARIABLES):
+        for c, multilevel_feat_name in enumerate(MULTILEVEL_VARIABLES_2):
             pred_feat_dict[multilevel_feat_name] = multilevel_climatology[..., c] # b nlevel nlat nlon
 
         for c, diagnostic_feat_name in enumerate(DIAGNOSTIC_VARIABLES):
@@ -394,7 +394,7 @@ class TrainModule(L.LightningModule):
                 pred_feat_dict[surface_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=surface_data.device) # b t h w
                 target_feat_dict[surface_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=surface_data.device) # b t h w
 
-        for multilevel_feat_name in MULTILEVEL_VARIABLES:
+        for multilevel_feat_name in MULTILEVEL_VARIABLES_2:
             loss_dict[multilevel_feat_name] = torch.zeros((b, nt, nlevel), device=multilevel_data.device) # b t l
             if multilevel_feat_name in plot_keys:
                 pred_feat_dict[multilevel_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=multilevel_data.device) # b t l h w
@@ -447,7 +447,7 @@ class TrainModule(L.LightningModule):
                     pred_feat_dict[surface_feat_name][:, i_plot, ...] = surface_pred_denorm[..., c]
                     target_feat_dict[surface_feat_name][:, i_plot, ...] = surface_true_denorm[..., c]
                     
-            for c, multilevel_feat_name in enumerate(MULTILEVEL_VARIABLES):
+            for c, multilevel_feat_name in enumerate(MULTILEVEL_VARIABLES_2):
                 loss_dict[multilevel_feat_name][:, t, :] = latitude_weighted_rmse(multilevel_pred_denorm[..., c], 
                                                                                  multilevel_true_denorm[..., c],
                                                                                  nlon=nlon,

@@ -31,7 +31,7 @@ class Normalizer:
 
         if not clouds:
             # cloud variables are the last 5 channels in the multilevel data
-            self.multi_idx = torch.tensor([0, 1, 2, 3, 4, 8])
+            self.multi_idx = torch.tensor([0, 1, 2, 3, 4])
             self.multilevel_means = self.multilevel_means[..., self.multi_idx]
             self.multilevel_stds = self.multilevel_stds[..., self.multi_idx]
 
