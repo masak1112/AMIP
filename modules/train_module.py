@@ -362,8 +362,8 @@ class TrainModule(L.LightningModule):
         surface_input = surface_data[:, 0] # b nlat nlon c
         multilevel_input = multilevel_data[:, 0] # b nlevel nlat nlon c
         diagnostic_input = diagnostic_data[:, 0] # b nlat nlon c
-        nlat = surface_input.shape[2]
-        nlon = surface_input.shape[3]
+        nlat = surface_input.shape[1]
+        nlon = surface_input.shape[2]
 
         if self.latent:
             nlat = nlat // 4
