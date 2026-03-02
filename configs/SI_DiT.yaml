@@ -11,7 +11,7 @@ model:
             patch_size: 4
             scalar_dim: 3
         scheduler:
-            num_refinement_steps: 2
+            num_refinement_steps: 10
             num_train_steps: 21
             integrator: em
 
