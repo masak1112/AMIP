@@ -295,6 +295,8 @@ class AutoencoderModule(L.LightningModule):
         t850_target = target_feat_dict['temperature'][0, 6, ...].cpu()
         q850_pred = pred_feat_dict['specific_humidity'][0, 6, ...].cpu()
         q850_target = target_feat_dict['specific_humidity'][0, 6, ...].cpu()
+        w850_pred = pred_feat_dict['vertical_velocity'][0, 6, ...].cpu()    
+        w850_target = target_feat_dict['vertical_velocity'][0, 6, ...].cpu()
 
         plot_reconstruction(t2m_pred, # h w
                     t2m_target,
@@ -314,6 +316,9 @@ class AutoencoderModule(L.LightningModule):
         plot_reconstruction(q850_pred,
                     q850_target,
                     f'{self.log_dir}/q850_{self.current_epoch}.png')
+        plot_reconstruction(w850_pred,
+                    w850_target,
+                    f'{self.log_dir}/w850_{self.current_epoch}.png')
         
         plot_spectrum(t2m_pred.unsqueeze(0),
                         t2m_target.unsqueeze(0),
@@ -338,6 +343,10 @@ class AutoencoderModule(L.LightningModule):
         plot_spectrum(q850_pred.unsqueeze(0),
                         q850_target.unsqueeze(0),
                         f'{self.log_dir}/q850_spectrum_{self.current_epoch}.png',
+                        num_t=1)
+        plot_spectrum(w850_pred.unsqueeze(0),
+                        w850_target.unsqueeze(0),
+                        f'{self.log_dir}/w850_spectrum_{self.current_epoch}.png',
                         num_t=1)
         
     def log_losses(self, loss_dict):
