@@ -138,7 +138,7 @@ class TrainModule(L.LightningModule):
         if self.latent:
             x = self.encoder(x)
             y = self.encoder(y)
-            c_grid = self.encoder(c_grid)
+            c_grid = self.encoder(c_grid) # destroys some information in the forcing/invariants. Can use a learnable encoder?
 
         if self.diffusion:
             loss = self.scheduler.compute_loss(self.model, self.criterion,
@@ -362,16 +362,12 @@ class TrainModule(L.LightningModule):
         surface_input = surface_data[:, 0] # b nlat nlon c
         multilevel_input = multilevel_data[:, 0] # b nlevel nlat nlon c
         diagnostic_input = diagnostic_data[:, 0] # b nlat nlon c
+        nlat = surface_input.shape[2]
+        nlon = surface_input.shape[3]
 
         if self.latent:
-            #surface_history = surface_input.copy()
-            #multilevel_history = multilevel_input.copy()
-            #diagnostic_history = diagnostic_input.copy()
-
-            surface_input = self.encoder(surface_input)
-            multilevel_input = self.encoder(multilevel_input)
-            diagnostic_input = self.encoder(diagnostic_input)
-            invariant_input = self.encoder(invariant_input)
+            nlat = nlat // 4
+            nlon = nlon // 4
 
         surface_target = surface_data[:, 1:] # b t nlat nlon c
         multilevel_target = multilevel_data[:, 1:] # b t nlevel nlat nlon c
@@ -386,8 +382,6 @@ class TrainModule(L.LightningModule):
         # init plot_dict
         pred_feat_dict = {}
         target_feat_dict = {}
-        nlat = surface_input.shape[2]
-        nlon = surface_input.shape[3]
 
         for surface_feat_name in SURFACE_VARIABLES:
             loss_dict[surface_feat_name] = torch.zeros((b, nt), device=surface_data.device) # b t
@@ -412,11 +406,12 @@ class TrainModule(L.LightningModule):
             forcing_input = forcing_data[:, t] # b nlat nlon c
             c_scalar = scalar_data[:, t] # b 2
 
-            if self.latent:
-                forcing_input = self.encoder(forcing_input)
-
             x = assemble_input(surface_input, multilevel_input, diagnostic_input) # b c h w
             c_grid = assemble_forcing(forcing_input, invariant_input) # b c h w
+
+            if self.latent:
+                x = self.encoder(x)
+                c_grid = self.encoder(c_grid)
             
             # make prediction
             surface_pred, multilevel_pred, diagnostic_pred = self.forward(x, c_grid, c_scalar)
@@ -432,20 +427,22 @@ class TrainModule(L.LightningModule):
                 surface_pred_decoded = surface_pred
                 multilevel_pred_decoded = multilevel_pred
                 diagnostic_pred_decoded = diagnostic_pred
-                surface_target_t = self.encoder(surface_target_t)
-                multilevel_target_t = self.encoder(multilevel_target_t)
-                diagnostic_target_t = self.encoder(diagnostic_target_t)
+                
+                target_t = assemble_input(surface_target_t, multilevel_target_t, diagnostic_target_t)
+                target_t = self.encoder(target_t)
+                surface_target_t, multilevel_target_t, diagnostic_target_t = disassemble_input(target_t)
+
             else:
                 surface_pred_decoded = surface_pred
                 multilevel_pred_decoded = multilevel_pred
                 diagnostic_pred_decoded = diagnostic_pred
 
             surface_pred_denorm = self.n.denormalize_surface(surface_pred_decoded)
-            surface_true_denorm = self.n.denormalize_surface(surface_target[:, t])  
+            surface_true_denorm = self.n.denormalize_surface(surface_target_t)  
             multilevel_pred_denorm = self.n.denormalize_multilevel(multilevel_pred_decoded)
-            multilevel_true_denorm = self.n.denormalize_multilevel(multilevel_target[:, t])
+            multilevel_true_denorm = self.n.denormalize_multilevel(multilevel_target_t)
             diagnostic_pred_denorm = self.n.denormalize_diagnostic(diagnostic_pred_decoded)
-            diagnostic_true_denorm = self.n.denormalize_diagnostic(diagnostic_target[:, t])
+            diagnostic_true_denorm = self.n.denormalize_diagnostic(diagnostic_target_t)
 
             # get losses
             for c, surface_feat_name in enumerate(SURFACE_VARIABLES):
@@ -489,11 +486,6 @@ class TrainModule(L.LightningModule):
             surface_input = surface_pred
             multilevel_input = multilevel_pred
             diagnostic_input = diagnostic_pred
-
-            if self.latent: # update the history with the high-res pred
-                surface_history = surface_pred_decoded
-                multilevel_history = multilevel_pred_decoded
-                diagnostic_history = diagnostic_pred_decoded
 
             if t in t_plot:
                 i_plot += 1

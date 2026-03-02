@@ -646,8 +646,9 @@ class BilinearDownsample():
         return self.forward(x)
     
     def forward(self, x) -> torch.Tensor:
-        # x in shape b c nlat nlon
+
         x = F.interpolate(x, scale_factor=1/self.downsample_factor, mode='bilinear', align_corners=False)
+
         return x 
     
 class BilinearEncoder():

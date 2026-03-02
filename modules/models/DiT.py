@@ -137,7 +137,7 @@ class DiT(nn.Module):
             in_chans=in_channels,
             hidden_size=dim,
             flatten=False)
-
+    
         # Spherical harmonic positional encoding
         l_max = 20
         self.pe_embed = SphericalHarmonicsPE(l_max, dim, dim, use_mlp=True)
@@ -213,13 +213,12 @@ class DiT(nn.Module):
         lon = torch.linspace(0, 2 * math.pi - (2 * math.pi / nlon), nlon).to(device)
         return lat, lon
 
-    def forward(self, x_noised, cond, t, history=None):
+    def forward(self, x_noised, cond, t):
         """
         Args:
             x_noised: [b, c, nlat, nlon] — interpolant I_t (channel-first from assemble_input)
-            cond: [b, c, nlat, nlon] — conditional information
-            t: [b, n_scalar] — timestep
-            history: [b, c, nlat, nlon] — high-res prior state/history (channel-first),
+            cond: [b, c, nlat, nlon] — conditional information (current state + forcings)
+            t: [b, n_scalar] — timestep + scalar conditions
 
         Returns:
             [b, c, nlat, nlon] — predicted velocity (channel-first)
@@ -228,9 +227,6 @@ class DiT(nn.Module):
         nlat, nlon = self.nlat, self.nlon
 
         x_input = torch.cat([x_noised, cond], dim=1)
-
-        if history is not None:
-            x_input = torch.cat([x_input, history], dim=1)
 
         # Pad spatial dims to be divisible by patch_size
         if self.pad_lat > 0 or self.pad_lon > 0:
