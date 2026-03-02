@@ -40,6 +40,7 @@ data:
     use_climatology: False
     climatology_horizon: 7308 # 5year #1460 # 1 year
     climatology_start: 16072 # 1990-01-01
+    clouds: False
 
     batch_size: 1
     num_workers: 1 
