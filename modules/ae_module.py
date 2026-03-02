@@ -297,6 +297,13 @@ class AutoencoderModule(L.LightningModule):
         q850_target = target_feat_dict['specific_humidity'][0, 6, ...].cpu()
         w850_pred = pred_feat_dict['vertical_velocity'][0, 6, ...].cpu()    
         w850_target = target_feat_dict['vertical_velocity'][0, 6, ...].cpu()
+        fcc_850_pred = pred_feat_dict['fraction_of_cloud_cover'][0, 6, ...].cpu()
+        fcc_850_target = target_feat_dict['fraction_of_cloud_cover'][0, 6, ...].cpu()
+        clwc_850_pred = pred_feat_dict['specific_cloud_liquid_water_content'][0, 6, ...].cpu()
+        clwc_850_target = target_feat_dict['specific_cloud_liquid_water_content'][0, 6, ...].cpu()
+        ciwc_850_pred = pred_feat_dict['specific_cloud_ice_water_content'][0, 6, ...].cpu()
+        ciwc_850_target = target_feat_dict['specific_cloud_ice_water_content'][0, 6, ...].cpu()
+
 
         plot_reconstruction(t2m_pred, # h w
                     t2m_target,
@@ -319,6 +326,15 @@ class AutoencoderModule(L.LightningModule):
         plot_reconstruction(w850_pred,
                     w850_target,
                     f'{self.log_dir}/w850_{self.current_epoch}.png')
+        plot_reconstruction(fcc_850_pred,
+                    fcc_850_target,
+                    f'{self.log_dir}/fcc_850_{self.current_epoch}.png')
+        plot_reconstruction(clwc_850_pred,
+                    clwc_850_target,
+                    f'{self.log_dir}/clwc_850_{self.current_epoch}.png')
+        plot_reconstruction(ciwc_850_pred,
+                    ciwc_850_target,
+                    f'{self.log_dir}/ciwc_850_{self.current_epoch}.png')
         
         plot_spectrum(t2m_pred.unsqueeze(0),
                         t2m_target.unsqueeze(0),
@@ -348,6 +364,19 @@ class AutoencoderModule(L.LightningModule):
                         w850_target.unsqueeze(0),
                         f'{self.log_dir}/w850_spectrum_{self.current_epoch}.png',
                         num_t=1)
+        plot_spectrum(fcc_850_pred.unsqueeze(0),
+                        fcc_850_target.unsqueeze(0),
+                        f'{self.log_dir}/fcc_850_spectrum_{self.current_epoch}.png',
+                        num_t=1)
+        plot_spectrum(clwc_850_pred.unsqueeze(0),
+                        clwc_850_target.unsqueeze(0),
+                        f'{self.log_dir}/clwc_850_spectrum_{self.current_epoch}.png',
+                        num_t=1)
+        plot_spectrum(ciwc_850_pred.unsqueeze(0),
+                        ciwc_850_target.unsqueeze(0),
+                        f'{self.log_dir}/ciwc_850_spectrum_{self.current_epoch}.png',
+                        num_t=1)
+        
         
     def log_losses(self, loss_dict):
         # calculate the mean loss across batch, shape b for each key, b l for multilevel keys
