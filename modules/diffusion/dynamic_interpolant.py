@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from common.utils import disassemble_input
+import torch.nn.functional as F
 
 class Integrator:
     def __init__(self,
@@ -160,12 +161,14 @@ class DriftScheduler(nn.Module):
 
             pred = model(I_noised, c, c_scalar)
 
-            surface_pred, multi_pred, diag_pred = disassemble_input(pred)
-            target_surface, target_multilevel, target_diagnostic = disassemble_input(target)
+            loss = F.mse_loss(pred, target)
 
-            loss = criterion(surface_pred, target_surface,
-                             multi_pred, target_multilevel,
-                             diag_pred, target_diagnostic)
+            #surface_pred, multi_pred, diag_pred = disassemble_input(pred)
+            #target_surface, target_multilevel, target_diagnostic = disassemble_input(target)
+
+            #loss = criterion(surface_pred, target_surface,
+            #                 multi_pred, target_multilevel,
+            #                 diag_pred, target_diagnostic)
 
         return loss
 
