@@ -109,6 +109,9 @@ class DriftScheduler(nn.Module):
 
     def get_noise(self, x):
         return torch.randn(x.shape, device=x.device, dtype=x.dtype)
+    
+    def image_sq_norm(self, x):
+        return x.pow(2).sum(-1).sum(-1).sum(-1)
 
     def compute_loss(self, model, criterion, x, c_grid, c_scalar, y):
         # x contains current prognostic state
@@ -161,7 +164,7 @@ class DriftScheduler(nn.Module):
 
             pred = model(I_noised, c, c_scalar)
 
-            loss = F.mse_loss(pred, target)
+            loss= self.image_sq_norm(pred - target).mean()
 
             #surface_pred, multi_pred, diag_pred = disassemble_input(pred)
             #target_surface, target_multilevel, target_diagnostic = disassemble_input(target)

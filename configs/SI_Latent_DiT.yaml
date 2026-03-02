@@ -1,6 +1,6 @@
 model:
     model_name: SI_Latent_DiT
-    lr: 1.0e-5
+    lr: 1.0e-4
     SI_Latent_DiT:
         model:
             in_channels: 295 # 145+145+2+3
