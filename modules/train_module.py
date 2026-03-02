@@ -605,14 +605,53 @@ class TrainModule(L.LightningModule):
     def configure_optimizers(self):
         if self.optimizer_name == "adam":
             optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
+        elif self.optimizer_name == "shampoo":
+            from distributed_shampoo import (
+                AdamPreconditionerConfig,
+                DDPDistributedConfig,
+                DistributedShampoo,
+            )
+
+            optimizer = DistributedShampoo(
+                self.model.parameters(),
+                lr=self.lr,
+                betas=(0.9, 0.999),
+                epsilon=1e-12,
+                weight_decay=1e-05,
+                max_preconditioner_dim=8192,
+                precondition_frequency=100,
+                use_decoupled_weight_decay=True,
+                grafting_config=AdamPreconditionerConfig(
+                    beta2=0.999,
+                    epsilon=1e-12,
+                ),
+                distributed_config=DDPDistributedConfig(
+                    communication_dtype=torch.float32,
+                    num_trainers_per_group=8,
+                    communicate_params=False,
+                ),
+            )
         elif self.optimizer_name == "soap":
-            pass 
-        elif self.optimizer_name == "muon":
-            pass 
+            from distributed_shampoo import (
+                DistributedShampoo,
+                DefaultSOAPConfig,
+            )
+
+            optimizer = DistributedShampoo(
+                self.model.parameters(),
+                lr=self.lr,
+                betas=(0.9, 0.999),
+                epsilon=1e-12,
+                weight_decay=1e-06,
+                max_preconditioner_dim=8192,
+                precondition_frequency=100,
+                use_decoupled_weight_decay=True,
+                preconditioner_config=DefaultSOAPConfig,
+            )
         else:
             raise NotImplementedError(f"Optimizer {self.optimizer_name} not implemented")
 
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
 
         return [optimizer], [scheduler]
     
