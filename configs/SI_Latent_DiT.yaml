@@ -1,6 +1,6 @@
 model:
     model_name: SI_Latent_DiT
-    lr: 1.0e-4
+    lr: 5.0e-5
     SI_Latent_DiT:
         model:
             in_channels: 295 # 145+145+2+3
@@ -60,5 +60,5 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: null
-    accumulate_grad_batches: 8
+    accumulate_grad_batches: 4
     optimizer: adam
