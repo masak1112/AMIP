@@ -60,11 +60,11 @@ class TrainModule(L.LightningModule):
 
         if self.latent:
             from modules.models.AE_simple import BilinearDownsample
-            from modules.models.AE_decoder_hfs import DecoderHistory
+            #from modules.models.AE_decoder_hfs import DecoderHistory
 
             self.encoder = BilinearDownsample(**self.modelconfig['SI_Latent_DiT']["encoder"])
-            self.decoder = DecoderHistory(**self.modelconfig['SI_Latent_DiT']["decoder"])
-            self.initialize_decoder()
+            #self.decoder = DecoderHistory(**self.modelconfig['SI_Latent_DiT']["decoder"])
+            #self.initialize_decoder()
 
             self.criterion = WeightedLoss(latitude_resolution=45,longitude_resolution=90)
         else:
@@ -357,8 +357,6 @@ class TrainModule(L.LightningModule):
 
         b = surface_data.shape[0]
         nt = surface_data.shape[1]
-        nlat = surface_data.shape[2]
-        nlon = surface_data.shape[3]
         nlevel = multilevel_data.shape[2]
                 
         surface_input = surface_data[:, 0] # b nlat nlon c
@@ -366,9 +364,9 @@ class TrainModule(L.LightningModule):
         diagnostic_input = diagnostic_data[:, 0] # b nlat nlon c
 
         if self.latent:
-            surface_history = surface_input.copy()
-            multilevel_history = multilevel_input.copy()
-            diagnostic_history = diagnostic_input.copy()
+            #surface_history = surface_input.copy()
+            #multilevel_history = multilevel_input.copy()
+            #diagnostic_history = diagnostic_input.copy()
 
             surface_input = self.encoder(surface_input)
             multilevel_input = self.encoder(multilevel_input)
@@ -388,6 +386,8 @@ class TrainModule(L.LightningModule):
         # init plot_dict
         pred_feat_dict = {}
         target_feat_dict = {}
+        nlat = surface_input.shape[2]
+        nlon = surface_input.shape[3]
 
         for surface_feat_name in SURFACE_VARIABLES:
             loss_dict[surface_feat_name] = torch.zeros((b, nt), device=surface_data.device) # b t
@@ -421,10 +421,20 @@ class TrainModule(L.LightningModule):
             # make prediction
             surface_pred, multilevel_pred, diagnostic_pred = self.forward(x, c_grid, c_scalar)
 
+            surface_target_t = surface_target[:, t] # b nlat nlon c
+            multilevel_target_t = multilevel_target[:, t] # b nlevel nlat nlon c
+            diagnostic_target_t = diagnostic_target[:, t] # b nlat nlon c
+
             if self.latent:
-                surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = \
-                    self.decoder(surface_history, multilevel_history, diagnostic_history,
-                                 surface_pred, multilevel_pred, diagnostic_pred)
+                #surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = \
+                #    self.decoder(surface_history, multilevel_history, diagnostic_history,
+                #                 surface_pred, multilevel_pred, diagnostic_pred)
+                surface_pred_decoded = surface_pred
+                multilevel_pred_decoded = multilevel_pred
+                diagnostic_pred_decoded = diagnostic_pred
+                surface_target_t = self.encoder(surface_target_t)
+                multilevel_target_t = self.encoder(multilevel_target_t)
+                diagnostic_target_t = self.encoder(diagnostic_target_t)
             else:
                 surface_pred_decoded = surface_pred
                 multilevel_pred_decoded = multilevel_pred
