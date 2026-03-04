@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -N AE_Decoder
+#PBS -N SI_Latent_DiT
 #PBS -l select=1:ncpus=16:ngpus=4:mem=120G
 #PBS -q main
 #PBS -l walltime=12:00:00
@@ -9,6 +9,6 @@
 module load conda
 conda activate torch
 
-CONFIG=configs/ae_decoder_history_spectral.yaml
+CONFIG=configs/SI_Latent_DiT_0.5.yaml
 
 python train.py --config=$CONFIG
