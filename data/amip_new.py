@@ -539,7 +539,7 @@ class GetDataset(Dataset):
             ``(mean, std)`` tensors.
         """
         if upper_air:
-            with xr.open_dataset(mean_file) as ds:
+            with xr.open_dataset(mean_file, engine = "h5netcdf") as ds:
                 level_mask = xr.DataArray(
                     data=[lev in self.levels for lev in ds['level'].values], dims=['level']
                 )
@@ -547,7 +547,7 @@ class GetDataset(Dataset):
                     torch.from_numpy(ds[var].where(level_mask, drop=True).values).to(torch.float32)
                     for var in datavars
                 ], dim=0)
-            with xr.open_dataset(std_file) as ds:
+            with xr.open_dataset(std_file, engine = "h5netcdf") as ds:
                 level_mask = xr.DataArray(
                     data=[lev in self.levels for lev in ds['level'].values], dims=['level']
                 )
@@ -556,11 +556,11 @@ class GetDataset(Dataset):
                     for var in datavars
                 ], dim=0)
         else:
-            with xr.open_dataset(mean_file) as ds:
+            with xr.open_dataset(mean_file, engine = "h5netcdf") as ds:
                 mean = torch.stack([
                     torch.from_numpy(ds[var].values).to(torch.float32) for var in datavars
                 ], dim=0)
-            with xr.open_dataset(std_file) as ds:
+            with xr.open_dataset(std_file, engine = "h5netcdf") as ds:
                 std = torch.stack([
                     torch.from_numpy(ds[var].values).to(torch.float32) for var in datavars
                 ], dim=0)
