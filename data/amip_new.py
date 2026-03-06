@@ -86,7 +86,13 @@ CALENDAR_TO_DATETIME = {
 # DataLoader factories
 # ---------------------------------------------------------------------------
 
-def get_data_loader(params, distributed, train, validate=False):
+def get_data_loader(params, 
+                    distributed, 
+                    year_start: int, 
+                    year_end: int, 
+                    num_inferences: int = 0,
+                    train: bool = True, 
+                    validate: bool = False):
     """Create a DataLoader (and sampler) for training or evaluation.
 
     Parameters
@@ -95,6 +101,10 @@ def get_data_loader(params, distributed, train, validate=False):
         Full dataset/config parameters forwarded to :class:`GetDataset`.
     distributed : bool
         Whether to use a ``DistributedSampler``.
+    year_start, year_end : int
+        Date range for the dataset (end-exclusive).
+    num_inferences : int
+        Number of evenly spaced inference samples to draw (0 = all).
     train : bool
         Training mode flag — controls shuffling and return values.
     validate : bool
@@ -106,7 +116,13 @@ def get_data_loader(params, distributed, train, validate=False):
         ``(dataloader, dataset, sampler)`` when *train* is True, otherwise
         ``(dataloader, dataset)``.
     """
-    dataset = GetDataset(params, train=train, validate=validate)
+    dataset = GetDataset(params, 
+                         year_start=year_start,
+                         year_end=year_end,
+                         num_inferences=num_inferences,
+                         train=train, 
+                         validate=validate)
+    
     sampler = DistributedSampler(dataset, shuffle=train) if distributed else None
     if train and not distributed:
         sampler = torch.utils.data.RandomSampler(dataset)
@@ -126,7 +142,13 @@ def get_data_loader(params, distributed, train, validate=False):
     return dataloader, dataset
 
 
-def get_infer_data(params, train, validate=False):
+def get_infer_data(params,
+                   year_start: int, 
+                   year_end: int, 
+                   num_inferences: int = 0,
+                   train: bool = True, 
+                   validate: bool = False):
+    
     """Create a DataLoader for inference (no shuffling, no distributed sampler).
 
     Returns
@@ -134,7 +156,13 @@ def get_infer_data(params, train, validate=False):
     tuple
         ``(dataloader, dataset)``
     """
-    dataset = GetDataset(params, train=train, validate=validate)
+    dataset = GetDataset(params, 
+                        year_start=year_start,
+                        year_end=year_end,
+                        num_inferences=num_inferences,
+                        train=train, 
+                        validate=validate)
+    
     dataloader = DataLoader(
         dataset,
         batch_size=int(params["batch_size"]),
@@ -185,11 +213,16 @@ class GetDataset(Dataset):
         If True and not training, load full target sequences.
     """
 
-    def __init__(self, params: dict, train: bool = True, validate: bool = False):
+    def __init__(self, params: dict, 
+                 year_start: int, 
+                 year_end: int, 
+                 num_inferences: int = 0,
+                 train: bool = True, 
+                 validate: bool = False):
         self.params = params
         self.data_dir = params['data_dir']
         self.train = train
-        self.num_inferences = params['num_inferences']
+        self.num_inferences = num_inferences
         self.has_year_zero = params['has_year_zero']
         self.epsilon_factor = params['epsilon_factor']
         self.validate = validate if not self.train else False
@@ -204,8 +237,8 @@ class GetDataset(Dataset):
         })
 
         # Calendar / time setup
-        self.year_start = params['year_start']
-        self.year_end = params['year_end']
+        self.year_start = year_start
+        self.year_end = year_end
         self.calendar = params["calendar"]
         self.timedelta_hours = params["timedelta_hours"]
         self.data_timedelta_hours = params["data_timedelta_hours"]
