@@ -112,16 +112,16 @@ class AutoencoderModule(L.LightningModule):
         target_feat_dict = {}
 
         for c, surface_feat_name in enumerate(self.surface_variables):
-            pred_feat_dict[surface_feat_name] = surface_pred[..., c] # b nlat nlon
-            target_feat_dict[surface_feat_name] = surface_data[..., c]
+            pred_feat_dict[surface_feat_name] = surface_pred[:, c] # b nlat nlon
+            target_feat_dict[surface_feat_name] = surface_data[:, c]
 
         for c, multilevel_feat_name in enumerate(self.multilevel_variables):
-            pred_feat_dict[multilevel_feat_name] = multilevel_pred[..., c] # b nlevel nlat nlon 
-            target_feat_dict[multilevel_feat_name] = multilevel_data[..., c]
+            pred_feat_dict[multilevel_feat_name] = multilevel_pred[:, c] # b nlevel nlat nlon
+            target_feat_dict[multilevel_feat_name] = multilevel_data[:, c]
 
         for c, diagnostic_feat_name in enumerate(self.diagnostic_variables):
-            pred_feat_dict[diagnostic_feat_name] = diagnostic_pred[..., c] # b nlat nlon
-            target_feat_dict[diagnostic_feat_name] = diagnostic_data[..., c]
+            pred_feat_dict[diagnostic_feat_name] = diagnostic_pred[:, c] # b nlat nlon
+            target_feat_dict[diagnostic_feat_name] = diagnostic_data[:, c]
 
         loss_dict = {k:
                         latitude_weighted_rmse(pred_feat_dict[k], target_feat_dict[k],

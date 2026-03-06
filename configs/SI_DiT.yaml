@@ -3,8 +3,8 @@ model:
     lr: 5.0e-5
     SI_DiT:
         model:
-            in_channels: 295 # 145+145+2+3
-            out_channels: 145
+            in_channels: 357 # 2*176 + 2 + 3
+            out_channels: 176 # 5 + 15 + 26*6 = 145
             dim: 1024
             num_heads: 16
             num_blocks: 12
@@ -14,6 +14,7 @@ model:
             num_refinement_steps: 10
             num_train_steps: 21
             integrator: em
+            sigma_coef: 0.5
 
 data:
     data_dir: '/glade/derecho/scratch/awikner/ERA5/h5'

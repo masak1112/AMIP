@@ -150,5 +150,5 @@ class DataDependentInterpolant(nn.Module):
 
         return y
 
-    def forward(self, x_lowres, x_highres, model, cond=None):
-        return self.compute_loss(x_lowres, x_highres, model, cond=cond)
+    def forward(self, x_lowres, x_highres, model):
+        return self.compute_loss(x_lowres, x_highres, model)

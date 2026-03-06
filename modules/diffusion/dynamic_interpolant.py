@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-from common.utils import disassemble_input
-import torch.nn.functional as F
 
 class Integrator:
     def __init__(self,
@@ -19,7 +17,7 @@ class Integrator:
         return y_next
 
     def integrate(self,
-                  y, c, c_scalar,
+                  y, c,
                   model, timesteps, noise_fn):
         
         # y is current state along interpolant (noised prognostic states)
@@ -32,7 +30,7 @@ class Integrator:
             dt = t_next - t_current
             noise_t = noise_fn(t_current.expand(y.shape[0]))  # shape (b, 1, 1, 1)
 
-            scalar_in = torch.cat([c_scalar, t_current.float().expand(y.shape[0]).unsqueeze(-1)], dim=-1)
+            scalar_in = t_current.float().expand(y.shape[0]).unsqueeze(-1)
 
             drift = model(y, c, scalar_in)
 
@@ -113,10 +111,9 @@ class DriftScheduler(nn.Module):
     def image_sq_norm(self, x):
         return x.pow(2).sum(-1).sum(-1).sum(-1)
 
-    def compute_loss(self, model, criterion, x, c_grid, c_scalar, y):
+    def compute_loss(self, model, x, c_grid, y):
         # x contains current prognostic state
         # c_grid contains current forcing state
-        # c_scalar contains current scalar conditioning (hod, doy)
         # y contains next prognostic state 
 
         device = x.device
@@ -132,32 +129,13 @@ class DriftScheduler(nn.Module):
         I = self.I(x, y, t)  # shape (b, d, nx, ny)
         dIdt = self.dIdt(x, y, t)  # shape (b, d, nx, ny)
 
-        c_scalar = torch.cat([c_scalar, t.view(-1, 1)], dim=-1) # shape (b, c_dim + 1)
+        c_scalar = t.view(-1, 1)
+
         # use current state + forcing as conditioning
         c = torch.cat([x, c_grid], dim=1) # shape (b, d + c_dim, nx, ny)
 
         if self.antithetic_sampling:
-            I_noised_p = I + sigma_t * W_t * noise
-            I_noised_m = I - sigma_t * W_t * noise
-
-            target_p = dIdt + sigma_dot_t * W_t * noise
-            target_m = dIdt - sigma_dot_t * W_t * noise
-
-            pred_p = model(I_noised_p, c, c_scalar)
-            pred_m = model(I_noised_m, c, c_scalar)
-
-            surface_pred_p, multi_pred_p, diag_pred_p = disassemble_input(pred_p)
-            surface_pred_m, multi_pred_m, diag_pred_m = disassemble_input(pred_m)
-            target_surface_p, target_multilevel_p, target_diagnostic_p = disassemble_input(target_p)
-            target_surface_m, target_multilevel_m, target_diagnostic_m = disassemble_input(target_m)
-
-            loss_p = criterion(surface_pred_p, target_surface_p,
-                             multi_pred_p, target_multilevel_p,
-                             diag_pred_p, target_diagnostic_p)
-            loss_m = criterion(surface_pred_m, target_surface_m,
-                                    multi_pred_m, target_multilevel_m,
-                                    diag_pred_m, target_diagnostic_m)
-            loss = 0.5 * (loss_p + loss_m)
+            raise NotImplementedError("Antithetic sampling not implemented yet.")
         else:
             I_noised = I + sigma_t * W_t * noise
             target = dIdt + sigma_dot_t * W_t * noise
@@ -166,16 +144,9 @@ class DriftScheduler(nn.Module):
 
             loss= self.image_sq_norm(pred - target).mean()
 
-            #surface_pred, multi_pred, diag_pred = disassemble_input(pred)
-            #target_surface, target_multilevel, target_diagnostic = disassemble_input(target)
-
-            #loss = criterion(surface_pred, target_surface,
-            #                 multi_pred, target_multilevel,
-            #                 diag_pred, target_diagnostic)
-
         return loss
 
-    def sample(self, model, x, c_grid, c_scalar, refinement_steps=None):
+    def sample(self, model, x, c_grid, refinement_steps=None):
         # x contains current prognostic state
         # c_grid contains current forcing state
         # c_scalar contains current scalar conditioning (e.g. time, invariants)
@@ -194,7 +165,7 @@ class DriftScheduler(nn.Module):
         # first step taken analytically to avoid g_T singularity issues at t=0 with EM
         sigma_0 = self.sigma(timesteps[0].expand(x.shape[0]), sample=True)  # shape (b, 1, 1, 1)
         dt_0 = timesteps[1] - timesteps[0]
-        scalar_in = torch.cat([c_scalar, timesteps[0].float().expand(x.shape[0]).unsqueeze(-1)], dim=-1)
+        scalar_in = timesteps[0].float().expand(x.shape[0]).unsqueeze(-1)
 
         drift = model(y, c, scalar_in)
 
@@ -205,9 +176,9 @@ class DriftScheduler(nn.Module):
             y = y + drift * dt_0
 
         noise_fn = lambda t: self.sigma(t, sample=True)
-        y = self.integrator.integrate(y, c, c_scalar, model, timesteps[1:], noise_fn)
+        y = self.integrator.integrate(y, c, model, timesteps[1:], noise_fn)
 
         return y
 
-    def forward(self, model, x, c_grid, c_scalar, refinement_steps=None):
-        return self.sample(model, x, c_grid, c_scalar, refinement_steps)
+    def forward(self, model, x, c_grid, refinement_steps=None):
+        return self.sample(model, x, c_grid, refinement_steps)

@@ -125,7 +125,7 @@ def get_data_loader(params,
         dataset,
         batch_size=int(params["batch_size"]),
         num_workers=params["num_data_workers"],
-        shuffle=not train,
+        shuffle=train,
         drop_last=True,
         pin_memory=torch.cuda.is_available(),
     )
@@ -645,9 +645,9 @@ class GetDataset(Dataset):
 
         if self.autoencoder:
             if self.diagnostic_input:
-                return upper_air_t, surface_t
+                return surface_t, upper_air_t
             else:
-                return upper_air_t, surface_t, diagnostic_t
+                return surface_t, upper_air_t, diagnostic_t
 
         data_out = self._get_data(end_time, out=True)
 

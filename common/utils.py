@@ -27,69 +27,39 @@ def dict2namespace(config):
 
 def assemble_input(surface, multilevel, diagnostic=None):
     multilevel = rearrange(
-        multilevel, "b l h w c -> b h w (l c)"
+        multilevel, "b c l h w -> b (c l) h w"
     )
     if diagnostic is None:
-        out = torch.cat((surface, multilevel), dim=-1) # b h w c
+        out = torch.cat((surface, multilevel), dim=1) # b c h w
     else:
-        out = torch.cat((surface, diagnostic, multilevel), dim=-1) # b h w c
-    out = rearrange(
-        out, "b h w c -> b c h w"
-    )
+        out = torch.cat((surface, diagnostic, multilevel), dim=1) # b c h w
 
     return out
 
 def assemble_forcing(forcing, invariant):
-    out = torch.cat((forcing, invariant), dim=-1) # b h w c
-    out = rearrange(
-        out, "b h w c -> b c h w"
-    )
+    out = torch.cat((forcing, invariant), dim=1) # b c h w
 
     return out
 
-def disassemble_input(x, nsurface=6, ndiagnostic=9, nlevels=26):
-    x = rearrange(
-        x, "b c h w -> b h w c"
-    )
-
-    surface = x[..., : nsurface]
-    diagnostic = x[..., nsurface : nsurface + ndiagnostic]
-    multilevel = x[..., nsurface + ndiagnostic :]
+def disassemble_input(x, nsurface=6, ndiagnostic=15, nlevels=26):
+    # x in b c h w
+    surface = x[:, : nsurface]
+    diagnostic = x[:, nsurface : nsurface + ndiagnostic]
+    multilevel = x[:, nsurface + ndiagnostic :]
 
     multilevel = rearrange(
         multilevel,
-        "b h w (l c) -> b l h w c",
+        "b (c l) h w -> b c l h w",
         l=nlevels,
     )
 
     return surface, multilevel, diagnostic
 
-def disassemble_prognostic_forcing(x, nsurface=9, ndiagnostic=9, nlevels=26, nforcing=3, ninvariant=2):
-    x = rearrange(
-        x, "b c h w -> b h w c"
-    )
-
-    surface = x[..., : nsurface]
-    diagnostic = x[..., nsurface : nsurface + ndiagnostic]
-    forcing = x[..., nsurface + ndiagnostic : nsurface + ndiagnostic + nforcing]
-    invariant = x[..., nsurface + ndiagnostic + nforcing : nsurface + ndiagnostic + nforcing + ninvariant]
-    multilevel = x[..., nsurface + ndiagnostic + nforcing + ninvariant :]
-
-    multilevel = rearrange(
-        multilevel,
-        "b h w (l c) -> b l h w c",
-        l=nlevels,
-    )
-
-    return surface, diagnostic, forcing, invariant, multilevel
-
 def disassemble_forcing(x, nforcing=3, ninvariant=2):
-    x = rearrange(
-        x, "b c h w -> b h w c"
-    )
+    # x in b c h w
 
-    forcing = x[..., : nforcing]
-    invariant = x[..., nforcing : nforcing + ninvariant]
+    forcing = x[:, : nforcing]
+    invariant = x[:, nforcing : nforcing + ninvariant]
 
     return forcing, invariant
 

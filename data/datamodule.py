@@ -14,18 +14,18 @@ class ClimateDataModule(L.LightningDataModule):
         self.val_num_inferences = dataconfig['val_num_inferences']
         self.autoencoder = dataconfig.get("autoencoder", False)
 
-        self.train_dataset, self.train_dataloader = get_data_loader(dataconfig,
-                                                                       year_start = self.train_year_start,
-                                                                       year_end = self.train_year_end,
-                                                                       num_inferences=0, # load entire dset
-                                                                       train=True,
-                                                                       validate=False)
-        self.val_dataset, self.val_dataloader = get_data_loader(dataconfig,
-                                                                year_start = self.val_year_start,
-                                                                year_end = self.val_year_end,
-                                                                num_inferences=self.val_num_inferences, # load entire dset
-                                                                train=False if not self.autoencoder else True, # for autoencoder, val is same as train
-                                                                validate=True if not self.autoencoder else False)
+        self._train_loader, self.train_dataset = get_data_loader(dataconfig,
+                                                                   year_start = self.train_year_start,
+                                                                   year_end = self.train_year_end,
+                                                                   num_inferences=0, # load entire dset
+                                                                   train=True,
+                                                                   validate=False)
+        self._val_loader, self.val_dataset = get_data_loader(dataconfig,
+                                                              year_start = self.val_year_start,
+                                                              year_end = self.val_year_end,
+                                                              num_inferences=self.val_num_inferences, # load entire dset
+                                                              train=False if not self.autoencoder else True, # for autoencoder, val is same as train
+                                                              validate=True if not self.autoencoder else False)
 
     def prepare_data(self):
         # download, split, etc...
@@ -47,10 +47,10 @@ class ClimateDataModule(L.LightningDataModule):
             pass
 
     def train_dataloader(self):
-        return self.train_dataloader
+        return self._train_loader
 
     def val_dataloader(self):
-        return self.val_dataloader
+        return self._val_loader
 
     def test_dataloader(self):
         return None

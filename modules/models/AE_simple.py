@@ -661,24 +661,21 @@ class BilinearEncoder():
         return self.forward(surface, multilevel, diagnostic)
     
     def forward(self, surface, multilevel, diagnostic=None) -> torch.Tensor:
-        # surface in shape b nlat nlon c 
-        # multilevel in shape b nlevel nlat nlon c
-        # diagnostic in shape b nlat nlon c
-        nlevels = multilevel.shape[1]
+        # surface in shape b c nlat nlon
+        # multilevel in shape b c nlevel nlat nlon
+        # diagnostic in shape b c nlat nlon
 
-        surface = rearrange(surface, 'b nlat nlon c -> b c nlat nlon')
-        multilevel = rearrange(multilevel, 'b nlevel nlat nlon c -> b (nlevel c) nlat nlon')
+        nlevels = multilevel.shape[2]
+
+        multilevel = rearrange(multilevel, 'b c nlevel nlat nlon -> b (c nlevel) nlat nlon')
 
         surface = F.interpolate(surface, scale_factor=1/self.downsample_factor, mode='bilinear', align_corners=False)
         multilevel = F.interpolate(multilevel, scale_factor=1/self.downsample_factor, mode='bilinear', align_corners=False)
 
-        surface = rearrange(surface, 'b c zlat zlon -> b zlat zlon c')
-        multilevel = rearrange(multilevel, 'b (nlevel c) zlat zlon -> b nlevel zlat zlon c', nlevel=nlevels)
+        multilevel = rearrange(multilevel, 'b (c nlevel) zlat zlon -> b c nlevel zlat zlon', nlevel=nlevels)
 
         if diagnostic is not None:
-            diagnostic = rearrange(diagnostic, 'b nlat nlon c -> b c nlat nlon')
             diagnostic = F.interpolate(diagnostic, scale_factor=1/self.downsample_factor, mode='bilinear', align_corners=False)
-            diagnostic = rearrange(diagnostic, 'b c zlat zlon -> b zlat zlon c')
 
         return surface, multilevel, diagnostic
     
@@ -692,24 +689,20 @@ class BilinearDecoder():
         return self.forward(surface, multilevel, diagnostic)
     
     def forward(self, surface, multilevel, diagnostic=None) -> torch.Tensor:
-        # surface in shape b nlat nlon c 
-        # multilevel in shape b nlevel nlat nlon c
-        # diagnostic in shape b nlat nlon c
-        nlevels = multilevel.shape[1]
+        # surface in shape b c nlat nlon
+        # multilevel in shape b c nlevel nlat nlon
+        # diagnostic in shape b c nlat nlon
+        nlevels = multilevel.shape[2]
 
-        surface = rearrange(surface, 'b nlat nlon c -> b c nlat nlon')
-        multilevel = rearrange(multilevel, 'b nlevel nlat nlon c -> b (nlevel c) nlat nlon')
+        multilevel = rearrange(multilevel, 'b c nlevel nlat nlon -> b (c nlevel) nlat nlon')
 
         surface = F.interpolate(surface, scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
         multilevel = F.interpolate(multilevel, scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
 
-        surface = rearrange(surface, 'b c zlat zlon -> b zlat zlon c')
-        multilevel = rearrange(multilevel, 'b (nlevel c) zlat zlon -> b nlevel zlat zlon c', nlevel=nlevels)
+        multilevel = rearrange(multilevel, 'b (c nlevel) zlat zlon -> b c nlevel zlat zlon', nlevel=nlevels)
 
         if diagnostic is not None:
-            diagnostic = rearrange(diagnostic, 'b nlat nlon c -> b c nlat nlon')
             diagnostic = F.interpolate(diagnostic, scale_factor=self.downsample_factor, mode='bilinear', align_corners=False)
-            diagnostic = rearrange(diagnostic, 'b c zlat zlon -> b zlat zlon c')
 
         return surface, multilevel, diagnostic
       
