@@ -540,31 +540,39 @@ class GetDataset(Dataset):
             ``(mean, std)`` tensors.
         """
         if upper_air:
-            with xr.open_dataset(mean_file) as ds:
-                level_mask = xr.DataArray(
-                    data=[lev in self.levels for lev in ds['level'].values], dims=['level']
-                )
-                mean = torch.stack([
-                    torch.from_numpy(ds[var].where(level_mask, drop=True).values).to(torch.float32)
-                    for var in datavars
-                ], dim=0)
-            with xr.open_dataset(std_file) as ds:
-                level_mask = xr.DataArray(
-                    data=[lev in self.levels for lev in ds['level'].values], dims=['level']
-                )
-                std = torch.stack([
-                    torch.from_numpy(ds[var].where(level_mask, drop=True).values).to(torch.float32)
-                    for var in datavars
-                ], dim=0)
+            ds_mean = xr.open_dataset(mean_file)
+            level_mask = xr.DataArray(
+                data=[lev in self.levels for lev in ds_mean['level'].values], dims=['level']
+            )
+            mean = torch.stack([
+                torch.from_numpy(ds_mean[var].where(level_mask, drop=True).values).to(torch.float32)
+                for var in datavars
+            ], dim=0)
+            ds_mean.close()
+
+            ds_std = xr.open_dataset(std_file)
+            level_mask = xr.DataArray(
+                data=[lev in self.levels for lev in ds_std['level'].values], dims=['level']
+            )
+            std = torch.stack([
+                torch.from_numpy(ds_std[var].where(level_mask, drop=True).values).to(torch.float32)
+                for var in datavars
+            ], dim=0)
+            ds_std.close()
+
         else:
-            with xr.open_dataset(mean_file) as ds:
-                mean = torch.stack([
-                    torch.from_numpy(ds[var].values).to(torch.float32) for var in datavars
-                ], dim=0)
-            with xr.open_dataset(std_file) as ds:
-                std = torch.stack([
-                    torch.from_numpy(ds[var].values).to(torch.float32) for var in datavars
-                ], dim=0)
+            ds = xr.open_dataset(mean_file)
+            mean = torch.stack([
+                torch.from_numpy(ds[var].values).to(torch.float32) for var in datavars
+            ], dim=0)
+            ds.close()
+
+            ds_std = xr.open_dataset(std_file)
+            std = torch.stack([
+                torch.from_numpy(ds_std[var].values).to(torch.float32) for var in datavars
+            ], dim=0)
+            ds_std.close()
+
         return mean, std
 
     # ------------------------------------------------------------------
