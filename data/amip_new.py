@@ -112,7 +112,6 @@ def get_data_loader(params,
     Returns
     -------
     tuple
-        ``(dataloader, dataset, sampler)`` when *train* is True, otherwise
         ``(dataloader, dataset)``.
     """
     dataset = GetDataset(params, 

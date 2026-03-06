@@ -15,14 +15,12 @@ class ClimateDataModule(L.LightningDataModule):
         self.autoencoder = dataconfig.get("autoencoder", False)
 
         self.train_dataset, self.train_dataloader = get_data_loader(dataconfig,
-                                                                       distributed=True,
                                                                        year_start = self.train_year_start,
                                                                        year_end = self.train_year_end,
                                                                        num_inferences=0, # load entire dset
                                                                        train=True,
                                                                        validate=False)
         self.val_dataset, self.val_dataloader = get_data_loader(dataconfig,
-                                                                distributed=True,
                                                                 year_start = self.val_year_start,
                                                                 year_end = self.val_year_end,
                                                                 num_inferences=self.val_num_inferences, # load entire dset
