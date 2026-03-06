@@ -82,6 +82,7 @@ data:
     predict_delta: False
     epsilon_factor: 0
     val_num_inferences: 100 # only use 100 snapshots for validation
+    diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
     batch_size: 1
     num_data_workers: 1 
