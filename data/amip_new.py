@@ -532,7 +532,7 @@ class GetDataset(Dataset):
             Variable names to extract.
         upper_air : bool
             If True, select only the configured pressure levels along the
-            vertical (``Z``) dimension.
+            vertical (``level``) dimension.
 
         Returns
         -------
@@ -542,7 +542,7 @@ class GetDataset(Dataset):
         if upper_air:
             with xr.open_dataset(mean_file) as ds:
                 level_mask = xr.DataArray(
-                    data=[lev in self.levels for lev in ds['Z'].values], dims=['Z']
+                    data=[lev in self.levels for lev in ds['level'].values], dims=['level']
                 )
                 mean = torch.stack([
                     torch.from_numpy(ds[var].where(level_mask, drop=True).values).to(torch.float32)
@@ -550,7 +550,7 @@ class GetDataset(Dataset):
                 ], dim=0)
             with xr.open_dataset(std_file) as ds:
                 level_mask = xr.DataArray(
-                    data=[lev in self.levels for lev in ds['Z'].values], dims=['Z']
+                    data=[lev in self.levels for lev in ds['level'].values], dims=['level']
                 )
                 std = torch.stack([
                     torch.from_numpy(ds[var].where(level_mask, drop=True).values).to(torch.float32)
