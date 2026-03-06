@@ -540,7 +540,7 @@ class GetDataset(Dataset):
             ``(mean, std)`` tensors.
         """
         if upper_air:
-            ds_mean = xr.open_dataset(mean_file)
+            ds_mean = xr.open_dataset(mean_file, engine='scipy')
             level_mask = xr.DataArray(
                 data=[lev in self.levels for lev in ds_mean['level'].values], dims=['level']
             )
@@ -550,7 +550,7 @@ class GetDataset(Dataset):
             ], dim=0)
             ds_mean.close()
 
-            ds_std = xr.open_dataset(std_file)
+            ds_std = xr.open_dataset(std_file, engine='scipy')
             level_mask = xr.DataArray(
                 data=[lev in self.levels for lev in ds_std['level'].values], dims=['level']
             )
@@ -561,13 +561,13 @@ class GetDataset(Dataset):
             ds_std.close()
 
         else:
-            ds = xr.open_dataset(mean_file)
+            ds = xr.open_dataset(mean_file, engine='scipy')
             mean = torch.stack([
                 torch.from_numpy(ds[var].values).to(torch.float32) for var in datavars
             ], dim=0)
             ds.close()
 
-            ds_std = xr.open_dataset(std_file)
+            ds_std = xr.open_dataset(std_file, engine='scipy')
             std = torch.stack([
                 torch.from_numpy(ds_std[var].values).to(torch.float32) for var in datavars
             ], dim=0)
