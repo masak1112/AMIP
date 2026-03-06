@@ -299,9 +299,8 @@ class GetDataset(Dataset):
             raise ValueError('levels must be explicitly specified in config file.')
 
         # Load normalization statistics
-        data_dir = self.data_dir
-        mean_path = join(data_dir, params["mean_path"])
-        std_path = join(data_dir, params["std_path"])
+        mean_path = params['mean_path']
+        std_path = params['std_path']
         self.surface_mean, self.surface_std = self._load_mean_std(
             mean_path,
             std_path,
