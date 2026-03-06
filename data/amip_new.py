@@ -1,198 +1,334 @@
-import os, sys
-import torch
+"""
+Dataset for weather/climate forecasting models.
+
+Loads atmospheric state data from per-timestep HDF5 files, applies normalization,
+and returns (input, target) pairs for training or multi-step rollout sequences
+for autoregressive inference/validation.
+
+Data layout per file: ``{year}_{index:04d}.h5`` containing an ``input`` group
+with one dataset per variable (plus ``time``).  Variables are split into:
+
+- **Upper-air** (3-D): variables on pressure levels (e.g. temperature, wind)
+- **Surface** (2-D): single-level fields (e.g. 2m temperature, surface pressure)
+- **Diagnostic** (2-D, output only): radiation fluxes, precipitation, etc.
+- **Varying boundary** (2-D, input only): SST, sea-ice, TOA solar forcing
+- **Constant boundary**: land-sea mask, surface geopotential (loaded once)
+
+Calendar-aware date handling is provided via ``cftime`` so that non-standard
+calendars (no-leap, 360-day, etc.) used by different climate models are supported.
+"""
+
+import sys
+
+import cftime
 import h5py
-#import h5pickle as h5py
-#import random
 import numpy as np
-from torch.utils.data import DataLoader, Dataset
-from torch.utils.data.distributed import DistributedSampler
-#from torch import Tensor
-#import h5py
-#import math
-# import cv2
-#from utils.img_utils import reshape_fields
+import torch
+import xarray as xr
+from datetime import timedelta
 from itertools import product
 from os.path import join
-import cftime
-from datetime import timedelta
-import xarray as xr
+from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.distributed import DistributedSampler
+
+
+# ---------------------------------------------------------------------------
+# Utility functions
+# ---------------------------------------------------------------------------
 
 def get_data_given_path(path, variables):
+    """Read selected variables from an HDF5 file and return as a stacked array.
+
+    Parameters
+    ----------
+    path : str
+        Path to an HDF5 file with an ``input`` group.
+    variables : list[str]
+        Variable names to extract from the ``input`` group.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape ``(n_variables, ...)``.
+    """
     with h5py.File(path, 'r') as f:
         data = {
-            main_key: {
-                sub_key: np.array(value) for sub_key, value in group.items() if sub_key in variables + ['time']
-        } for main_key, group in f.items() if main_key in ['input']}
-
-    x = [data['input'][v] for v in variables]
-    return np.stack(x, axis=0)
-
-def get_out_path(root_dir, year, inp_file_idx):
-    # year: current year
-    # inp_file_idx: file index of the input in the current year
-    # steps: number of steps forward
-    out_path = os.path.join(root_dir, f'{year}_{inp_file_idx:04}.h5')
-    return out_path
+            sub_key: np.array(value)
+            for sub_key, value in f['input'].items()
+            if sub_key in variables + ['time']
+        }
+    return np.stack([data[v] for v in variables], axis=0)
 
 
+def get_out_path(root_dir, year, file_idx):
+    """Build the HDF5 file path for a given year and timestep index."""
+    return join(root_dir, f'{year}_{file_idx:04}.h5')
 
-def get_data_loader(params, files_pattern, distributed, year_start, year_end, train, num_inferences = 0, validate = False):
 
-    dataset = GetDataset(params, files_pattern, year_start, year_end, train, num_inferences, validate)
+# ---------------------------------------------------------------------------
+# Calendar helpers
+# ---------------------------------------------------------------------------
+
+CALENDAR_TO_DATETIME = {
+    'standard': cftime.DatetimeGregorian,
+    'Gregorian': cftime.DatetimeGregorian,
+    'noleap': cftime.DatetimeNoLeap,
+    '365_day': cftime.DatetimeNoLeap,
+    'proleptic_gregorian': cftime.DatetimeProlepticGregorian,
+    'all_leap': cftime.DatetimeAllLeap,
+    '366_day': cftime.DatetimeAllLeap,
+    '360_day': cftime.Datetime360Day,
+    'julian': cftime.DatetimeJulian,
+}
+
+
+# ---------------------------------------------------------------------------
+# DataLoader factories
+# ---------------------------------------------------------------------------
+
+def get_data_loader(params, distributed, train, validate=False):
+    """Create a DataLoader (and sampler) for training or evaluation.
+
+    Parameters
+    ----------
+    params : dict-like
+        Full dataset/config parameters forwarded to :class:`GetDataset`.
+    distributed : bool
+        Whether to use a ``DistributedSampler``.
+    train : bool
+        Training mode flag — controls shuffling and return values.
+    validate : bool
+        If *True* (and ``train`` is *False*), load multi-step targets.
+
+    Returns
+    -------
+    tuple
+        ``(dataloader, dataset, sampler)`` when *train* is True, otherwise
+        ``(dataloader, dataset)``.
+    """
+    dataset = GetDataset(params, validate=validate)
     sampler = DistributedSampler(dataset, shuffle=train) if distributed else None
     if train and not distributed:
         sampler = torch.utils.data.RandomSampler(dataset)
 
-
-    dataloader = DataLoader(dataset,
-                            batch_size=int(params.batch_size),
-                            num_workers=params.num_data_workers,
-                            shuffle=False,  # (sampler is None),
-                            sampler=sampler,# if train else None,
-                            drop_last=True,
-                            pin_memory=torch.cuda.is_available())
+    dataloader = DataLoader(
+        dataset,
+        batch_size=int(params.batch_size),
+        num_workers=params.num_data_workers,
+        shuffle=False,
+        sampler=sampler,
+        drop_last=True,
+        pin_memory=torch.cuda.is_available(),
+    )
 
     if train:
         return dataloader, dataset, sampler
-    else:
-        return dataloader, dataset
+    return dataloader, dataset
 
+
+def get_infer_data(params, validate=False):
+    """Create a DataLoader for inference (no shuffling, no distributed sampler).
+
+    Returns
+    -------
+    tuple
+        ``(dataloader, dataset)``
+    """
+    dataset = GetDataset(params, validate=validate)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=int(params.batch_size),
+        num_workers=params.num_data_workers,
+        shuffle=False,
+        drop_last=True,
+        pin_memory=torch.cuda.is_available(),
+    )
+    return dataloader, dataset
+
+
+# ---------------------------------------------------------------------------
+# Dataset
+# ---------------------------------------------------------------------------
 
 class GetDataset(Dataset):
-    def __init__(self, params, data_dir, year_start, year_end, train, num_inferences = 0, validate = False):
+    """PyTorch Dataset for atmospheric reanalysis data.
+
+    Each sample consists of an input atmospheric state at time *t* and
+    (during training) the target state at time *t + dt*.  For validation /
+    inference the dataset can return multi-step target sequences for
+    autoregressive rollout evaluation.
+
+    Parameters
+    ----------
+    params : dict-like
+        Configuration object (typically loaded from YAML) containing at least:
+
+        - ``data_dir``: root directory with per-timestep HDF5 files
+        - ``year_start``, ``year_end``: date range (end-exclusive)
+        - ``train``: bool — training vs. inference mode
+        - ``calendar``: calendar type string (e.g. ``'noleap'``)
+        - ``timedelta_hours``: forecast step in hours
+        - ``data_timedelta_hours``: temporal resolution of files in hours
+        - ``has_year_zero``: bool for cftime year-zero support
+        - ``surface_variables``, ``upper_air_variables``: list of variable names
+        - ``constant_boundary_variables``, ``varying_boundary_variables``: list of forcing field names
+        - ``forecast_lead_times``: list of lead-time steps for evaluation
+        - ``levels``: pressure levels to use
+        - ``horizontal_resolution``: ``(nlat, nlon)``
+        - ``num_inferences``: number of evenly-spaced inference starts (0 = all)
+        - ``epsilon_factor``: input noise scale (0 disables noise)
+        - ``predict_delta``: if True, targets are state increments
+        - Paths to mean/std NetCDF files for normalization
+    validate : bool
+        If True and not training, load full target sequences.
+    """
+
+    def __init__(self, params, validate=False):
         self.params = params
-        self.data_dir = data_dir
-        self.train = train
-        if not self.train:
-            self.validate = validate
-        else:
-            self.validate = False
-        if not self.train and not self.params.forecast_lead_times:
+        self.data_dir = params['data_dir']
+        self.train = params['train']
+        self.num_inferences = params['num_inferences']
+        self.has_year_zero = params['has_year_zero']
+        self.epsilon_factor = params['epsilon_factor']
+        self.validate = validate if not self.train else False
+
+        if not self.train and not self.params['forecast_lead_times']:
             self.params['forecast_lead_times'] = [1]
 
+        self.mask_fill = getattr(params, 'mask_fill', {
+            'land_sea_mask': 0.,
+            'sea_surface_temperature': 270.,
+            'sea_ice_cover': 0.,
+            'volumetric_soil_water_layer_1': 0.,
+        })
 
-        # some sort of noise parameter, just set to zero
-        #self.epsilon_factor = self.params.epsilon_factor
-        self.epsilon_factor = 0
-        #self.parallel = False #True if params['num_data_workers'] > 1 else False
+        # Calendar / time setup
+        self.year_start = params['year_start']
+        self.year_end = params['year_end']
+        self.calendar = params.calendar
+        self.timedelta_hours = params.timedelta_hours
+        self.data_timedelta_hours = params.data_timedelta_hours
+        self.datetime_class = CALENDAR_TO_DATETIME[self.calendar]
 
-        # gonna assume this is just zero
-        self.num_inferences = num_inferences
-
-        #self._get_files_stats()
-
-        # gonna assume this is false
-        #self.has_year_zero = params.has_year_zero
-        self.has_year_zero = False
-
-        if hasattr(params, 'mask_fill'):
-            self.mask_fill = self.params.mask_fill
-        else:
-            #self.mask_fill = {'lsm': 0., 'sst': 270., 'sic': 0., 'mrso': 0.}
-            self.mask_fill = {'land_sea_mask': 0., 'sea_surface_temperature': 270., 'sea_ice_cover': 0., 'volumetric_soil_water_layer_1': 0.}
-
-        self.year_start = year_start
-        self.year_end = year_end
-        self.calendar = params.calendar # 'standard'
-        self.timedelta_hours = params.timedelta_hours # 24
-        self.data_timedelta_hours = params.data_timedelta_hours # 6
-        self.datetime_class  = self.datetime_class_from_calendar(self.calendar)
-        # for timedelta_hours > 24
         days, hours = divmod(self.timedelta_hours, 24)
-        self.timedelta = self.datetime_class(1, 1, 1 + days, hour=hours) - self.datetime_class(1, 1, 1, hour=0)
-        # self.timedelta = self.datetime_class(1, 1, 1, hour=self.timedelta_hours) - self.datetime_class(1, 1, 1, hour=0)
+        self.timedelta = (
+            self.datetime_class(1, 1, 1 + days, hour=hours)
+            - self.datetime_class(1, 1, 1, hour=0)
+        )
 
+        # Variable lists
         self.surface_variables = params.surface_variables or []
-        if hasattr(params, 'land_variables'):
-            if len(params.land_variables) > 0:
-                if any([land_variable in self.surface_variables for land_variable in params.land_variables]):
-                    raise ValueError('land variables cannot be in surface variables.')
-                self.surface_variables = self.surface_variables + params.land_variables
-            self.land_variables = params.land_variables
-        else:
-            self.land_variables = []
-            
+        self.land_variables = getattr(params, 'land_variables', [])
+        self.ocean_variables = getattr(params, 'ocean_variables', [])
 
-        if hasattr(params, 'ocean_variables'):
-            if len(params.land_variables) > 0:
-                if any([ocean_variable in self.surface_variables for ocean_variable in params.ocean_variables]):
-                    raise ValueError('ocean variables cannot be in surface variables.')
-                self.ocean_variables = params.ocean_variables
-            self.surface_variables = self.surface_variables + params.ocean_variables
-        else:
-            self.ocean_variables = []
+        if self.land_variables:
+            if any(v in self.surface_variables for v in self.land_variables):
+                raise ValueError('land variables cannot be in surface variables.')
+            self.surface_variables = self.surface_variables + self.land_variables
+
+        if self.ocean_variables:
+            if any(v in self.surface_variables for v in self.ocean_variables):
+                raise ValueError('ocean variables cannot be in surface variables.')
+            self.surface_variables = self.surface_variables + self.ocean_variables
+
         self.upper_air_variables = params.upper_air_variables or []
-
         self.constant_boundary_variables = params.constant_boundary_variables or []
         self.varying_boundary_variables = params.varying_boundary_variables or []
+        self.diagnostic_variables = getattr(params, 'diagnostic_variables', None) or []
 
-        self.dates, self.start_date, self.end_date = self._get_dates(hour_step=params.data_timedelta_hours)#(hour_step=params.timedelta_hours)
+        # Date range
+        self.dates, self.start_date, self.end_date = self._get_dates(
+            hour_step=params.data_timedelta_hours
+        )
 
+        # Constant boundary fields (e.g. land-sea mask, orography)
         self.constant_boundary_data, self.land_mask = self._load_constant_boundary_data()
         if torch.any(torch.isnan(self.constant_boundary_data)):
-            print('Constant boundary has nan')
-            sys.exit(2)
-        
-        max_inference_idx = len(self.dates) - max(self.params.forecast_lead_times) * self.timedelta_hours // self.data_timedelta_hours
+            raise ValueError('Constant boundary data contains NaN values.')
+
+        # Inference index selection
+        max_inference_idx = (
+            len(self.dates)
+            - max(self.params['forecast_lead_times']) * self.timedelta_hours // self.data_timedelta_hours
+        )
         if self.num_inferences > 0:
-            self.inference_idxs = np.linspace(0, max_inference_idx, num = num_inferences + 1, dtype = int)
+            self.inference_idxs = np.linspace(0, max_inference_idx, num=self.num_inferences + 1, dtype=int)
         else:
             self.inference_idxs = np.arange(0, max_inference_idx)
 
+        # Pressure levels
         if len(params['levels']) > 0:
             self.levels = np.array(params['levels'])
         else:
-            #self.levels = self.data_dss[0][self.params.lev].values
-            raise ValueError('levels must now be explicitly specified in config file.')
-        
-        
-        self.surface_mean, self.surface_std = self.load_mean_std(join(
-            data_dir, params.surface_mean), join(data_dir, params.surface_std), self.surface_variables, upper_air = False)
+            raise ValueError('levels must be explicitly specified in config file.')
 
-        self.upper_air_mean, self.upper_air_std = self.load_mean_std(join(
-            data_dir, params.upper_air_mean), join(data_dir, params.upper_air_std), self.upper_air_variables)
+        # Load normalization statistics
+        data_dir = self.data_dir
+        self.surface_mean, self.surface_std = self._load_mean_std(
+            join(data_dir, params.surface_mean),
+            join(data_dir, params.surface_std),
+            self.surface_variables, upper_air=False,
+        )
+        self.upper_air_mean, self.upper_air_std = self._load_mean_std(
+            join(data_dir, params.upper_air_mean),
+            join(data_dir, params.upper_air_std),
+            self.upper_air_variables,
+        )
 
         if 'surface_ff_std' in self.params:
-            _, self.surface_ff_std = self.load_mean_std(join(
-                data_dir, params.surface_mean), join(data_dir, params.surface_ff_std), self.surface_variables, upper_air = False)
+            _, self.surface_ff_std = self._load_mean_std(
+                join(data_dir, params.surface_mean),
+                join(data_dir, params.surface_ff_std),
+                self.surface_variables, upper_air=False,
+            )
         if 'upper_air_ff_std' in self.params:
-            _, self.upper_air_ff_std = self.load_mean_std(join(
-                data_dir, params.upper_air_mean), join(data_dir, params.upper_air_ff_std), self.upper_air_variables)
+            _, self.upper_air_ff_std = self._load_mean_std(
+                join(data_dir, params.upper_air_mean),
+                join(data_dir, params.upper_air_ff_std),
+                self.upper_air_variables,
+            )
 
-        if self.params.predict_delta:
-            _, self.surface_delta_std = self.load_mean_std(join(
-                data_dir, params.surface_mean), join(data_dir, params.surface_delta_std), self.surface_variables, upper_air = False)
-            _, self.upper_air_delta_std = self.load_mean_std(join(
-                data_dir, params.upper_air_mean), join(data_dir, params.upper_air_delta_std), self.upper_air_variables)
+        if self.params['predict_delta']:
+            _, self.surface_delta_std = self._load_mean_std(
+                join(data_dir, params.surface_mean),
+                join(data_dir, params.surface_delta_std),
+                self.surface_variables, upper_air=False,
+            )
+            _, self.upper_air_delta_std = self._load_mean_std(
+                join(data_dir, params.upper_air_mean),
+                join(data_dir, params.upper_air_delta_std),
+                self.upper_air_variables,
+            )
 
-        self.varying_boundary_mean, self.varying_boundary_std = self.load_mean_std(join(data_dir, params.boundary_mean),
-                                                                                   join(data_dir, params.boundary_std),
-                                                                                   self.varying_boundary_variables, upper_air = False)
-        
-        
-        if hasattr(params, 'diagnostic_variables'):
-            if len(params.diagnostic_variables) > 0:
-                self.diagnostic_variables = params.diagnostic_variables
-                self.diagnostic_mean, self.diagnostic_std = self.load_mean_std(join(data_dir, params.diagnostic_mean),
-                                                                                    join(data_dir, params.diagnostic_std),
-                                                                                    self.diagnostic_variables, upper_air = False)
-            else:
-                self.diagnostic_variables = []
-        else:
-            self.diagnostic_variables = []
+        self.varying_boundary_mean, self.varying_boundary_std = self._load_mean_std(
+            join(data_dir, params.boundary_mean),
+            join(data_dir, params.boundary_std),
+            self.varying_boundary_variables, upper_air=False,
+        )
 
-        self._get_variable_list()
+        if self.diagnostic_variables:
+            self.diagnostic_mean, self.diagnostic_std = self._load_mean_std(
+                join(data_dir, params.diagnostic_mean),
+                join(data_dir, params.diagnostic_std),
+                self.diagnostic_variables, upper_air=False,
+            )
 
-        #self.surface_transform = self._create_surface_transform()
-        #self.boundary_transform = self._create_boundary_transform()
-        #self.upper_air_transform = self._create_upper_air_transform()
-        #self.surface_inv_transform = self._create_surface_inv_transform()
-        #self.upper_air_inv_transform = self._create_upper_air_inv_transform()
+        self._build_variable_lists()
 
         if self.epsilon_factor > 0.:
             torch.manual_seed(0)
 
-    def _get_variable_list(self, level_units = '.0'):
+    # ------------------------------------------------------------------
+    # Variable list bookkeeping
+    # ------------------------------------------------------------------
+
+    def _build_variable_lists(self, level_units='.0'):
+        """Build ordered variable name lists for input and output tensors.
+
+        Sets ``self.variable_list_in`` and ``self.variable_list_out`` as well
+        as ``self.upper_air_len`` (the number of upper-air channels after
+        flattening variables x levels).
+        """
         self.variable_list_out = []
         for variable, level in product(self.upper_air_variables, self.levels):
             self.variable_list_out.append(f'{variable}_{int(level)}{level_units}')
@@ -202,360 +338,494 @@ class GetDataset(Dataset):
         self.variable_list_out.extend(self.diagnostic_variables)
         self.variable_list_in.extend(self.varying_boundary_variables)
 
-    def _reshape_and_mask_variables(self, data_array, out = False):
-        upper_air = torch.from_numpy(data_array[:self.upper_air_len].reshape(len(self.upper_air_variables),
-                                                            len(self.levels),
-                                                            self.params.horizontal_resolution[0],
-                                                            self.params.horizontal_resolution[1])).to(torch.float32)
-        surface = torch.from_numpy(data_array[self.upper_air_len:self.upper_air_len+len(self.surface_variables)]\
-            .reshape(len(self.surface_variables),
-                     self.params.horizontal_resolution[0],
-                     self.params.horizontal_resolution[1])).to(torch.float32)
-        surface = self._fill_mask(surface, self.surface_variables, self.land_variables + self.ocean_variables)
+    # ------------------------------------------------------------------
+    # Reshaping / masking
+    # ------------------------------------------------------------------
+
+    def _reshape_and_mask_variables(self, data_array, out=False):
+        """Reshape a flat channel array into (upper_air, surface, [extra]) tensors.
+
+        For **input** (``out=False``), the extra tensor is ``varying_boundary``.
+        For **output** (``out=True``), the extra tensor is ``diagnostic``.
+
+        NaN values in surface / boundary / diagnostic fields are filled using
+        ``self.mask_fill``.
+
+        Parameters
+        ----------
+        data_array : np.ndarray
+            Shape ``(n_channels, nlat, nlon)`` in the order defined by
+            ``variable_list_in`` (input) or ``variable_list_out`` (output).
+        out : bool
+            Whether this is an output (target) array.
+
+        Returns
+        -------
+        tuple of torch.Tensor
+            ``(upper_air, surface)`` or ``(upper_air, surface, extra)``
+        """
+        nlat, nlon = self.params['horizontal_resolution']
+        n_ua = len(self.upper_air_variables)
+        n_lev = len(self.levels)
+        n_sfc = len(self.surface_variables)
+
+        upper_air = torch.from_numpy(
+            data_array[:self.upper_air_len].reshape(n_ua, n_lev, nlat, nlon)
+        ).to(torch.float32)
+
+        surface = torch.from_numpy(
+            data_array[self.upper_air_len:self.upper_air_len + n_sfc].reshape(n_sfc, nlat, nlon)
+        ).to(torch.float32)
+        surface = self._fill_mask(surface, self.surface_variables,
+                                  self.land_variables + self.ocean_variables)
+
+        offset = self.upper_air_len + n_sfc
+
         if out:
-            if len(self.diagnostic_variables) > 0:
-                diagnostic = torch.from_numpy(data_array[self.upper_air_len+len(self.surface_variables):\
-                                        self.upper_air_len+len(self.surface_variables)+len(self.diagnostic_variables)]\
-                                .reshape(len(self.diagnostic_variables),
-                                self.params.horizontal_resolution[0],
-                                self.params.horizontal_resolution[1])).to(torch.float32)
+            if self.diagnostic_variables:
+                n_diag = len(self.diagnostic_variables)
+                diagnostic = torch.from_numpy(
+                    data_array[offset:offset + n_diag].reshape(n_diag, nlat, nlon)
+                ).to(torch.float32)
                 diagnostic = self._fill_mask(diagnostic, self.diagnostic_variables)
                 return upper_air, surface, diagnostic
-            else:
-                return upper_air, surface
+            return upper_air, surface
         else:
-            if len(self.varying_boundary_variables) > 0:
-                varying_boundary = torch.from_numpy(data_array[self.upper_air_len+len(self.surface_variables):\
-                                        self.upper_air_len+len(self.surface_variables)+len(self.varying_boundary_variables)]\
-                                .reshape(len(self.varying_boundary_variables),
-                                self.params.horizontal_resolution[0],
-                                self.params.horizontal_resolution[1])).to(torch.float32)
+            if self.varying_boundary_variables:
+                n_bnd = len(self.varying_boundary_variables)
+                varying_boundary = torch.from_numpy(
+                    data_array[offset:offset + n_bnd].reshape(n_bnd, nlat, nlon)
+                ).to(torch.float32)
                 varying_boundary = self._fill_mask(varying_boundary, self.varying_boundary_variables)
                 return upper_air, surface, varying_boundary
-            else:
-                return upper_air, diagnostic
-            
+            return upper_air, surface
 
-    def _fill_mask(self, data, variables, optional_variables = None):
-        if optional_variables:
-            for i, var in enumerate(variables):
-                if var in optional_variables:
-                    nans = torch.isnan(data[i])
-                    if torch.any(nans):
-                        data[i] = data[i].masked_fill(nans, self.mask_fill[var])
-        else:
-            for i, var in enumerate(variables):
-                nans = torch.isnan(data[i])
-                if torch.any(nans):
-                    data[i] = data[i].masked_fill(nans, self.mask_fill[var])
+    def _fill_mask(self, data, variables, optional_variables=None):
+        """Replace NaN values with predefined fill values from ``self.mask_fill``.
+
+        Parameters
+        ----------
+        data : torch.Tensor
+            Shape ``(n_vars, nlat, nlon)``.
+        variables : list[str]
+            Variable names corresponding to the first dimension.
+        optional_variables : list[str] or None
+            If provided, only fill NaNs for variables in this subset.
+        """
+        for i, var in enumerate(variables):
+            if optional_variables and var not in optional_variables:
+                continue
+            nans = torch.isnan(data[i])
+            if torch.any(nans):
+                data[i] = data[i].masked_fill(nans, self.mask_fill[var])
         return data
 
-    def datetime_class_from_calendar(self, calendar):
-        datetime_class_dict = {'standard': cftime.DatetimeGregorian,
-                               'Gregorian:': cftime.DatetimeGregorian,
-                               'noleap': cftime.DatetimeNoLeap,
-                               '365_day': cftime.DatetimeNoLeap,
-                               'proleptic_gregorian': cftime.DatetimeProlepticGregorian,
-                               'all_leap': cftime.DatetimeAllLeap,
-                               '366_day': cftime.DatetimeAllLeap,
-                               '360_day': cftime.Datetime360Day,
-                               'julian': cftime.DatetimeJulian}
-        return datetime_class_dict[calendar]
+    # ------------------------------------------------------------------
+    # Date handling
+    # ------------------------------------------------------------------
+
+    def _get_dates(self, hour_step=6.):
+        """Generate an array of hour-offsets from ``year_start`` to ``year_end``.
+
+        Returns
+        -------
+        tuple
+            ``(date_offsets, start_date, end_date)`` where *date_offsets* is a
+            1-D numpy array of hours since *start_date*.
+        """
+        start_date = self.datetime_class(self.year_start, 1, 1)
+        end_date = self.datetime_class(self.year_end, 1, 1)
+        hours = (end_date - start_date).days * 24.
+        date_range = np.arange(0., hours, hour_step)
+        return date_range, start_date, end_date
+
+    # ------------------------------------------------------------------
+    # Data I/O
+    # ------------------------------------------------------------------
+
+    def _get_data(self, data_datetime, out=False, variable_list=None):
+        """Load raw data for a single datetime from disk.
+
+        Parameters
+        ----------
+        data_datetime : cftime datetime
+            Timestamp to load.
+        out : bool
+            If True and *variable_list* is None, use output variable list.
+        variable_list : list[str] or None
+            Explicit variable list override.
+
+        Returns
+        -------
+        np.ndarray
+            Shape ``(n_channels, ...)``.
+        """
+        data_year = data_datetime.year
+        seconds_into_year = int(
+            (data_datetime - self.datetime_class(data_year, 1, 1, hour=0,
+                                                  has_year_zero=self.has_year_zero)).total_seconds()
+        )
+        data_idx = seconds_into_year // 3600 // self.data_timedelta_hours
+        data_file_path = get_out_path(self.data_dir, data_year, data_idx)
+
+        if variable_list:
+            return get_data_given_path(data_file_path, variable_list)
+        if out:
+            return get_data_given_path(data_file_path, self.variable_list_out)
+        return get_data_given_path(data_file_path, self.variable_list_in)
 
     def _load_constant_boundary_data(self):
-        constant_boundary_data = torch.from_numpy(self._get_data(self.start_date, variable_list = self.constant_boundary_variables)).to(torch.float32)
-        constant_boundary_data = self._fill_mask(constant_boundary_data, self.constant_boundary_variables)
-        land_mask = torch.clone(constant_boundary_data[np.array(self.constant_boundary_variables) == 'land_sea_mask'].detach())
-        constant_boundary_mean = torch.mean(constant_boundary_data, dim=(1,2))
-        constant_boundary_std = torch.std(constant_boundary_data, dim=(1,2))
-        constant_boundary_data = (constant_boundary_data - constant_boundary_mean.reshape(-1, 1, 1)) / constant_boundary_std.reshape(-1, 1, 1)
-        return constant_boundary_data, land_mask
+        """Load and normalize constant boundary fields (e.g. land-sea mask).
 
-    def load_mean_std(self, mean_file, std_file, datavars, upper_air = True):
+        Returns
+        -------
+        tuple
+            ``(constant_boundary_data, land_mask)`` both as float32 tensors.
+        """
+        raw = torch.from_numpy(
+            self._get_data(self.start_date, variable_list=self.constant_boundary_variables)
+        ).to(torch.float32)
+        raw = self._fill_mask(raw, self.constant_boundary_variables)
+        land_mask = raw[np.array(self.constant_boundary_variables) == 'land_sea_mask'].clone().detach()
+        mean = torch.mean(raw, dim=(1, 2))
+        std = torch.std(raw, dim=(1, 2))
+        normalized = (raw - mean.reshape(-1, 1, 1)) / std.reshape(-1, 1, 1)
+        return normalized, land_mask
+
+    # ------------------------------------------------------------------
+    # Normalization statistics
+    # ------------------------------------------------------------------
+
+    def _load_mean_std(self, mean_file, std_file, datavars, upper_air=True):
+        """Load mean and standard deviation tensors from NetCDF files.
+
+        Parameters
+        ----------
+        mean_file, std_file : str
+            Paths to NetCDF files containing per-variable statistics.
+        datavars : list[str]
+            Variable names to extract.
+        upper_air : bool
+            If True, select only the configured pressure levels along the
+            vertical (``Z``) dimension.
+
+        Returns
+        -------
+        tuple
+            ``(mean, std)`` tensors.
+        """
         if upper_air:
-            if self.params.lev == 'lev':
-                with xr.open_dataset(mean_file) as ds:
-                    mean = torch.stack([torch.from_numpy(ds[var].where(xr.DataArray(data=[lev in self.levels for lev in ds["Z"].values], \
-                                                                                    dims = ["Z"]), drop = True).values).to(torch.float32)\
-                                                                                          for var in datavars], dim=0)
-                with xr.open_dataset(std_file) as ds:
-                    std = torch.stack([torch.from_numpy(ds[var].where(xr.DataArray(data=[lev in self.levels for lev in ds["Z"].values], \
-                                                                                    dims = ["Z"]), drop = True).values).to(torch.float32)\
-                                                                                          for var in datavars], dim=0)
-            elif self.params.lev == 'plev':
-                with xr.open_dataset(mean_file) as ds:
-                    mean = torch.stack([torch.from_numpy(ds[var].where(xr.DataArray(data=[plev in self.levels for plev in ds["Z"].values], \
-                                                                                    dims = ["Z"]), drop = True).values).to(torch.float32)\
-                                                                                          for var in datavars], dim=0)
-                with xr.open_dataset(std_file) as ds:
-                    std = torch.stack([torch.from_numpy(ds[var].where(xr.DataArray(data=[plev in self.levels for plev in ds["Z"].values], \
-                                                                                    dims = ["Z"]), drop = True).values).to(torch.float32)\
-                                                                                          for var in datavars], dim=0)
+            with xr.open_dataset(mean_file) as ds:
+                level_mask = xr.DataArray(
+                    data=[lev in self.levels for lev in ds['Z'].values], dims=['Z']
+                )
+                mean = torch.stack([
+                    torch.from_numpy(ds[var].where(level_mask, drop=True).values).to(torch.float32)
+                    for var in datavars
+                ], dim=0)
+            with xr.open_dataset(std_file) as ds:
+                level_mask = xr.DataArray(
+                    data=[lev in self.levels for lev in ds['Z'].values], dims=['Z']
+                )
+                std = torch.stack([
+                    torch.from_numpy(ds[var].where(level_mask, drop=True).values).to(torch.float32)
+                    for var in datavars
+                ], dim=0)
         else:
             with xr.open_dataset(mean_file) as ds:
-                mean = torch.stack([torch.from_numpy(ds[var].values).to(torch.float32) for var in datavars], dim=0)
+                mean = torch.stack([
+                    torch.from_numpy(ds[var].values).to(torch.float32) for var in datavars
+                ], dim=0)
             with xr.open_dataset(std_file) as ds:
-                std = torch.stack([torch.from_numpy(ds[var].values).to(torch.float32) for var in datavars], dim=0)
+                std = torch.stack([
+                    torch.from_numpy(ds[var].values).to(torch.float32) for var in datavars
+                ], dim=0)
         return mean, std
-    
+
+    # ------------------------------------------------------------------
+    # Transforms (normalize / denormalize)
+    # ------------------------------------------------------------------
+
     def surface_transform(self, data):
-        return (data - self.surface_mean.reshape(-1, 1, 1))/self.surface_std.reshape(-1, 1, 1)
-    
+        """Normalize surface fields: ``(x - mean) / std``."""
+        return (data - self.surface_mean.reshape(-1, 1, 1)) / self.surface_std.reshape(-1, 1, 1)
+
     def diagnostic_transform(self, data):
-        return (data - self.diagnostic_mean.reshape(-1, 1, 1))/self.diagnostic_std.reshape(-1, 1, 1)
-    
+        """Normalize diagnostic fields."""
+        return (data - self.diagnostic_mean.reshape(-1, 1, 1)) / self.diagnostic_std.reshape(-1, 1, 1)
+
     def boundary_transform(self, data):
-        return (data - self.varying_boundary_mean.reshape(-1, 1, 1))/self.varying_boundary_std.reshape(-1, 1, 1)
-    
+        """Normalize varying boundary fields."""
+        return (data - self.varying_boundary_mean.reshape(-1, 1, 1)) / self.varying_boundary_std.reshape(-1, 1, 1)
+
     def upper_air_transform(self, data):
-        return (data - self.upper_air_mean.reshape(len(self.upper_air_variables), -1, 1, 1))/ \
-            self.upper_air_std.reshape(len(self.upper_air_variables), -1, 1, 1)
-    
+        """Normalize upper-air fields (shape: ``(n_vars, n_levels, nlat, nlon)``)."""
+        n = len(self.upper_air_variables)
+        return (data - self.upper_air_mean.reshape(n, -1, 1, 1)) / self.upper_air_std.reshape(n, -1, 1, 1)
+
     def surface_inv_transform(self, data):
+        """Denormalize surface fields (expects leading batch dim)."""
         return data * self.surface_std.reshape(1, -1, 1, 1) + self.surface_mean.reshape(1, -1, 1, 1)
-    
+
     def upper_air_inv_transform(self, data):
-        return data * self.upper_air_std.reshape(1, len(self.upper_air_variables), -1, 1, 1) + \
-            self.upper_air_mean.reshape(1, len(self.upper_air_variables), -1, 1, 1)
-    
+        """Denormalize upper-air fields (expects leading batch dim)."""
+        n = len(self.upper_air_variables)
+        return data * self.upper_air_std.reshape(1, n, -1, 1, 1) + self.upper_air_mean.reshape(1, n, -1, 1, 1)
+
     def diagnostic_inv_transform(self, data):
+        """Denormalize diagnostic fields (expects leading batch dim)."""
         return data * self.diagnostic_std.reshape(1, -1, 1, 1) + self.diagnostic_mean.reshape(1, -1, 1, 1)
 
     def surface_delta_transform(self, data):
+        """Normalize surface increments (zero-mean assumed)."""
         return data / self.surface_delta_std.reshape(-1, 1, 1)
-    
+
     def upper_air_delta_transform(self, data):
-        return data / self.upper_air_delta_std.reshape(len(self.upper_air_variables), -1, 1, 1)
+        """Normalize upper-air increments (zero-mean assumed)."""
+        n = len(self.upper_air_variables)
+        return data / self.upper_air_delta_std.reshape(n, -1, 1, 1)
 
-    # Modification for the autoregressive parameter
-    def _get_dates(self, hour_step=6.):
-
-        start_date = self.datetime_class(self.year_start, 1, 1)
-        end_date = self.datetime_class(self.year_end, 1, 1) 
-
-        if not self.train:
-            hours = (end_date - start_date).days * 24. #- (max(self.params.forecast_lead_times)) * hour_step
-        else:
-            # Training mode
-            hours = (end_date - start_date).days * 24.
-        
-        date_range = np.arange(0., hours, hour_step)
-        #print(f'End data hour: {date_range[-1]}')
-        return date_range, start_date, end_date
-
-    def _get_data(self, data_datetime, out = False, variable_list = None):
-        data_year = data_datetime.year
-        data_idx = int((data_datetime - self.datetime_class(data_year, 1, 1, hour=0, has_year_zero=self.has_year_zero)).total_seconds())\
-              // 3600 // self.data_timedelta_hours
-        data_file_path = get_out_path(self.data_dir, data_year, data_idx)
-        if variable_list:
-            raw_data = get_data_given_path(data_file_path, variable_list)
-        else:
-            if out:
-                raw_data = get_data_given_path(data_file_path, self.variable_list_out)
-            else:
-                raw_data = get_data_given_path(data_file_path, self.variable_list_in)
-        return raw_data
+    # ------------------------------------------------------------------
+    # Dataset interface
+    # ------------------------------------------------------------------
 
     def __len__(self):
         return len(self.inference_idxs)
 
-
     def __getitem__(self, index):
-        #print('Loaded Boundary Data')
-        #self.dates = self._get_dates(hour_step=params.timedelta_hours)
-        #self.data_dss = self._load_data(initial=False)
-        #self.lat = torch.from_numpy(self.data_dss[0].lat.values)
-        #self.lev = torch.from_numpy(self.data_dss[0].lev.values)
-        lead_times = self.params.forecast_lead_times
+        """Return a sample for training, validation, or inference.
 
-        # Condition 1: Training
+        Returns
+        -------
+        tuple of torch.Tensor
+            The exact contents depend on mode:
+
+            **Training** (``self.train``):
+              ``(surface_t, upper_air_t, surface_t1, upper_air_t1,
+              [diagnostic_t1,] varying_boundary)``
+
+            **Validation** (``self.validate`` and ``forecast_lead_times``):
+              ``(surface_t, upper_air_t, targets_surface, targets_upper_air,
+              [targets_diagnostic,] [targets_delta_surface, targets_delta_upper_air,]
+              varying_boundary, start_time_tensor)``
+
+            **Inference** (``forecast_lead_times`` without validate):
+              ``(surface_t, upper_air_t, varying_boundary)``
+
+            **Single-step eval** (no ``forecast_lead_times``):
+              Same as training format.
+        """
+        lead_times = self.params['forecast_lead_times']
+        has_boundary = len(self.varying_boundary_variables) > 0
+        has_diagnostic = len(self.diagnostic_variables) > 0
+
+        # ---- Training ----
         if self.train:
-            start_time = self.start_date + timedelta(hours=self.dates[index])
-            end_time = self.start_date + timedelta(hours=self.dates[index] + self.timedelta_hours)
-            data_in  = self._get_data(start_time, out = False)
-            data_out = self._get_data(end_time, out = True)
-            if len(self.varying_boundary_variables) > 0:
-                upper_air_t, surface_t, varying_boundary_data = self._reshape_and_mask_variables(data_in, out = False)
-            else:
-                upper_air_t, surface_t = self._reshape_and_mask_variables(data_in, out = False)
-            if len(self.diagnostic_variables) > 0:
-                upper_air_t_1, surface_t_1, diagnostic_t_1 = self._reshape_and_mask_variables(data_out, out = True)
-            else:
-                upper_air_t_1, surface_t_1 = self._reshape_and_mask_variables(data_out, out = True)
-            
-            if self.params.predict_delta:
-                surface_t_1 = surface_t_1 - surface_t
-                upper_air_t_1 = upper_air_t_1 - upper_air_t
-                surface_t = self.surface_transform(surface_t)
-                surface_t_1 = self.surface_delta_transform(surface_t_1)
-                upper_air_t = self.upper_air_transform(upper_air_t)
-                upper_air_t_1 = self.upper_air_delta_transform(upper_air_t_1)
-            else:
-                surface_t = self.surface_transform(surface_t)
-                surface_t_1 = self.surface_transform(surface_t_1)
-                upper_air_t = self.upper_air_transform(upper_air_t)
-                upper_air_t_1 = self.upper_air_transform(upper_air_t_1)
-            if len(self.diagnostic_variables) > 0:
-                diagnostic_t_1 = self.diagnostic_transform(diagnostic_t_1)
-            varying_boundary_data = self.boundary_transform(varying_boundary_data)
-            #print('Normalized Boundary')
-            if self.epsilon_factor > 0.:
-                if 'surface_ff_std' in self.params:
-                    surface_t_noise = torch.randn(*surface_t.shape) * (self.epsilon_factor * self.surface_ff_std / self.surface_std).reshape(len(self.surface_variables), 1, 1)
-                else:
-                    surface_t_noise = torch.randn(*surface_t.shape) * self.epsilon_factor
-                surface_t = surface_t + surface_t_noise
-                if 'upper_air_ff_std' in self.params:
-                    upper_air_t_noise = torch.randn(*upper_air_t.shape) * (self.epsilon_factor * self.upper_air_ff_std / self.upper_air_std).reshape(len(self.upper_air_variables), len(self.levels), 1, 1)
-                else:
-                    upper_air_t_noise = torch.randn(*upper_air_t.shape) * self.epsilon_factor
-                upper_air_t = upper_air_t + upper_air_t_noise
-        
-        # Condition for autoregression
-        elif lead_times:
+            return self._getitem_train(index, has_boundary, has_diagnostic)
 
-            start_time = self.start_date + timedelta(hours=self.dates[index])
+        # ---- Autoregressive inference / validation ----
+        if lead_times:
+            return self._getitem_autoregressive(index, lead_times, has_boundary, has_diagnostic)
 
-            # Load initial conditions
-            data_in = self._get_data(start_time, out = False)
-            if len(self.varying_boundary_variables) > 0:
-                upper_air_t, surface_t, varying_boundary_data_t = self._reshape_and_mask_variables(data_in, out = False)
-            else:
-                upper_air_t, surface_t = self._reshape_and_mask_variables(data_in, out = False)
+        # ---- Single-step evaluation ----
+        return self._getitem_single_step(index, has_boundary)
 
-            max_lead_time = lead_times[-1]
-            boundary_times = [start_time + timedelta(hours=self.timedelta_hours * lead_time) for lead_time in range(max_lead_time)]
-            start_time_tensor = torch.tensor([start_time.year, start_time.month, start_time.day, start_time.hour])
-            varying_boundary_data = [varying_boundary_data_t]
-            varying_boundary_data.extend([self._fill_mask(\
-                torch.from_numpy(self._get_data(boundary_time, variable_list = self.varying_boundary_variables)).to(torch.float32), self.varying_boundary_variables) for boundary_time in boundary_times])
-            varying_boundary_data = torch.stack([self.boundary_transform(varying_boundary_data_i) for varying_boundary_data_i in varying_boundary_data], dim=0)
+    def _getitem_train(self, index, has_boundary, has_diagnostic):
+        """Build a single training sample (input at t, target at t+dt)."""
+        start_time = self.start_date + timedelta(hours=self.dates[index])
+        end_time = self.start_date + timedelta(hours=self.dates[index] + self.timedelta_hours)
 
+        data_in = self._get_data(start_time, out=False)
+        data_out = self._get_data(end_time, out=True)
 
-            if self.validate: 
-                # Load targets for each time step up to the maximum lead time
-                targets_surface = []
-                targets_upper_air = []
-                if self.params.predict_delta:
-                    targets_delta_surface = []
-                    targets_delta_upper_air = []
-                if len(self.diagnostic_variables) > 0:
-                    targets_diagnostic = []
-
-                # Iterate over each time step up to the maximum lead time
-                max_lead_time = lead_times[-1]
-
-                for step in range(1, max_lead_time + 1):
-                    target_time = start_time + timedelta(hours = self.timedelta_hours * step)
-                    raw_target_data = self._get_data(target_time, out = True)
-
-                    if len(self.diagnostic_variables) > 0:
-                        upper_air_target, surface_target, diagnostic_target = self._reshape_and_mask_variables(raw_target_data, out = True)
-                        targets_diagnostic.append(diagnostic_target)
-                    else:
-                        upper_air_target, surface_target = self._reshape_and_mask_variables(raw_target_data, out = True)
-        
-                    targets_surface.append(surface_target)
-                    targets_upper_air.append(upper_air_target)
-
-                    if self.params.predict_delta:
-                        if step == 1:
-                            surface_delta_target = targets_surface[-1] - surface_t
-                            upper_air_delta_target = targets_upper_air[-1] - upper_air_t
-                        else:
-                            surface_delta_target = targets_surface[-1] - targets_surface[-2]
-                            upper_air_delta_target = targets_upper_air[-1] - targets_upper_air[-2]
-                        surface_delta_target = self.surface_delta_transform(surface_delta_target)
-                        upper_air_delta_target = self.upper_air_delta_transform(upper_air_delta_target)
-
-                        targets_delta_surface.append(surface_delta_target)
-                        targets_delta_upper_air.append(upper_air_delta_target)
-
-                for step in range(0, max_lead_time):
-                    targets_surface[step] = self.surface_transform(targets_surface[step])
-                    targets_upper_air[step] = self.upper_air_transform(targets_upper_air[step])
-                    if len(self.diagnostic_variables) > 0:
-                        targets_diagnostic[step] = self.diagnostic_transform(targets_diagnostic[step])
-                
-                surface_t = self.surface_transform(surface_t)
-                upper_air_t = self.upper_air_transform(upper_air_t)
-
-                targets_surface = torch.stack(targets_surface, dim=0)
-                targets_upper_air = torch.stack(targets_upper_air, dim=0)
-                if len(self.diagnostic_variables) > 0:
-                    targets_diagnostic = torch.stack(targets_diagnostic, dim=0)
-                if self.params.predict_delta:
-                    targets_delta_surface = torch.stack(targets_delta_surface, dim=0)
-                    targets_delta_upper_air = torch.stack(targets_delta_upper_air, dim=0)
-                    
-
+        if has_boundary:
+            upper_air_t, surface_t, varying_boundary_data = self._reshape_and_mask_variables(data_in, out=False)
         else:
-            start_time = self.start_date + timedelta(hours=self.dates[index])
-            data_in = self._get_data(start_time, out = False)
-            if len(self.varying_boundary_variables) > 0:
-                surface_t, upper_air_t, varying_boundary_data = self._reshape_and_mask_variables(data_in, out=False)
-                varying_boundary_data = self.boundary_transform(varying_boundary_data).unsqueeze(0)
-            else:
-                surface_t, upper_air_t = self._reshape_and_mask_variables(data_in, out=False)
+            upper_air_t, surface_t = self._reshape_and_mask_variables(data_in, out=False)
+
+        if has_diagnostic:
+            upper_air_t1, surface_t1, diagnostic_t1 = self._reshape_and_mask_variables(data_out, out=True)
+        else:
+            upper_air_t1, surface_t1 = self._reshape_and_mask_variables(data_out, out=True)
+
+        # Normalize
+        if self.params['predict_delta']:
+            surface_t1 = self.surface_delta_transform(surface_t1 - surface_t)
+            upper_air_t1 = self.upper_air_delta_transform(upper_air_t1 - upper_air_t)
             surface_t = self.surface_transform(surface_t)
             upper_air_t = self.upper_air_transform(upper_air_t)
-        if torch.any(torch.isnan(varying_boundary_data)):
-            print('Boundary data has nan')
-            sys.exit(2)
-        if torch.any(torch.isnan(surface_t)):
-            print('Surface t has nan')
-            sys.exit(2)
-        if torch.any(torch.isnan(upper_air_t)):
-            print('Upper air t has nan')
-            sys.exit(2)
-
-        if self.train:
-            if torch.any(torch.isnan(surface_t_1)):
-                print('Surface t+1 has nan')
-                sys.exit(2)
-            if torch.any(torch.isnan(upper_air_t_1)):
-                print('Upper air t+1 has nan')
-                sys.exit(2)
-            if len(self.diagnostic_variables) > 0:
-                if torch.any(torch.isnan(diagnostic_t_1)):
-                    print('Diagnostic has nan')
-                    sys.exit(2)
-            if len(self.diagnostic_variables) > 0:
-                return surface_t, upper_air_t, surface_t_1, upper_air_t_1, diagnostic_t_1, varying_boundary_data
-            else:
-                return surface_t, upper_air_t, surface_t_1, upper_air_t_1, varying_boundary_data
-        ### ERROR - Need to have data loader return times for validation
-        elif self.validate and lead_times:
-            if self.params.predict_delta:
-                if len(self.diagnostic_variables) > 0:
-                    return surface_t, upper_air_t, targets_surface, targets_upper_air, targets_diagnostic, targets_delta_surface, targets_delta_upper_air, \
-                        varying_boundary_data, start_time_tensor
-                else:
-                    return surface_t, upper_air_t, targets_surface, targets_upper_air, varying_boundary_data, targets_delta_surface, targets_delta_upper_air, start_time_tensor
-            else:
-                if len(self.diagnostic_variables) > 0:
-                    return surface_t, upper_air_t, targets_surface, targets_upper_air, targets_diagnostic, \
-                        varying_boundary_data, start_time_tensor
-                else:
-                    return surface_t, upper_air_t, targets_surface, targets_upper_air, varying_boundary_data, start_time_tensor
-        elif lead_times:
-            return surface_t, upper_air_t, varying_boundary_data
         else:
-            if len(self.diagnostic_variables) > 0:
-                return surface_t, upper_air_t, surface_t_1, upper_air_t_1, diagnostic_t_1, varying_boundary_data
+            surface_t = self.surface_transform(surface_t)
+            surface_t1 = self.surface_transform(surface_t1)
+            upper_air_t = self.upper_air_transform(upper_air_t)
+            upper_air_t1 = self.upper_air_transform(upper_air_t1)
+
+        if has_diagnostic:
+            diagnostic_t1 = self.diagnostic_transform(diagnostic_t1)
+        if has_boundary:
+            varying_boundary_data = self.boundary_transform(varying_boundary_data)
+
+        # Optional input noise
+        if self.epsilon_factor > 0.:
+            surface_t = self._add_input_noise(surface_t, 'surface')
+            upper_air_t = self._add_input_noise(upper_air_t, 'upper_air')
+
+        self._check_nans(surface_t=surface_t, upper_air_t=upper_air_t,
+                         varying_boundary_data=varying_boundary_data if has_boundary else None,
+                         surface_t1=surface_t1, upper_air_t1=upper_air_t1,
+                         diagnostic_t1=diagnostic_t1 if has_diagnostic else None)
+
+        if has_diagnostic:
+            return surface_t, upper_air_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data
+        return surface_t, upper_air_t, surface_t1, upper_air_t1, varying_boundary_data
+
+    def _getitem_autoregressive(self, index, lead_times, has_boundary, has_diagnostic):
+        """Build an autoregressive sample with multi-step boundary forcing."""
+        start_time = self.start_date + timedelta(hours=self.dates[index])
+        data_in = self._get_data(start_time, out=False)
+
+        if has_boundary:
+            upper_air_t, surface_t, varying_boundary_t = self._reshape_and_mask_variables(data_in, out=False)
+        else:
+            upper_air_t, surface_t = self._reshape_and_mask_variables(data_in, out=False)
+
+        # Load boundary forcing for all lead times
+        max_lead_time = lead_times[-1]
+        start_time_tensor = torch.tensor([start_time.year, start_time.month, start_time.day, start_time.hour])
+
+        varying_boundary_data = [varying_boundary_t]
+        for step in range(max_lead_time):
+            bnd_time = start_time + timedelta(hours=self.timedelta_hours * step)
+            bnd_raw = torch.from_numpy(
+                self._get_data(bnd_time, variable_list=self.varying_boundary_variables)
+            ).to(torch.float32)
+            varying_boundary_data.append(self._fill_mask(bnd_raw, self.varying_boundary_variables))
+        varying_boundary_data = torch.stack(
+            [self.boundary_transform(b) for b in varying_boundary_data], dim=0
+        )
+
+        if self.validate:
+            return self._getitem_validate(
+                start_time, max_lead_time, surface_t, upper_air_t,
+                varying_boundary_data, start_time_tensor, has_diagnostic,
+            )
+
+        # Inference only — return input + boundary
+        surface_t = self.surface_transform(surface_t)
+        upper_air_t = self.upper_air_transform(upper_air_t)
+
+        self._check_nans(surface_t=surface_t, upper_air_t=upper_air_t,
+                         varying_boundary_data=varying_boundary_data)
+
+        return surface_t, upper_air_t, varying_boundary_data
+
+    def _getitem_validate(self, start_time, max_lead_time, surface_t, upper_air_t,
+                          varying_boundary_data, start_time_tensor, has_diagnostic):
+        """Load multi-step targets for validation scoring."""
+        targets_surface = []
+        targets_upper_air = []
+        targets_diagnostic = [] if has_diagnostic else None
+        targets_delta_surface = [] if self.params['predict_delta'] else None
+        targets_delta_upper_air = [] if self.params['predict_delta'] else None
+
+        for step in range(1, max_lead_time + 1):
+            target_time = start_time + timedelta(hours=self.timedelta_hours * step)
+            raw_target = self._get_data(target_time, out=True)
+
+            if has_diagnostic:
+                ua_target, sfc_target, diag_target = self._reshape_and_mask_variables(raw_target, out=True)
+                targets_diagnostic.append(diag_target)
             else:
-                return surface_t, upper_air_t, surface_t_1, upper_air_t_1, varying_boundary_data
-            
-def get_infer_data(params, files_pattern, distributed, year_start, year_end, step=100, num_inferences = 0, validate = False):
+                ua_target, sfc_target = self._reshape_and_mask_variables(raw_target, out=True)
 
-    dataset = GetDataset(params, files_pattern, year_start, year_end, False, num_inferences, validate)
-    dataloader = DataLoader(dataset,
-                            batch_size=int(params.batch_size),
-                            num_workers=params.num_data_workers,
-                            shuffle=False,  # (sampler is None),
-                            sampler=None,# if train else None,
-                            drop_last=True,
-                            pin_memory=torch.cuda.is_available())
+            targets_surface.append(sfc_target)
+            targets_upper_air.append(ua_target)
 
-    return dataloader, dataset
+            if self.params['predict_delta']:
+                if step == 1:
+                    sfc_delta = targets_surface[-1] - surface_t
+                    ua_delta = targets_upper_air[-1] - upper_air_t
+                else:
+                    sfc_delta = targets_surface[-1] - targets_surface[-2]
+                    ua_delta = targets_upper_air[-1] - targets_upper_air[-2]
+                targets_delta_surface.append(self.surface_delta_transform(sfc_delta))
+                targets_delta_upper_air.append(self.upper_air_delta_transform(ua_delta))
+
+        # Normalize all targets
+        targets_surface = torch.stack([self.surface_transform(s) for s in targets_surface], dim=0)
+        targets_upper_air = torch.stack([self.upper_air_transform(u) for u in targets_upper_air], dim=0)
+        if has_diagnostic:
+            targets_diagnostic = torch.stack([self.diagnostic_transform(d) for d in targets_diagnostic], dim=0)
+
+        surface_t = self.surface_transform(surface_t)
+        upper_air_t = self.upper_air_transform(upper_air_t)
+
+        self._check_nans(surface_t=surface_t, upper_air_t=upper_air_t,
+                         varying_boundary_data=varying_boundary_data)
+
+        # Build return tuple
+        result = [surface_t, upper_air_t, targets_surface, targets_upper_air]
+        if has_diagnostic:
+            result.append(targets_diagnostic)
+        if self.params['predict_delta']:
+            targets_delta_surface = torch.stack(targets_delta_surface, dim=0)
+            targets_delta_upper_air = torch.stack(targets_delta_upper_air, dim=0)
+            result.extend([targets_delta_surface, targets_delta_upper_air])
+        result.extend([varying_boundary_data, start_time_tensor])
+        return tuple(result)
+
+    def _getitem_single_step(self, index, has_boundary):
+        """Single-step evaluation without lead times."""
+        start_time = self.start_date + timedelta(hours=self.dates[index])
+        data_in = self._get_data(start_time, out=False)
+
+        if has_boundary:
+            upper_air_t, surface_t, varying_boundary_data = self._reshape_and_mask_variables(data_in, out=False)
+            varying_boundary_data = self.boundary_transform(varying_boundary_data).unsqueeze(0)
+        else:
+            upper_air_t, surface_t = self._reshape_and_mask_variables(data_in, out=False)
+
+        surface_t = self.surface_transform(surface_t)
+        upper_air_t = self.upper_air_transform(upper_air_t)
+
+        self._check_nans(surface_t=surface_t, upper_air_t=upper_air_t,
+                         varying_boundary_data=varying_boundary_data if has_boundary else None)
+
+        return surface_t, upper_air_t, surface_t, upper_air_t, varying_boundary_data
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _add_input_noise(self, data, field_type):
+        """Add scaled Gaussian noise to input for regularization.
+
+        Parameters
+        ----------
+        data : torch.Tensor
+        field_type : str
+            ``'surface'`` or ``'upper_air'``.
+        """
+        if field_type == 'surface':
+            if 'surface_ff_std' in self.params:
+                scale = (self.epsilon_factor * self.surface_ff_std / self.surface_std).reshape(
+                    len(self.surface_variables), 1, 1
+                )
+            else:
+                scale = self.epsilon_factor
+            return data + torch.randn_like(data) * scale
+        else:  # upper_air
+            if 'upper_air_ff_std' in self.params:
+                scale = (self.epsilon_factor * self.upper_air_ff_std / self.upper_air_std).reshape(
+                    len(self.upper_air_variables), len(self.levels), 1, 1
+                )
+            else:
+                scale = self.epsilon_factor
+            return data + torch.randn_like(data) * scale
+
+    @staticmethod
+    def _check_nans(**tensors):
+        """Raise ValueError if any provided tensor contains NaN."""
+        for name, tensor in tensors.items():
+            if tensor is not None and torch.any(torch.isnan(tensor)):
+                raise ValueError(f'{name} contains NaN values.')

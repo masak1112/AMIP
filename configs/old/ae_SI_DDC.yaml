@@ -1,16 +1,16 @@
 model:
     model_name: AE_DIT_DDC
-    lr: 1.0e-5
+    lr: 5.0e-5
     AE_DIT_DDC:
         encoder:
             downsample_factor: 4
         decoder:
-            in_channels: 290
-            out_channels: 145
-            dim: 768
+            in_channels: 249
+            out_channels: 249
+            dim: 512
             num_heads: 8
-            num_blocks: 12
-            patch_size: 8
+            num_blocks: 8
+            patch_size: 4
             nlat: 180
             nlon: 360
         scheduler:
@@ -29,7 +29,6 @@ data:
     downsample_levels: 1
     batch_size: 1
     num_workers: 4
-    clouds: False
 
 training:
     seed: 42
@@ -47,4 +46,4 @@ training:
     wandb_mode: online
     checkpoint: null
     description: SI_DDC_DiT
-    accumulate_grad_batches: 4
+    accumulate_grad_batches: 16
