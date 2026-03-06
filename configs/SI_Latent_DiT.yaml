@@ -9,7 +9,7 @@ model:
             num_heads: 16
             num_blocks: 16
             patch_size: 2
-            scalar_dim: 3
+            scalar_dim: 1
             nlat: 45
             nlon: 90
         scheduler:
