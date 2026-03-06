@@ -58,8 +58,8 @@ data:
     train_year_end: 2012
     val_year_start: 2012
     val_year_end: 2013
-    mean_path: "/glade/derecho/scratch/ayz/ERA5/h5/normalize_mean.nc"
-    std_path: "/glade/derecho/scratch/ayz/ERA5/h5/normalize_std.nc"
+    mean_path: "/glade/u/home/ayz/amip/normalize_mean.nc"
+    std_path: "/glade/u/home/ayz/amip/normalize_std.nc"
     forecast_lead_times: [1, 3, 5, 10]
 
     calendar: 'standard'
