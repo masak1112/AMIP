@@ -7,8 +7,6 @@ class ClimateDataModule(L.LightningDataModule):
         
         super().__init__()
         self.data_config = dataconfig
-        self.batch_size = dataconfig["batch_size"]
-        self.num_workers = dataconfig["num_workers"]
         self.train_year_start = dataconfig['train_year_start']
         self.train_year_end = dataconfig['train_year_end']
         self.val_year_start = dataconfig['val_year_start']

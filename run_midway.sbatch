@@ -13,8 +13,10 @@
 export MPICH_GPU_SUPPORT_ENABLED=1
 
 ulimit -l unlimited
-ml uv
-source /project/pedramh/ayz/envs/torch/bin/activate
+ml python
+conda activate /project/pedramh/ayz/envs/torch2
+
+echo nvidia-smi
 
 export NUM_TASKS_PER_NODE=$(nvidia-smi -L | wc -l)
 
