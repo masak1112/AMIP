@@ -225,6 +225,7 @@ class GetDataset(Dataset):
         self.num_inferences = num_inferences
         self.has_year_zero = params['has_year_zero']
         self.epsilon_factor = params['epsilon_factor']
+        self.diagnostic_input = params.get('diagnostic_input', False) # whether to use diagnostic as prognostic
         self.validate = validate if not self.train else False
 
         if not self.train and not self.params['forecast_lead_times']:
@@ -312,12 +313,6 @@ class GetDataset(Dataset):
             self.upper_air_variables,
         )
 
-        flip_upper_air = True
-        # multilevel data is stored as [1000, ...., 5] hPa, but the means/stds for the multilevel data is stored as [5, ...., 1000] hPa
-        if flip_upper_air:
-            self.upper_air_mean = torch.flip(self.upper_air_mean, dims=[1])
-            self.upper_air_std = torch.flip(self.upper_air_std, dims=[1])
-
         if self.params['predict_delta']:
             _, self.surface_delta_std = self._load_mean_std(
                 mean_path,
@@ -367,6 +362,9 @@ class GetDataset(Dataset):
         self.variable_list_in = self.variable_list_out.copy()
         self.variable_list_out.extend(self.diagnostic_variables)
         self.variable_list_in.extend(self.varying_boundary_variables)
+
+        if self.diagnostic_input: # add diagnostic variables to input list if configured
+            self.variable_list_in.extend(self.diagnostic_variables)
 
     # ------------------------------------------------------------------
     # Reshaping / masking
@@ -427,7 +425,17 @@ class GetDataset(Dataset):
                     data_array[offset:offset + n_bnd].reshape(n_bnd, nlat, nlon)
                 ).to(torch.float32)
                 varying_boundary = self._fill_mask(varying_boundary, self.varying_boundary_variables)
-                return upper_air, surface, varying_boundary
+
+                if self.diagnostic_input:
+                    offset += n_bnd
+                    n_diag = len(self.diagnostic_variables)
+                    diagnostic = torch.from_numpy(
+                        data_array[offset:offset + n_diag].reshape(n_diag, nlat, nlon)
+                    ).to(torch.float32)
+                    diagnostic = self._fill_mask(diagnostic, self.diagnostic_variables)
+                    return upper_air, surface, diagnostic, varying_boundary
+                else:
+                    return upper_air, surface, varying_boundary
             return upper_air, surface
 
     def _fill_mask(self, data, variables, optional_variables=None):
@@ -669,7 +677,10 @@ class GetDataset(Dataset):
         data_out = self._get_data(end_time, out=True)
 
         if has_boundary:
-            upper_air_t, surface_t, varying_boundary_data = self._reshape_and_mask_variables(data_in, out=False)
+            if self.diagnostic_input:
+                upper_air_t, surface_t, diagnostic_t, varying_boundary_data = self._reshape_and_mask_variables(data_in, out=False)
+            else:
+                upper_air_t, surface_t, varying_boundary_data = self._reshape_and_mask_variables(data_in, out=False)
         else:
             upper_air_t, surface_t = self._reshape_and_mask_variables(data_in, out=False)
 
@@ -694,6 +705,8 @@ class GetDataset(Dataset):
             diagnostic_t1 = self.diagnostic_transform(diagnostic_t1)
         if has_boundary:
             varying_boundary_data = self.boundary_transform(varying_boundary_data)
+        if self.diagnostic_input:
+            diagnostic_t = self.diagnostic_transform(diagnostic_t)
 
         # Optional input noise
         if self.epsilon_factor > 0.:
@@ -703,8 +716,11 @@ class GetDataset(Dataset):
         self._check_nans(surface_t=surface_t, upper_air_t=upper_air_t,
                          varying_boundary_data=varying_boundary_data if has_boundary else None,
                          surface_t1=surface_t1, upper_air_t1=upper_air_t1,
-                         diagnostic_t1=diagnostic_t1 if has_diagnostic else None)
+                         diagnostic_t1=diagnostic_t1 if has_diagnostic else None,
+                         diagnostic_t=diagnostic_t if self.diagnostic_input else None)
 
+        if self.diagnostic_input:
+            return surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data
         if has_diagnostic:
             return surface_t, upper_air_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data
         return surface_t, upper_air_t, surface_t1, upper_air_t1, varying_boundary_data
@@ -715,7 +731,11 @@ class GetDataset(Dataset):
         data_in = self._get_data(start_time, out=False)
 
         if has_boundary:
-            upper_air_t, surface_t, varying_boundary_t = self._reshape_and_mask_variables(data_in, out=False)
+            if self.diagnostic_input:
+                upper_air_t, surface_t, diagnostic_t, varying_boundary_t = self._reshape_and_mask_variables(data_in, out=False)
+            else:
+                upper_air_t, surface_t, varying_boundary_t = self._reshape_and_mask_variables(data_in, out=False)
+                diagnostic_t = None
         else:
             upper_air_t, surface_t = self._reshape_and_mask_variables(data_in, out=False)
 
@@ -736,20 +756,25 @@ class GetDataset(Dataset):
 
         if self.validate:
             return self._getitem_validate(
-                start_time, max_lead_time, surface_t, upper_air_t,
+                start_time, max_lead_time, surface_t, upper_air_t, diagnostic_t,
                 varying_boundary_data, start_time_tensor, has_diagnostic,
             )
 
         # Inference only — return input + boundary
         surface_t = self.surface_transform(surface_t)
         upper_air_t = self.upper_air_transform(upper_air_t)
+        if self.diagnostic_input:
+            diagnostic_t = self.diagnostic_transform(diagnostic_t)
 
         self._check_nans(surface_t=surface_t, upper_air_t=upper_air_t,
                          varying_boundary_data=varying_boundary_data)
 
+        if self.diagnostic_input:
+            return surface_t, upper_air_t, diagnostic_t, varying_boundary_data
+
         return surface_t, upper_air_t, varying_boundary_data
 
-    def _getitem_validate(self, start_time, max_lead_time, surface_t, upper_air_t,
+    def _getitem_validate(self, start_time, max_lead_time, surface_t, upper_air_t, diagnostic_t,
                           varying_boundary_data, start_time_tensor, has_diagnostic):
         """Load multi-step targets for validation scoring."""
         targets_surface = []
@@ -789,12 +814,16 @@ class GetDataset(Dataset):
 
         surface_t = self.surface_transform(surface_t)
         upper_air_t = self.upper_air_transform(upper_air_t)
+        diagnostic_t = self.diagnostic_transform(diagnostic_t) if self.diagnostic_input else None
 
         self._check_nans(surface_t=surface_t, upper_air_t=upper_air_t,
                          varying_boundary_data=varying_boundary_data)
 
         # Build return tuple
-        result = [surface_t, upper_air_t, targets_surface, targets_upper_air]
+        if diagnostic_t is not None:
+            result = [surface_t, upper_air_t, diagnostic_t, targets_surface, targets_upper_air]
+        else:
+            result = [surface_t, upper_air_t, targets_surface, targets_upper_air]
         if has_diagnostic:
             result.append(targets_diagnostic)
         if self.params['predict_delta']:
@@ -810,7 +839,11 @@ class GetDataset(Dataset):
         data_in = self._get_data(start_time, out=False)
 
         if has_boundary:
-            upper_air_t, surface_t, varying_boundary_data = self._reshape_and_mask_variables(data_in, out=False)
+            if self.diagnostic_input:
+                upper_air_t, surface_t, diagnostic_t, varying_boundary_data = self._reshape_and_mask_variables(data_in, out=False)
+                diagnostic_t = self.diagnostic_transform(diagnostic_t)
+            else:
+                upper_air_t, surface_t, varying_boundary_data = self._reshape_and_mask_variables(data_in, out=False)
             varying_boundary_data = self.boundary_transform(varying_boundary_data).unsqueeze(0)
         else:
             upper_air_t, surface_t = self._reshape_and_mask_variables(data_in, out=False)
@@ -821,7 +854,9 @@ class GetDataset(Dataset):
         self._check_nans(surface_t=surface_t, upper_air_t=upper_air_t,
                          varying_boundary_data=varying_boundary_data if has_boundary else None)
 
-        return surface_t, upper_air_t, surface_t, upper_air_t, varying_boundary_data
+        if self.diagnostic_input:
+            return surface_t, upper_air_t, diagnostic_t, varying_boundary_data
+        return surface_t, upper_air_t, upper_air_t, varying_boundary_data
 
     # ------------------------------------------------------------------
     # Helpers
