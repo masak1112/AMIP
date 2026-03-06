@@ -54,32 +54,21 @@ data:
                                 "sea_ice_cover"] # has nans
     mask_fill: {'sea_surface_temperature': 270.,
                 'sea_ice_cover': 0.}
-    mask_output: False
     train_year_start: 1979
     train_year_end: 2012
     val_year_start: 2012
     val_year_end: 2013
-    surface_mean: 'pangu_s2s_1979-2018_surface_mean.nc'
-    surface_std: 'pangu_s2s_1979-2018_surface_std.nc'
-    upper_air_mean: 'pangu_s2s_1979-2018_mean.nc'
-    upper_air_std: 'pangu_s2s_1979-2018_std.nc'
-    boundary_mean: 'pangu_s2s_1979-2018_surface_mean.nc'
-    boundary_std: 'pangu_s2s_1979-2018_surface_std.nc'
-    diagnostic_mean: 'pangu_s2s_1979-2018_surface_mean.nc'
-    diagnostic_std: 'pangu_s2s_1979-2018_surface_std.nc'
+    mean_path: "/glade/derecho/scratch/ayz/ERA5/h5/normalize_mean_new.nc"
+    std_path: "/glade/derecho/scratch/ayz/ERA5/h5/normalize_std_new.nc"
 
-    #climatology_file: "1979-2018_mean_climatology.nc"
     calendar: 'standard'
     data_timedelta_hours: 6
     timedelta_hours: 24
     has_year_zero: False
-    num_levels: 26
     levels: [1000, 975, 950, 925, 900, 875, 850, 800, 700, 600, 500, 400, 300, 250, 200, 175, 150, 125, 100, 70, 50, 30, 20, 10, 7, 5]
     horizontal_resolution: [180, 360]
     predict_delta: False
     epsilon_factor: 0
-
-    lev: 'plev'
     num_inferences: 0
 
 training:

@@ -113,8 +113,8 @@ def get_data_loader(params, distributed, train, validate=False):
 
     dataloader = DataLoader(
         dataset,
-        batch_size=int(params.batch_size),
-        num_workers=params.num_data_workers,
+        batch_size=int(params["batch_size"]),
+        num_workers=params["num_data_workers"],
         shuffle=False,
         sampler=sampler,
         drop_last=True,
@@ -137,8 +137,8 @@ def get_infer_data(params, validate=False):
     dataset = GetDataset(params, validate=validate)
     dataloader = DataLoader(
         dataset,
-        batch_size=int(params.batch_size),
-        num_workers=params.num_data_workers,
+        batch_size=int(params["batch_size"]),
+        num_workers=params["num_data_workers"],
         shuffle=False,
         drop_last=True,
         pin_memory=torch.cuda.is_available(),
@@ -170,7 +170,7 @@ class GetDataset(Dataset):
         - ``timedelta_hours``: forecast step in hours
         - ``data_timedelta_hours``: temporal resolution of files in hours
         - ``has_year_zero``: bool for cftime year-zero support
-        - ``surface_variables``, ``upper_air_variables``: list of variable names
+        - ``surface_variables``, ``upper_air_variables``, ``diagnostic_variables``: list of variable names
         - ``constant_boundary_variables``, ``varying_boundary_variables``: list of forcing field names
         - ``forecast_lead_times``: list of lead-time steps for evaluation
         - ``levels``: pressure levels to use
@@ -178,12 +178,12 @@ class GetDataset(Dataset):
         - ``num_inferences``: number of evenly-spaced inference starts (0 = all)
         - ``epsilon_factor``: input noise scale (0 disables noise)
         - ``predict_delta``: if True, targets are state increments
-        - Paths to mean/std NetCDF files for normalization
+        - ``mean_path``, ``std_path``: paths to NetCDF files with normalization stats
     validate : bool
         If True and not training, load full target sequences.
     """
 
-    def __init__(self, params, validate=False):
+    def __init__(self, params: dict, validate: bool =False):
         self.params = params
         self.data_dir = params['data_dir']
         self.train = params['train']
@@ -195,19 +195,18 @@ class GetDataset(Dataset):
         if not self.train and not self.params['forecast_lead_times']:
             self.params['forecast_lead_times'] = [1]
 
-        self.mask_fill = getattr(params, 'mask_fill', {
+        self.mask_fill = params.get('mask_fill', {
             'land_sea_mask': 0.,
             'sea_surface_temperature': 270.,
             'sea_ice_cover': 0.,
-            'volumetric_soil_water_layer_1': 0.,
         })
 
         # Calendar / time setup
         self.year_start = params['year_start']
         self.year_end = params['year_end']
-        self.calendar = params.calendar
-        self.timedelta_hours = params.timedelta_hours
-        self.data_timedelta_hours = params.data_timedelta_hours
+        self.calendar = params["calendar"]
+        self.timedelta_hours = params["timedelta_hours"]
+        self.data_timedelta_hours = params["data_timedelta_hours"]
         self.datetime_class = CALENDAR_TO_DATETIME[self.calendar]
 
         days, hours = divmod(self.timedelta_hours, 24)
@@ -217,9 +216,11 @@ class GetDataset(Dataset):
         )
 
         # Variable lists
-        self.surface_variables = params.surface_variables or []
-        self.land_variables = getattr(params, 'land_variables', [])
-        self.ocean_variables = getattr(params, 'ocean_variables', [])
+        self.surface_variables = params["surface_variables"]
+
+        # disabled
+        self.land_variables = []
+        self.ocean_variables = []
 
         if self.land_variables:
             if any(v in self.surface_variables for v in self.land_variables):
@@ -231,14 +232,14 @@ class GetDataset(Dataset):
                 raise ValueError('ocean variables cannot be in surface variables.')
             self.surface_variables = self.surface_variables + self.ocean_variables
 
-        self.upper_air_variables = params.upper_air_variables or []
-        self.constant_boundary_variables = params.constant_boundary_variables or []
-        self.varying_boundary_variables = params.varying_boundary_variables or []
-        self.diagnostic_variables = getattr(params, 'diagnostic_variables', None) or []
+        self.upper_air_variables = params["upper_air_variables"] 
+        self.constant_boundary_variables = params["constant_boundary_variables"] 
+        self.varying_boundary_variables = params["varying_boundary_variables"] 
+        self.diagnostic_variables = params['diagnostic_variables']
 
         # Date range
         self.dates, self.start_date, self.end_date = self._get_dates(
-            hour_step=params.data_timedelta_hours
+            hour_step=params["data_timedelta_hours"]
         )
 
         # Constant boundary fields (e.g. land-sea mask, orography)
@@ -264,52 +265,41 @@ class GetDataset(Dataset):
 
         # Load normalization statistics
         data_dir = self.data_dir
+        mean_path = join(data_dir, params["mean_path"])
+        std_path = join(data_dir, params["std_path"])
         self.surface_mean, self.surface_std = self._load_mean_std(
-            join(data_dir, params.surface_mean),
-            join(data_dir, params.surface_std),
+            mean_path,
+            std_path,
             self.surface_variables, upper_air=False,
         )
         self.upper_air_mean, self.upper_air_std = self._load_mean_std(
-            join(data_dir, params.upper_air_mean),
-            join(data_dir, params.upper_air_std),
+            mean_path,
+            std_path,
             self.upper_air_variables,
         )
 
-        if 'surface_ff_std' in self.params:
-            _, self.surface_ff_std = self._load_mean_std(
-                join(data_dir, params.surface_mean),
-                join(data_dir, params.surface_ff_std),
-                self.surface_variables, upper_air=False,
-            )
-        if 'upper_air_ff_std' in self.params:
-            _, self.upper_air_ff_std = self._load_mean_std(
-                join(data_dir, params.upper_air_mean),
-                join(data_dir, params.upper_air_ff_std),
-                self.upper_air_variables,
-            )
-
         if self.params['predict_delta']:
             _, self.surface_delta_std = self._load_mean_std(
-                join(data_dir, params.surface_mean),
-                join(data_dir, params.surface_delta_std),
+                mean_path,
+                std_path,
                 self.surface_variables, upper_air=False,
             )
             _, self.upper_air_delta_std = self._load_mean_std(
-                join(data_dir, params.upper_air_mean),
-                join(data_dir, params.upper_air_delta_std),
+                mean_path,
+                std_path,
                 self.upper_air_variables,
             )
 
         self.varying_boundary_mean, self.varying_boundary_std = self._load_mean_std(
-            join(data_dir, params.boundary_mean),
-            join(data_dir, params.boundary_std),
+            mean_path,
+            std_path,
             self.varying_boundary_variables, upper_air=False,
         )
 
         if self.diagnostic_variables:
             self.diagnostic_mean, self.diagnostic_std = self._load_mean_std(
-                join(data_dir, params.diagnostic_mean),
-                join(data_dir, params.diagnostic_std),
+                mean_path,
+                std_path,
                 self.diagnostic_variables, upper_air=False,
             )
 
@@ -667,8 +657,8 @@ class GetDataset(Dataset):
 
         # Optional input noise
         if self.epsilon_factor > 0.:
-            surface_t = self._add_input_noise(surface_t, 'surface')
-            upper_air_t = self._add_input_noise(upper_air_t, 'upper_air')
+            surface_t = self._add_input_noise(surface_t)
+            upper_air_t = self._add_input_noise(upper_air_t)
 
         self._check_nans(surface_t=surface_t, upper_air_t=upper_air_t,
                          varying_boundary_data=varying_boundary_data if has_boundary else None,
@@ -797,7 +787,7 @@ class GetDataset(Dataset):
     # Helpers
     # ------------------------------------------------------------------
 
-    def _add_input_noise(self, data, field_type):
+    def _add_input_noise(self, data):
         """Add scaled Gaussian noise to input for regularization.
 
         Parameters
@@ -806,22 +796,8 @@ class GetDataset(Dataset):
         field_type : str
             ``'surface'`` or ``'upper_air'``.
         """
-        if field_type == 'surface':
-            if 'surface_ff_std' in self.params:
-                scale = (self.epsilon_factor * self.surface_ff_std / self.surface_std).reshape(
-                    len(self.surface_variables), 1, 1
-                )
-            else:
-                scale = self.epsilon_factor
-            return data + torch.randn_like(data) * scale
-        else:  # upper_air
-            if 'upper_air_ff_std' in self.params:
-                scale = (self.epsilon_factor * self.upper_air_ff_std / self.upper_air_std).reshape(
-                    len(self.upper_air_variables), len(self.levels), 1, 1
-                )
-            else:
-                scale = self.epsilon_factor
-            return data + torch.randn_like(data) * scale
+        scale = self.epsilon_factor
+        return data + torch.randn_like(data) * scale
 
     @staticmethod
     def _check_nans(**tensors):
