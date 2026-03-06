@@ -227,6 +227,7 @@ class GetDataset(Dataset):
         self.epsilon_factor = params['epsilon_factor']
         self.diagnostic_input = params.get('diagnostic_input', False) # whether to use diagnostic as prognostic
         self.validate = validate if not self.train else False
+        self.autoencoder = params.get('autoencoder', False)
 
         if not self.train and not self.params['forecast_lead_times']:
             self.params['forecast_lead_times'] = [1]
@@ -674,7 +675,6 @@ class GetDataset(Dataset):
         end_time = self.start_date + timedelta(hours=self.dates[index] + self.timedelta_hours)
 
         data_in = self._get_data(start_time, out=False)
-        data_out = self._get_data(end_time, out=True)
 
         if has_boundary:
             if self.diagnostic_input:
@@ -683,6 +683,14 @@ class GetDataset(Dataset):
                 upper_air_t, surface_t, varying_boundary_data = self._reshape_and_mask_variables(data_in, out=False)
         else:
             upper_air_t, surface_t = self._reshape_and_mask_variables(data_in, out=False)
+
+        if self.autoencoder:
+            if self.diagnostic_input:
+                return upper_air_t, surface_t
+            else:
+                return upper_air_t, surface_t, diagnostic_t
+
+        data_out = self._get_data(end_time, out=True)
 
         if has_diagnostic:
             upper_air_t1, surface_t1, diagnostic_t1 = self._reshape_and_mask_variables(data_out, out=True)

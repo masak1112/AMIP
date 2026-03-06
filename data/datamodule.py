@@ -1,6 +1,5 @@
 import lightning as L
-from torch.utils.data import DataLoader
-from data.amip import AMIPData, ClimatologyData
+from data.amip_new import get_data_loader
 
 class ClimateDataModule(L.LightningDataModule):
     def __init__(self, 
@@ -10,35 +9,27 @@ class ClimateDataModule(L.LightningDataModule):
         self.data_config = dataconfig
         self.batch_size = dataconfig["batch_size"]
         self.num_workers = dataconfig["num_workers"]
-        self.norm_stats_path = dataconfig['norm_stats_path']
-        self.use_climatology = dataconfig.get('use_climatology', False)
-        self.normalize = dataconfig.get('normalize', True)
-        self.clouds = dataconfig['clouds']
+        self.train_year_start = dataconfig['train_year_start']
+        self.train_year_end = dataconfig['train_year_end']
+        self.val_year_start = dataconfig['val_year_start']
+        self.val_year_end = dataconfig['val_year_end']
+        self.val_num_inferences = dataconfig['val_num_inferences']
+        self.autoencoder = dataconfig.get("autoencoder", False)
 
-        self.train_dataset = AMIPData(data_path=dataconfig["train_data_path"],
-                                        norm_stats_path=self.norm_stats_path,
-                                        nsteps=dataconfig["training_nsteps"],  
-                                        split=dataconfig.get("train_split", "train"),
-                                        downsample_levels=dataconfig.get("downsample_levels", 1),
-                                        normalize=self.normalize,
-                                        clouds = self.clouds)
-        
-        self.val_dataset = AMIPData(data_path=dataconfig["val_data_path"],
-                                        norm_stats_path=self.norm_stats_path,
-                                        nsteps=dataconfig["val_nsteps"],  
-                                        split=dataconfig.get("valid_split", "valid"),
-                                        horizon=dataconfig.get("val_horizon", -1),
-                                        downsample_levels=dataconfig.get("downsample_levels", 1),
-                                        normalize=self.normalize,
-                                        clouds = self.clouds)
-        if self.use_climatology:
-            self.climatology_dataset = ClimatologyData(data_path=dataconfig["train_data_path"],
-                                                    norm_stats_path=self.norm_stats_path,
-                                                    climatology_path=dataconfig["climatology_path"],
-                                                    horizon=dataconfig["climatology_horizon"],
-                                                    start_time=dataconfig["climatology_start"])
-    
-        self.normalizer = self.train_dataset.n
+        self.train_dataset, self.train_dataloader, _ = get_data_loader(dataconfig,
+                                                                       distributed=True,
+                                                                       year_start = self.train_year_start,
+                                                                       year_end = self.train_year_end,
+                                                                       num_inferences=0, # load entire dset
+                                                                       train=True,
+                                                                       validate=False)
+        self.val_dataset, self.val_dataloader = get_data_loader(dataconfig,
+                                                                distributed=True,
+                                                                year_start = self.val_year_start,
+                                                                year_end = self.val_year_end,
+                                                                num_inferences=self.val_num_inferences, # load entire dset
+                                                                train=False if not self.autoencoder else True, # for autoencoder, val is same as train
+                                                                validate=True if not self.autoencoder else False)
 
     def prepare_data(self):
         # download, split, etc...
@@ -59,29 +50,11 @@ class ClimateDataModule(L.LightningDataModule):
         if stage == "predict":
             pass
 
-    def train_dataloader(self, shuffle=True):
-        self.pin_memory = False if self.num_workers == 0 else True
-        return DataLoader(self.train_dataset, 
-                          batch_size=self.batch_size, 
-                          shuffle=shuffle, 
-                          num_workers=self.num_workers, 
-                          pin_memory=self.pin_memory,)
+    def train_dataloader(self):
+        return self.train_dataloader
 
     def val_dataloader(self):
-        weather_dataloader = DataLoader(self.val_dataset, 
-                                        batch_size=self.batch_size, 
-                                        shuffle=False, 
-                                        num_workers=self.num_workers,)
-        
-        if self.use_climatology:
-            climatology_dataloser = DataLoader(self.climatology_dataset, 
-                                            batch_size=1, 
-                                            shuffle=False, 
-                                            num_workers=self.num_workers,)
-            
-            return [weather_dataloader, climatology_dataloser]
-        else:
-            return weather_dataloader
+        return self.val_dataloader
 
     def test_dataloader(self):
         return None
