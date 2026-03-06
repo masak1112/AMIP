@@ -106,7 +106,7 @@ def get_data_loader(params, distributed, train, validate=False):
         ``(dataloader, dataset, sampler)`` when *train* is True, otherwise
         ``(dataloader, dataset)``.
     """
-    dataset = GetDataset(params, validate=validate)
+    dataset = GetDataset(params, train=train, validate=validate)
     sampler = DistributedSampler(dataset, shuffle=train) if distributed else None
     if train and not distributed:
         sampler = torch.utils.data.RandomSampler(dataset)
@@ -126,7 +126,7 @@ def get_data_loader(params, distributed, train, validate=False):
     return dataloader, dataset
 
 
-def get_infer_data(params, validate=False):
+def get_infer_data(params, train, validate=False):
     """Create a DataLoader for inference (no shuffling, no distributed sampler).
 
     Returns
@@ -134,7 +134,7 @@ def get_infer_data(params, validate=False):
     tuple
         ``(dataloader, dataset)``
     """
-    dataset = GetDataset(params, validate=validate)
+    dataset = GetDataset(params, train=train, validate=validate)
     dataloader = DataLoader(
         dataset,
         batch_size=int(params["batch_size"]),
@@ -179,14 +179,16 @@ class GetDataset(Dataset):
         - ``epsilon_factor``: input noise scale (0 disables noise)
         - ``predict_delta``: if True, targets are state increments
         - ``mean_path``, ``std_path``: paths to NetCDF files with normalization stats
+    train : bool
+        If True, return (input, target) pairs for training. 
     validate : bool
         If True and not training, load full target sequences.
     """
 
-    def __init__(self, params: dict, validate: bool =False):
+    def __init__(self, params: dict, train: bool = True, validate: bool = False):
         self.params = params
         self.data_dir = params['data_dir']
-        self.train = params['train']
+        self.train = train
         self.num_inferences = params['num_inferences']
         self.has_year_zero = params['has_year_zero']
         self.epsilon_factor = params['epsilon_factor']
