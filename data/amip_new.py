@@ -312,6 +312,12 @@ class GetDataset(Dataset):
             self.upper_air_variables,
         )
 
+        flip_upper_air = True
+        # multilevel data is stored as [1000, ...., 5] hPa, but the means/stds for the multilevel data is stored as [5, ...., 1000] hPa
+        if flip_upper_air:
+            self.upper_air_mean = torch.flip(self.upper_air_mean, dims=[1])
+            self.upper_air_std = torch.flip(self.upper_air_std, dims=[1])
+
         if self.params['predict_delta']:
             _, self.surface_delta_std = self._load_mean_std(
                 mean_path,
