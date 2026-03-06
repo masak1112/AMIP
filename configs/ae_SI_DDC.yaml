@@ -60,6 +60,7 @@ data:
     val_year_end: 2013
     mean_path: "/glade/derecho/scratch/ayz/ERA5/h5/normalize_mean_new.nc"
     std_path: "/glade/derecho/scratch/ayz/ERA5/h5/normalize_std_new.nc"
+    forecast_lead_times: [1, 3, 5, 10]
 
     calendar: 'standard'
     data_timedelta_hours: 6
