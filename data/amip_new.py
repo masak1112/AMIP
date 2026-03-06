@@ -87,7 +87,6 @@ CALENDAR_TO_DATETIME = {
 # ---------------------------------------------------------------------------
 
 def get_data_loader(params, 
-                    distributed, 
                     year_start: int, 
                     year_end: int, 
                     num_inferences: int = 0,
@@ -122,55 +121,16 @@ def get_data_loader(params,
                          num_inferences=num_inferences,
                          train=train, 
                          validate=validate)
-    
-    sampler = DistributedSampler(dataset, shuffle=train) if distributed else None
-    if train and not distributed:
-        sampler = torch.utils.data.RandomSampler(dataset)
 
     dataloader = DataLoader(
         dataset,
         batch_size=int(params["batch_size"]),
         num_workers=params["num_data_workers"],
-        shuffle=False,
-        sampler=sampler,
+        shuffle=not train,
         drop_last=True,
         pin_memory=torch.cuda.is_available(),
     )
 
-    if train:
-        return dataloader, dataset, sampler
-    return dataloader, dataset
-
-
-def get_infer_data(params,
-                   year_start: int, 
-                   year_end: int, 
-                   num_inferences: int = 0,
-                   train: bool = True, 
-                   validate: bool = False):
-    
-    """Create a DataLoader for inference (no shuffling, no distributed sampler).
-
-    Returns
-    -------
-    tuple
-        ``(dataloader, dataset)``
-    """
-    dataset = GetDataset(params, 
-                        year_start=year_start,
-                        year_end=year_end,
-                        num_inferences=num_inferences,
-                        train=train, 
-                        validate=validate)
-    
-    dataloader = DataLoader(
-        dataset,
-        batch_size=int(params["batch_size"]),
-        num_workers=params["num_data_workers"],
-        shuffle=False,
-        drop_last=True,
-        pin_memory=torch.cuda.is_available(),
-    )
     return dataloader, dataset
 
 
