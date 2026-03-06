@@ -62,7 +62,6 @@ def main(args):
                                mode=trainconfig["wandb_mode"])
     path = trainconfig["log_dir"] + name + "/"
     config['training']["log_dir"] = path
-    use_compile = config['training'].get("use_compile", False)
 
     os.makedirs(path, exist_ok=True) 
     save_yaml(config, path + "config.yml")
@@ -71,19 +70,16 @@ def main(args):
 
     if "AE" in modelconfig["model_name"]:
         model = AutoencoderModule(config=config,
-                                  normalizer=datamodule.normalizer)
+                                  normalizer=datamodule.train_dataset)
         monitor = "val/t2m"
         mode = 'min'
         every_n_train_steps = None
     else:
         model = TrainModule(config,
-                            normalizer=datamodule.normalizer)
+                            normalizer=datamodule.train_dataset)
         monitor = "step"
         mode = 'max'
         every_n_train_steps = 100
-
-    if use_compile:
-        model = torch.compile(model)
 
     checkpoint_callback  = ModelCheckpoint(
         monitor=monitor,
