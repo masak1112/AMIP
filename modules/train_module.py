@@ -84,9 +84,10 @@ class TrainModule(L.LightningModule):
     def training_step(self, batch, batch_idx):
 
         surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data = batch
+        device = surface_t.device
 
         x = assemble_input(surface_t, upper_air_t, diagnostic_t) # b c h w
-        invariant = self.invariant_input.expand(surface_t.shape[0], -1, -1, -1) # b c nlat nlon
+        invariant = self.invariant_input.expand(surface_t.shape[0], -1, -1, -1).to(device) # b c nlat nlon
         c_grid = assemble_forcing(varying_boundary_data, invariant) # b c h w
         y = assemble_input(surface_t1, upper_air_t1, diagnostic_t1) # b c h w
 
@@ -129,6 +130,8 @@ class TrainModule(L.LightningModule):
         nlon = self.nlon
         device = surface_t.device
 
+        invariant = self.invariant_input.expand(b, -1, -1, -1).to(device) # b c nlat nlon
+
         if self.latent:
             nlat = nlat // 4
             nlon = nlon // 4
@@ -166,7 +169,6 @@ class TrainModule(L.LightningModule):
             forcing_input = varying_boundary_data[:, t] # b nlat nlon c
 
             x = assemble_input(surface_t, upper_air_t, diagnostic_t) # b c h w
-            invariant = self.invariant_input.expand(b, -1, -1, -1) # b c nlat nlon
             c_grid = assemble_forcing(forcing_input, invariant) # b c h w
 
             if self.latent:
