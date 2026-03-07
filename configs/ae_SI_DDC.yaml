@@ -5,8 +5,8 @@ model:
         encoder:
             downsample_factor: 4
         decoder:
-            in_channels: 352
-            out_channels: 176 # 5 + 15 + 26*6 = 145
+            in_channels: 302
+            out_channels: 151 
             dim: 768
             num_heads: 8
             num_blocks: 12

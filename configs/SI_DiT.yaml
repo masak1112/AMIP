@@ -3,8 +3,8 @@ model:
     lr: 5.0e-5
     SI_DiT:
         model:
-            in_channels: 357 # 2*176 + 2 + 3
-            out_channels: 176 # 5 + 15 + 26*6 = 145
+            in_channels: 308 # 2*176 + 2 + 3
+            out_channels: 151 # 5 + 15 + 26*6 = 145
             dim: 1024
             num_heads: 16
             num_blocks: 12

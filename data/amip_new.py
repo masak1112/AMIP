@@ -357,11 +357,11 @@ class GetDataset(Dataset):
         n_lev = len(self.levels)
         n_sfc = len(self.surface_variables)
 
-        upper_air = torch.from_numpy(
+        upper_air = torch.tensor(
             data_array[:self.upper_air_len].reshape(n_ua, n_lev, nlat, nlon)
         ).to(torch.float32)
 
-        surface = torch.from_numpy(
+        surface = torch.tensor(
             data_array[self.upper_air_len:self.upper_air_len + n_sfc].reshape(n_sfc, nlat, nlon)
         ).to(torch.float32)
         surface = self._fill_mask(surface, self.surface_variables,
@@ -372,7 +372,7 @@ class GetDataset(Dataset):
         if out:
             if self.diagnostic_variables:
                 n_diag = len(self.diagnostic_variables)
-                diagnostic = torch.from_numpy(
+                diagnostic = torch.tensor(
                     data_array[offset:offset + n_diag].reshape(n_diag, nlat, nlon)
                 ).to(torch.float32)
                 diagnostic = self._fill_mask(diagnostic, self.diagnostic_variables)
@@ -381,7 +381,7 @@ class GetDataset(Dataset):
         else:
             if self.varying_boundary_variables:
                 n_bnd = len(self.varying_boundary_variables)
-                varying_boundary = torch.from_numpy(
+                varying_boundary = torch.tensor(
                     data_array[offset:offset + n_bnd].reshape(n_bnd, nlat, nlon)
                 ).to(torch.float32)
                 varying_boundary = self._fill_mask(varying_boundary, self.varying_boundary_variables)
@@ -389,7 +389,7 @@ class GetDataset(Dataset):
                 if self.diagnostic_input:
                     offset += n_bnd
                     n_diag = len(self.diagnostic_variables)
-                    diagnostic = torch.from_numpy(
+                    diagnostic = torch.tensor(
                         data_array[offset:offset + n_diag].reshape(n_diag, nlat, nlon)
                     ).to(torch.float32)
                     diagnostic = self._fill_mask(diagnostic, self.diagnostic_variables)
@@ -480,7 +480,7 @@ class GetDataset(Dataset):
         tuple
             ``(constant_boundary_data, land_mask)`` both as float32 tensors.
         """
-        raw = torch.from_numpy(
+        raw = torch.tensor(
             self._get_data(self.start_date, variable_list=self.constant_boundary_variables)
         ).to(torch.float32)
         raw = self._fill_mask(raw, self.constant_boundary_variables)
@@ -518,7 +518,7 @@ class GetDataset(Dataset):
                     data=[lev in self.levels for lev in ds['level'].values], dims=['level']
                 )
                 mean = torch.stack([
-                    torch.from_numpy(ds[var].where(level_mask, drop=True).values).to(torch.float32)
+                    torch.tensor(ds[var].where(level_mask, drop=True).values).to(torch.float32)
                     for var in datavars
                 ], dim=0)
             with xr.open_dataset(std_file, engine = "h5netcdf") as ds:
@@ -526,17 +526,17 @@ class GetDataset(Dataset):
                     data=[lev in self.levels for lev in ds['level'].values], dims=['level']
                 )
                 std = torch.stack([
-                    torch.from_numpy(ds[var].where(level_mask, drop=True).values).to(torch.float32)
+                    torch.tensor(ds[var].where(level_mask, drop=True).values).to(torch.float32)
                     for var in datavars
                 ], dim=0)
         else:
             with xr.open_dataset(mean_file, engine = "h5netcdf") as ds:
                 mean = torch.stack([
-                    torch.from_numpy(ds[var].values).to(torch.float32) for var in datavars
+                    torch.tensor(ds[var].values).to(torch.float32) for var in datavars
                 ], dim=0)
             with xr.open_dataset(std_file, engine = "h5netcdf") as ds:
                 std = torch.stack([
-                    torch.from_numpy(ds[var].values).to(torch.float32) for var in datavars
+                    torch.tensor(ds[var].values).to(torch.float32) for var in datavars
                 ], dim=0)
         return mean, std
 
@@ -713,7 +713,7 @@ class GetDataset(Dataset):
         varying_boundary_data = [varying_boundary_t]
         for step in range(max_lead_time):
             bnd_time = start_time + timedelta(hours=self.timedelta_hours * step)
-            bnd_raw = torch.from_numpy(
+            bnd_raw = torch.tensor(
                 self._get_data(bnd_time, variable_list=self.varying_boundary_variables)
             ).to(torch.float32)
             varying_boundary_data.append(self._fill_mask(bnd_raw, self.varying_boundary_variables))
