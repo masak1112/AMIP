@@ -484,7 +484,7 @@ class GetDataset(Dataset):
             self._get_data(self.start_date, variable_list=self.constant_boundary_variables)
         ).to(torch.float32)
         raw = self._fill_mask(raw, self.constant_boundary_variables)
-        land_mask = raw[np.array(self.constant_boundary_variables) == 'land_sea_mask'].clone().detach()
+        land_mask = raw[(np.array(self.constant_boundary_variables) == 'land_sea_mask').tolist()].clone().detach()
         mean = torch.mean(raw, dim=(1, 2))
         std = torch.std(raw, dim=(1, 2))
         normalized = (raw - mean.reshape(-1, 1, 1)) / std.reshape(-1, 1, 1)
