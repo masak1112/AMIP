@@ -47,6 +47,14 @@ data:
                        "mn2t_24h", 
                        "mx2t_24h", 
                        "mxtpr_24h"]
+    constant_boundary_variables: ["geopotential_at_surface", 
+                                    "land_sea_mask"]
+    varying_boundary_variables: ["DSWRFtoa_24h", 
+                                "global_mean_co2",
+                                "sea_surface_temperature", # has nans
+                                "sea_ice_cover"] # has nans
+    mask_fill: {'sea_surface_temperature': 270.,
+                'sea_ice_cover': 0.}
     train_year_start: 1979
     train_year_end: 2012
     val_year_start: 2012
