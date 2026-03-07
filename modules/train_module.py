@@ -119,6 +119,10 @@ class TrainModule(L.LightningModule):
         targets_surface, targets_upper_air, targets_diagnostic, \
         varying_boundary_data, start_time_tensor = batch
 
+        print("surface_t shape:", surface_t.shape)
+        print("upper_air_t shape:", upper_air_t.shape)
+        print("diagnostic_t shape:", diagnostic_t.shape)
+
         # surface_t, upper_air_t, diagnostic_t: b c l h w, input at t=0
         # targets_surface, targets_upper_air, targets_diagnostic: b t c l h w, target trajectories for each variable
         # varying_boundary_data: b t+1 c h w, time-varying forcings and invariants for each target timestep
@@ -169,7 +173,9 @@ class TrainModule(L.LightningModule):
             forcing_input = varying_boundary_data[:, t] # b nlat nlon c
 
             x = assemble_input(surface_t, upper_air_t, diagnostic_t) # b c h w
+            print(x.shape)
             c_grid = assemble_forcing(forcing_input, invariant) # b c h w
+            print(c_grid.shape)
 
             if self.latent:
                 x = self.encoder(x) if t == 0 else x
