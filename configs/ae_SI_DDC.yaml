@@ -51,8 +51,8 @@ data:
     train_year_end: 2012
     val_year_start: 2012
     val_year_end: 2013
-    mean_path: "/project/pedramh/AMIP/normalize_mean.nc"
-    std_path: "/project/pedramh/AMIP/normalize_std.nc"
+    mean_path: "/home/anthonyz/amip/normalize_mean.nc"
+    std_path: "/home/anthonyz/amip/normalize_std.nc"
     forecast_lead_times: [1] 
     autoencoder: True
 
