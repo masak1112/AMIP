@@ -9,7 +9,7 @@ model:
             out_channels: 151 
             dim: 1024
             num_heads: 16
-            num_blocks: 16
+            num_blocks: 20
             patch_size: 4
             nlat: 180
             nlon: 360
