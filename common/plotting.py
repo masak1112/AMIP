@@ -131,7 +131,7 @@ def plot_ssr(ssr, title, t=120, save_path=None):
     plt.savefig(save_path)
     plt.close()
 
-def plot_spectrum(pred, target, path, num_t = 5):
+def plot_spectrum(pred, target, path, num_t = 4):
     # pred and target in shape (t, nlat, nlon)
     if pred.shape[0] == 1: # assume t is trivial
         pred = pred.squeeze()
@@ -155,9 +155,15 @@ def plot_spectrum(pred, target, path, num_t = 5):
         plt.close()
     else:
         t_total = pred.shape[0]
-        dt = t_total // num_t
-        pred = pred[::dt]
-        target = target[::dt]
+
+        dt = 0
+        if num_t != 1:
+            dt = t_total // num_t
+            if dt == 0:
+                num_t = t_total # since t_total < num_t
+                dt = 1
+            pred = pred[::dt]
+            target = target[::dt]
 
         nlat = pred.shape[1]
         nlon = pred.shape[2]

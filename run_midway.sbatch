@@ -19,6 +19,7 @@ conda activate /project/pedramh/ayz/envs/torch2
 echo nvidia-smi
 
 export NUM_TASKS_PER_NODE=$(nvidia-smi -L | wc -l)
+export NCCL_P2P_DISABLE=1
 
 echo "NUM_OF_NODES= ${NNODES} NUM_TASKS_PER_NODE= ${NUM_TASKS_PER_NODE} WORLD_SIZE= ${WORLD_SIZE}"
 
