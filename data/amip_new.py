@@ -302,6 +302,8 @@ class GetDataset(Dataset):
 
         if self.epsilon_factor > 0.:
             torch.manual_seed(0)
+            
+        self.print_info()
 
     def print_info(self):
         print(f"Dataset info:")
