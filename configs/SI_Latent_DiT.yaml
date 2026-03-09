@@ -7,8 +7,8 @@ model:
             out_channels: 151 # 5 + 15 + 26*6 = 145
             dim: 1024
             num_heads: 8
-            num_blocks: 8
-            patch_size: 4
+            num_blocks: 16
+            patch_size: 2
             scalar_dim: 1
             nlat: 45
             nlon: 90
