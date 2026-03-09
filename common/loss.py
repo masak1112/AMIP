@@ -71,7 +71,7 @@ class WeightedLoss(nn.Module):
                 lat_end = (latitude_resolution-1)*(360/longitude_resolution) / 2
                 latitude = np.linspace(-lat_end, lat_end, latitude_resolution)
                 weights = _weight_for_latitude_vector_without_poles(latitude)
-            weights = torch.from_numpy(weights)
+            weights = torch.tensor(weights)
             latitude_weight = weights / weights.mean()
         else:
             weights = torch.ones(latitude_resolution)   # all latitudes weight the same
@@ -157,7 +157,7 @@ class LatitudeWeightedMSE(nn.Module):
         else:
             lat_weight = _weight_for_latitude_vector_with_poles(np.linspace(-90, 90, nlat))
 
-        lat_weight = torch.from_numpy(lat_weight)
+        lat_weight = torch.tensor(lat_weight)
         lat_weight = lat_weight / lat_weight.mean()
         self.register_buffer('lat_weight', lat_weight)
 
@@ -184,7 +184,7 @@ def latitude_weighted_rmse(pred,
     else:
         lat_weight = _weight_for_latitude_vector_with_poles(np.linspace(-90, 90, nlat))
 
-    lat_weight = torch.from_numpy(lat_weight).to(target.device)
+    lat_weight = torch.tensor(lat_weight).to(target.device)
     lat_weight = lat_weight / lat_weight.mean()
     if with_time:
         if len(pred.shape) == 5:
@@ -211,7 +211,7 @@ def latitude_weighted_l1(pred, target):
     # directly infer latitude from target: b t nlat nlon or b t nlat nlon l
     nlat = target.shape[2]
     lat_weight = _weight_for_latitude_vector_with_poles(np.linspace(-90, 90, nlat))
-    lat_weight = torch.from_numpy(lat_weight).to(target.device)
+    lat_weight = torch.tensor(lat_weight).to(target.device)
     lat_weight = lat_weight / lat_weight.mean()
     if len(pred.shape) == 5:
         lat_weight = lat_weight.view(1, 1, nlat, 1, 1)
@@ -260,7 +260,7 @@ class FairCRPSLoss(nn.Module):
                 lat_end = (latitude_resolution - 1) * (360 / longitude_resolution) / 2
                 latitude = np.linspace(-lat_end, lat_end, latitude_resolution)
                 weights = _weight_for_latitude_vector_without_poles(latitude)
-            weights = torch.from_numpy(weights)
+            weights = torch.tensor(weights)
             latitude_weight = weights / weights.mean()
         else:
             weights = torch.ones(latitude_resolution)
