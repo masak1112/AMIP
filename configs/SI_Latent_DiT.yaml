@@ -89,10 +89,10 @@ data:
 
 training:
     seed: 42
-    devices: 4
+    devices: 1
     accelerator: gpu
-    strategy: ddp
-    precision: 16-mixed
+    strategy: auto
+    precision: 32-true
     check_val_every_n_epoch: 2
     log_every_n_steps: 10
     max_epochs: 50
