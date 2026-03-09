@@ -135,8 +135,8 @@ class AutoencoderModule(L.LightningModule):
 
         t2m_pred = pred_feat_dict['2m_temperature'][0].cpu() #b h w -> h w 
         t2m_target = target_feat_dict['2m_temperature'][0].cpu()
-        pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu()
-        pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu()
+        pr_6h_pred = pred_feat_dict['PRATEsfc_24h'][0].cpu()
+        pr_6h_target = target_feat_dict['PRATEsfc_24h'][0].cpu()
 
         z500_pred = pred_feat_dict['geopotential'][0, -10, ...].cpu() # b l h w -> h w
         z500_target = target_feat_dict['geopotential'][0, -10, ...].cpu()
@@ -196,7 +196,7 @@ class AutoencoderModule(L.LightningModule):
     def log_losses(self, loss_dict):
         # calculate the mean loss across batch, shape b for each key, b l for multilevel keys
         t2m_loss = loss_dict['2m_temperature'].mean(0) # surface temp, mean across batch dim
-        pr_6h_loss = loss_dict['PRATEsfc'].mean(0) # 6-hour accumulated PRATEsfc
+        pr_6h_loss = loss_dict['PRATEsfc_24h'].mean(0) # 6-hour accumulated PRATEsfc
         z500_loss = loss_dict['geopotential'][..., 10].mean(0) # geopotential at level=10
         u250_loss = loss_dict['u_component_of_wind'][..., 13].mean(0) # u wind at level=13
         t850_loss = loss_dict['temperature'][..., 6].mean(0) # temp at level=6

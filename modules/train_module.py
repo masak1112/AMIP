@@ -141,7 +141,7 @@ class TrainModule(L.LightningModule):
         loss_dict = {}
         t_plot = [0, 2, 4, 9] # 1day, 3day, 5day, 10day
         i_plot = 0
-        plot_keys = ['2m_temperature', 'geopotential', 'PRATEsfc', 'u_component_of_wind', 'temperature', 'specific_total_water']
+        plot_keys = ['2m_temperature', 'geopotential', 'PRATEsfc_24h', 'u_component_of_wind', 'temperature', 'specific_total_water']
         # init plot_dict
         pred_feat_dict = {}
         target_feat_dict = {}
@@ -258,13 +258,13 @@ class TrainModule(L.LightningModule):
 
         t2m_pred = pred_feat_dict['2m_temperature'][0].cpu() #b t h w -> t h w 
         t2m_target = target_feat_dict['2m_temperature'][0].cpu()
-        pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu()
-        pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu()
+        pr_6h_pred = pred_feat_dict['PRATEsfc_24h'][0].cpu()
+        pr_6h_target = target_feat_dict['PRATEsfc_24h'][0].cpu()
 
         z500_pred = pred_feat_dict['geopotential'][0].cpu() # b t h w -> t h w
         z500_target = target_feat_dict['geopotential'][0].cpu()
-        pr_6h_pred = pred_feat_dict['PRATEsfc'][0].cpu()
-        pr_6h_target = target_feat_dict['PRATEsfc'][0].cpu()
+        pr_6h_pred = pred_feat_dict['PRATEsfc_24h'][0].cpu()
+        pr_6h_target = target_feat_dict['PRATEsfc_24h'][0].cpu()
         u250_pred = pred_feat_dict['u_component_of_wind'][0].cpu()
         u250_target = target_feat_dict['u_component_of_wind'][0].cpu()
         t850_pred = pred_feat_dict['temperature'][0].cpu()
@@ -313,7 +313,7 @@ class TrainModule(L.LightningModule):
     def log_losses(self, loss_dict):
         # calculate the mean loss across batch, shape b t for each key, b t l for multilevel keys
         t2m_loss = loss_dict['2m_temperature'].mean(0) # surface temp, mean across batch dim
-        pr_6h_loss = loss_dict['PRATEsfc'].mean(0) # 6-hour accumulated PRATEsfc
+        pr_6h_loss = loss_dict['PRATEsfc_24h'].mean(0) # 6-hour accumulated PRATEsfc
         z500_loss = loss_dict['geopotential'][..., -10].mean(0) # geopotential at level=10
         u250_loss = loss_dict['u_component_of_wind'][..., -13].mean(0) # u wind at level=13
         t850_loss = loss_dict['temperature'][..., -6].mean(0) # temp at level=6
