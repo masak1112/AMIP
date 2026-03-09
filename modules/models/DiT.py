@@ -31,7 +31,6 @@ class DiTBlock(nn.Module):
         self.norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         self.qkv = nn.Linear(dim, 3 * dim, bias=False)
         self.attn_out = nn.Linear(dim, dim)
-        self.scale = dim_head ** -0.5
 
         # Feedforward
         self.norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
@@ -80,9 +79,7 @@ class DiTBlock(nn.Module):
         q = apply_2d_rotary_pos_emb(q, rope_cos_lat, rope_sin_lat, rope_cos_lon, rope_sin_lon)
         k = apply_2d_rotary_pos_emb(k, rope_cos_lat, rope_sin_lat, rope_cos_lon, rope_sin_lon)
 
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1) # [b, heads, n, n]
-        h = (attn @ v).transpose(1, 2).reshape(b, n, c) # [b, n, dim]
+        h = F.scaled_dot_product_attention(q, k, v).transpose(1, 2).reshape(b, n, c) # [b, n, dim]
         h = self.attn_out(h) # [b, n, dim]
 
         x = x + gate_msa * h

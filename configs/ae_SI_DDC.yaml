@@ -89,7 +89,7 @@ training:
     max_epochs: 50
     ema_decay: 0.99
     num_sanity_val_steps: 1
-    log_dir: /project/pedramh/ayz/AMIP_logs
+    log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip
     wandb_mode: online
     checkpoint: null
