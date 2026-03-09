@@ -7,9 +7,9 @@ model:
         decoder:
             in_channels: 302
             out_channels: 151 
-            dim: 768
-            num_heads: 8
-            num_blocks: 12
+            dim: 1024
+            num_heads: 16
+            num_blocks: 16
             patch_size: 4
             nlat: 180
             nlon: 360
@@ -80,9 +80,9 @@ data:
 
 training:
     seed: 42
-    devices: 1
+    devices: 4
     accelerator: gpu
-    strategy: auto
+    strategy: ddp
     precision: 32-true
     check_val_every_n_epoch: 1
     log_every_n_steps: 10
