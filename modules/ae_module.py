@@ -89,6 +89,7 @@ class AutoencoderModule(L.LightningModule):
                                                 diagnostic_pred, diagnostic_data)
         
         self.log_losses(loss_dict)
+        self.save_predictions(pred_dict, data_dict)
         
         #if batch_idx == 0: # only plot 1st batch
         #    if not self.ddp or self.global_rank == 0: # only run plotting on one gpu
@@ -130,7 +131,10 @@ class AutoencoderModule(L.LightningModule):
         
         return loss_dict, pred_feat_dict, target_feat_dict
 
-    
+    def save_predictions(self, pred_feat_dict, target_feat_dict):
+        torch.save(pred_feat_dict, f'{self.log_dir}predictions_epoch_{self.current_epoch}.pt')
+        torch.save(target_feat_dict, f'{self.log_dir}targets_epoch_{self.current_epoch}.pt')
+
     def plot_predictions(self, pred_feat_dict, target_feat_dict):
 
         t2m_pred = pred_feat_dict['2m_temperature'][0].cpu() #b h w -> h w 
