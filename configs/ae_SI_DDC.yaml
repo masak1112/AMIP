@@ -80,7 +80,7 @@ data:
 
 training:
     seed: 42
-    devices: 1
+    devices: 4
     accelerator: gpu
     strategy: auto
     precision: 16-mixed

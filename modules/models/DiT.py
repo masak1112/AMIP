@@ -5,14 +5,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
-from modules.layers.positional_encoding import TimestepEmbedder
-from modules.layers.spherical_harmonics import SphericalHarmonicsPE
+from modules.layers.positional_encoding import (
+    TimestepEmbedder,
+    RotaryEmbedding,
+    apply_2d_rotary_pos_emb,
+)
 from modules.layers.unpatchify import SubPixelConvICNR_2D, Unpatchify
 from modules.layers.patchify import PatchEmbed
 
 class DiTBlock(nn.Module):
     """
-    Vanilla self-attention transformer block with AdaLN-Zero timestep conditioning.
+    Vanilla self-attention transformer block with AdaLN-Zero timestep conditioning
+    and 2D Rotary Position Embedding (RoPE).
 
     Input/output shape: [b, n, dim] where n = (nlat//p) * (nlon//p).
     """
@@ -49,11 +53,15 @@ class DiTBlock(nn.Module):
         nn.init.constant_(self.adaLN_modulation[-1].weight, 0)
         nn.init.constant_(self.adaLN_modulation[-1].bias, 0)
 
-    def forward(self, x, t_emb):
+    def forward(self, x, t_emb, rope_cos_lat, rope_sin_lat, rope_cos_lon, rope_sin_lon):
         """
         Args:
             x: [b, n, dim]
             t_emb: [b, dim] timestep embedding
+            rope_cos_lat: [1, n, dim_head//2] cosine freqs for latitude
+            rope_sin_lat: [1, n, dim_head//2] sine freqs for latitude
+            rope_cos_lon: [1, n, dim_head//2] cosine freqs for longitude
+            rope_sin_lon: [1, n, dim_head//2] sine freqs for longitude
         """
         # AdaLN modulation parameters
         mod = self.adaLN_modulation(t_emb).unsqueeze(1)  # [b, 1, 6*dim]
@@ -67,6 +75,10 @@ class DiTBlock(nn.Module):
         qkv = self.qkv(h).reshape(b, n, 3, self.num_heads, c // self.num_heads)
         qkv = qkv.permute(2, 0, 3, 1, 4)  # [3, b, heads, n, dim_head]
         q, k, v = qkv.unbind(0)
+
+        # Apply 2D RoPE to q and k
+        q = apply_2d_rotary_pos_emb(q, rope_cos_lat, rope_sin_lat, rope_cos_lon, rope_sin_lon)
+        k = apply_2d_rotary_pos_emb(k, rope_cos_lat, rope_sin_lat, rope_cos_lon, rope_sin_lon)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1) # [b, heads, n, n]
@@ -89,12 +101,9 @@ class DiT(nn.Module):
     Patchified Diffusion Transformer for stochastic interpolant velocity prediction.
 
     Architecture:
-    - PatchEmbed for main input:
-        - use_history=True:  (2*in_channels) — I_t concat with downsampled current state
-        - use_history=False: (in_channels)   — I_t only, with cond via cross-attention
-    - Separate conditioning encoder for cross-attention context
-    - Spherical harmonic positional encoding
-    - N blocks of: DiTBlock (vanilla self-attn with AdaLN) + CrossAttentionBlock
+    - PatchEmbed for main input
+    - 2D Rotary Position Embedding (RoPE) on lat/lon patch grid
+    - N blocks of DiTBlock (self-attn with AdaLN + RoPE)
     - Unpatchify: dim -> out_channels @ nlat x nlon
     - Zero-initialized output projection
     """
@@ -137,23 +146,17 @@ class DiT(nn.Module):
             in_chans=in_channels,
             hidden_size=dim,
             flatten=False)
-    
-        # Spherical harmonic positional encoding
-        l_max = 20
-        self.pe_embed = SphericalHarmonicsPE(l_max, dim, dim, use_mlp=True)
-        self.pe2patch = PatchEmbed(
-            patch_size=patch_size,
-            in_chans=dim,
-            hidden_size=dim,
-            flatten=False)
-        
-        lat_init, lon_init = self.get_grid(self.nlat_pad, self.nlon_pad, torch.device('cpu'))
-        self.pe_embed.cache_precomputed_sph_harmonics(lat_init + math.pi / 2, lon_init - math.pi)  
+
+        # 2D RoPE: one RotaryEmbedding per spatial axis
+        # Each axis gets half the head dimension
+        dim_head = dim // num_heads
+        self.rope_lat = RotaryEmbedding(dim_head // 2)
+        self.rope_lon = RotaryEmbedding(dim_head // 2)
 
         # Timestep embedding
         self.t_embedder = TimestepEmbedder(dim, num_conds = scalar_dim)
 
-        # Transformer blocks: vanilla self-attention + cross-attention
+        # Transformer blocks
         sa_blocks = []
         for _ in range(num_blocks):
             sa_blocks.append(DiTBlock(dim, num_heads, mlp_ratio=4, dropout=dropout))
@@ -213,6 +216,44 @@ class DiT(nn.Module):
         lon = torch.linspace(0, 2 * math.pi - (2 * math.pi / nlon), nlon).to(device)
         return lat, lon
 
+    @torch.no_grad()
+    def compute_rope_freqs(self, device):
+        """Compute 2D RoPE cos/sin frequencies for the patch grid.
+
+        Uses physical lat/lon coordinates at patch centers so the model
+        encodes actual geographic position rather than integer indices.
+
+        Returns cached buffers after first call.
+        """
+        if hasattr(self, '_rope_cos_lat') and self._rope_cos_lat.device == device:
+            return (self._rope_cos_lat, self._rope_sin_lat,
+                    self._rope_cos_lon, self._rope_sin_lon)
+
+        # Get physical coordinates at padded resolution
+        lat, lon = self.get_grid(self.nlat_pad, self.nlon_pad, device)
+
+        # Average pool to patch centers: [nlat_pad] -> [grid_x], [nlon_pad] -> [grid_y]
+        lat_patches = lat.reshape(self.grid_x, self.patch_size).mean(dim=1)  # [grid_x]
+        lon_patches = lon.reshape(self.grid_y, self.patch_size).mean(dim=1)  # [grid_y]
+
+        # Create 2D grid of patch positions and flatten to sequence
+        # lat_grid[i,j] = lat of patch (i,j), lon_grid[i,j] = lon of patch (i,j)
+        lat_grid, lon_grid = torch.meshgrid(lat_patches, lon_patches, indexing='ij')  # [grid_x, grid_y]
+        lat_seq = lat_grid.reshape(-1)  # [n]
+        lon_seq = lon_grid.reshape(-1)  # [n]
+
+        # Compute RoPE frequencies: [n, dim_head//2] -> cos/sin each [1, n, dim_head//2]
+        freqs_lat = self.rope_lat(lat_seq.unsqueeze(0))  # [1, n, dim_head//2]
+        freqs_lon = self.rope_lon(lon_seq.unsqueeze(0))  # [1, n, dim_head//2]
+
+        self._rope_cos_lat = freqs_lat.cos()
+        self._rope_sin_lat = freqs_lat.sin()
+        self._rope_cos_lon = freqs_lon.cos()
+        self._rope_sin_lon = freqs_lon.sin()
+
+        return (self._rope_cos_lat, self._rope_sin_lat,
+                self._rope_cos_lon, self._rope_sin_lon)
+
     def forward(self, x_noised, cond, t):
         """
         Args:
@@ -233,24 +274,17 @@ class DiT(nn.Module):
             # F.pad order: (left, right, top, bottom) for last two dims
             x_input = F.pad(x_input, (0, self.pad_lon, 0, self.pad_lat), mode='reflect')
 
-        # Get grid coordinates for positional encoding at padded resolution
-        lat, lon = self.get_grid(self.nlat_pad, self.nlon_pad, x_input.device)
-
         # Convert channel-first to channel-last for PatchEmbed: [b, c, h, w] -> [b, h, w, c]
         x_nhwc = x_input.permute(0, 2, 3, 1)
 
         # Patchify: [b, h, w, c] -> [b, h//p, w//p, dim]
         x = self.patch_embed_main(x_nhwc)
 
-        # Positional encoding
-        sphere_pe = self.pe_embed(lat + math.pi / 2, lon - math.pi)
-        sphere_pe = sphere_pe.expand(batch_size, -1, -1, -1)  # [b, nlat_pad, nlon_pad, dim]
-        sphere_pe = self.pe2patch(sphere_pe)  # [b, nlat_pad//p, nlon_pad//p, dim]
-
-        x = x + sphere_pe
-
         # Flatten spatial dims for sequence processing: [b, h//p, w//p, dim] -> [b, n, dim]
         x = rearrange(x, 'b ny nx c -> b (ny nx) c')
+
+        # Compute 2D RoPE frequencies for patch grid
+        rope_cos_lat, rope_sin_lat, rope_cos_lon, rope_sin_lon = self.compute_rope_freqs(x.device)
 
         # Timestep embedding
         if len(t.shape) == 1:
@@ -258,9 +292,9 @@ class DiT(nn.Module):
 
         t_emb = self.t_embedder(t)  # [b, dim]
 
-        # Transformer blocks: vanilla self-attention + cross-attention with history
+        # Transformer blocks with RoPE
         for sa_block in self.sa_blocks:
-            x = sa_block(x, t_emb)        # self-attention with AdaLN
+            x = sa_block(x, t_emb, rope_cos_lat, rope_sin_lat, rope_cos_lon, rope_sin_lon)
 
         # Unpatchify: [b, n, dim] -> [b, nlat, nlon, dim]
         x = self.unpatchify_layer(x, t_emb)

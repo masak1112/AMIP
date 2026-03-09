@@ -303,6 +303,20 @@ class GetDataset(Dataset):
         if self.epsilon_factor > 0.:
             torch.manual_seed(0)
 
+    def print_info(self):
+        print(f"Dataset info:")
+        print(f"  Date range: {self.start_date} to {self.end_date} ({len(self.dates)} total hours)")
+        print(f"  Number of inference samples: {len(self.inference_idxs)}")
+        print(f"  Upper-air variables: {self.upper_air_variables}")
+        print(f"  Surface variables: {self.surface_variables}")
+        print(f"  Diagnostic variables: {self.diagnostic_variables}")
+        print(f"  Varying boundary variables: {self.varying_boundary_variables}")
+        print(f"  Constant boundary variables: {self.constant_boundary_variables}")
+        print(f"  Pressure levels: {self.levels}")
+        print(f"  Horizontal resolution: {self.params['horizontal_resolution']}")
+        print(f"  Forecast lead times (hours): {self.params['forecast_lead_times']}")
+        print(f"  Diagnostic input: {self.diagnostic_input}")
+
     # ------------------------------------------------------------------
     # Variable list bookkeeping
     # ------------------------------------------------------------------
