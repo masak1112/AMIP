@@ -562,42 +562,51 @@ class GetDataset(Dataset):
 
     def surface_transform(self, data):
         """Normalize surface fields: ``(x - mean) / std``."""
-        return (data - self.surface_mean.reshape(-1, 1, 1)) / self.surface_std.reshape(-1, 1, 1)
+        device=data.device
+        return (data - self.surface_mean.reshape(-1, 1, 1).to(device)) / self.surface_std.reshape(-1, 1, 1).to(device)
 
     def diagnostic_transform(self, data):
         """Normalize diagnostic fields."""
-        return (data - self.diagnostic_mean.reshape(-1, 1, 1)) / self.diagnostic_std.reshape(-1, 1, 1)
+        device=data.device
+        return (data - self.diagnostic_mean.reshape(-1, 1, 1).to(device)) / self.diagnostic_std.reshape(-1, 1, 1).to(device)
 
     def boundary_transform(self, data):
         """Normalize varying boundary fields."""
-        return (data - self.varying_boundary_mean.reshape(-1, 1, 1)) / self.varying_boundary_std.reshape(-1, 1, 1)
+        device=data.device
+        return (data - self.varying_boundary_mean.reshape(-1, 1, 1).to(device)) / self.varying_boundary_std.reshape(-1, 1, 1).to(device)
 
     def upper_air_transform(self, data):
         """Normalize upper-air fields (shape: ``(n_vars, n_levels, nlat, nlon)``)."""
         n = len(self.upper_air_variables)
-        return (data - self.upper_air_mean.reshape(n, -1, 1, 1)) / self.upper_air_std.reshape(n, -1, 1, 1)
+        device=data.device
+        return (data - self.upper_air_mean.reshape(n, -1, 1, 1).to(device)) / self.upper_air_std.reshape(n, -1, 1, 1).to(device)
 
     def surface_inv_transform(self, data):
         """Denormalize surface fields (expects leading batch dim)."""
-        return data * self.surface_std.reshape(1, -1, 1, 1) + self.surface_mean.reshape(1, -1, 1, 1)
+        device=data.device
+        return data * self.surface_std.reshape(1, -1, 1, 1).to(device) + self.surface_mean.reshape(1, -1, 1, 1).to(device)
 
     def upper_air_inv_transform(self, data):
         """Denormalize upper-air fields (expects leading batch dim)."""
         n = len(self.upper_air_variables)
-        return data * self.upper_air_std.reshape(1, n, -1, 1, 1) + self.upper_air_mean.reshape(1, n, -1, 1, 1)
+        device=data.device
+        return data * self.upper_air_std.reshape(1, n, -1, 1, 1).to(device) + self.upper_air_mean.reshape(1, n, -1, 1, 1).to(device)
 
     def diagnostic_inv_transform(self, data):
         """Denormalize diagnostic fields (expects leading batch dim)."""
-        return data * self.diagnostic_std.reshape(1, -1, 1, 1) + self.diagnostic_mean.reshape(1, -1, 1, 1)
+        device=data.device
+        return data * self.diagnostic_std.reshape(1, -1, 1, 1).to(device) + self.diagnostic_mean.reshape(1, -1, 1, 1).to(device)
 
     def surface_delta_transform(self, data):
         """Normalize surface increments (zero-mean assumed)."""
-        return data / self.surface_delta_std.reshape(-1, 1, 1)
+        device=data.device
+        return data / self.surface_delta_std.reshape(-1, 1, 1).to(device)
 
     def upper_air_delta_transform(self, data):
         """Normalize upper-air increments (zero-mean assumed)."""
         n = len(self.upper_air_variables)
-        return data / self.upper_air_delta_std.reshape(n, -1, 1, 1)
+        device=data.device
+        return data / self.upper_air_delta_std.reshape(n, -1, 1, 1).to(device)
 
     # ------------------------------------------------------------------
     # Dataset interface
