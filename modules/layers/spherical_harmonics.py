@@ -249,7 +249,7 @@ class SphericalHarmonicsPE(torch.nn.Module):
     def forward(self, lat, lon, latlon=None):
         if not hasattr(self, 'sph_harmonics'):
             self.cache_precomputed_sph_harmonics(lat, lon, latlon)
-        sph_feat = self.sph_harmonics.detach().clone()  # (nlat, nlon, (l_max+1)^2) or (nface, nside, nside, (l_max+1)^2)
+        sph_feat = self.sph_harmonics.detach().clone().to(self.basis_weight.dtype)  # (nlat, nlon, (l_max+1)^2) or (nface, nside, nside, (l_max+1)^2)
         if self.hpx:
             sph_feat = torch.einsum('ijkd,dc->ijkc', sph_feat, self.basis_weight)  # (nface, nside, nside, dim)
         else:
