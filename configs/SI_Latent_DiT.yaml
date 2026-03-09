@@ -5,16 +5,16 @@ model:
         model:
             in_channels: 308 # 2*176 + 2 + 3
             out_channels: 151 # 5 + 15 + 26*6 = 145
-            dim: 1024
+            dim: 768
             num_heads: 16
-            num_blocks: 16
+            num_blocks: 12
             patch_size: 2
             scalar_dim: 1
             nlat: 45
             nlon: 90
         scheduler:
-            num_refinement_steps: 10
-            num_train_steps: 21
+            num_refinement_steps: 5
+            num_train_steps: 11
             integrator: em
             sigma_coef: 0.5
         encoder:
