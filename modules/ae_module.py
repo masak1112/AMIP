@@ -89,7 +89,10 @@ class AutoencoderModule(L.LightningModule):
                                                 diagnostic_pred, diagnostic_data)
         
         self.log_losses(loss_dict)
-        self.save_predictions(pred_dict, data_dict)
+
+        if batch_idx == 0: # only plot 1st batch
+            if not self.ddp or self.global_rank == 0: # only run plotting on one gpu
+                self.save_predictions(pred_dict, data_dict)
         
         #if batch_idx == 0: # only plot 1st batch
         #    if not self.ddp or self.global_rank == 0: # only run plotting on one gpu
