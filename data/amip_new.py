@@ -661,9 +661,9 @@ class GetDataset(Dataset):
 
         if self.autoencoder:
             if self.diagnostic_input:
-                return surface_t, upper_air_t, diagnostic_t
+                return self.surface_transform(surface_t), self.upper_air_transform(upper_air_t), self.diagnostic_transform(diagnostic_t)
             else:
-                return surface_t, upper_air_t
+                return self.surface_transform(surface_t), self.upper_air_transform(upper_air_t)
 
         data_out = self._get_data(end_time, out=True)
 
