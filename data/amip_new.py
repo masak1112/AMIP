@@ -91,7 +91,8 @@ def get_data_loader(params,
                     year_end: int, 
                     num_inferences: int = 0,
                     train: bool = True, 
-                    validate: bool = False):
+                    validate: bool = False,
+                    shuffle: bool = True):
     """Create a DataLoader (and sampler) for training or evaluation.
 
     Parameters
@@ -125,7 +126,7 @@ def get_data_loader(params,
         dataset,
         batch_size=int(params["batch_size"]),
         num_workers=params["num_data_workers"],
-        shuffle=train,
+        shuffle=shuffle,
         drop_last=True,
         pin_memory=torch.cuda.is_available(),
     )
