@@ -10,7 +10,7 @@ model:
             dim: 1024
             num_heads: 16
             num_blocks: 20
-            patch_size: 4
+            patch_size: 2
             nlat: 180
             nlon: 360
             scalar_dim: 1 # only interpolant timestep
@@ -75,7 +75,7 @@ data:
     val_num_inferences: 0 # use entire val set
     diagnostic_input: True # specific to AE model, we need diagnostic at time t, since we are training a downscaler
 
-    batch_size: 1
+    batch_size: 2
     num_data_workers: 1 
 
 training:
