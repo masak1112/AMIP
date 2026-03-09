@@ -25,8 +25,8 @@ def plot_reconstruction(y_pred, y, filename, cmap='twilight_shifted'):
     vmin = y.min()
     vmax = y.max()
 
-    im0 = axs[0].imshow(np.array(y), vmin=vmin, vmax=vmax,cmap=cmap, origin='lower')
-    im1 = axs[1].imshow(np.array(y_pred), vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
+    im0 = axs[0].imshow(y.numpy(), vmin=vmin, vmax=vmax,cmap=cmap, origin='lower')
+    im1 = axs[1].imshow(y_pred.numpy(), vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
 
     # set the title
     axs[0].set_title(f"True")
@@ -61,15 +61,15 @@ def plot_result(y_pred, y, filename, num_t=5, cmap='twilight_shifted'):
 
     for i in range(num_t):
         if num_t == 1:
-            im0 = axs[0].imshow(np.array(y[i]), vmin=vmin, vmax=vmax,cmap=cmap, origin='lower')
-            im1 = axs[1].imshow(np.array(y_pred[i]), vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
+            im0 = axs[0].imshow(y[i].numpy(), vmin=vmin, vmax=vmax,cmap=cmap, origin='lower')
+            im1 = axs[1].imshow(y_pred[i].numpy(), vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
 
             # set the title
             axs[0].set_title(f"True t={(i+1)*dt}")
             axs[1].set_title(f"Pred t={(i+1)*dt}")
         else:
-            im0 = axs[0][i].imshow(np.array(y[i]), vmin=vmin, vmax=vmax,cmap=cmap, origin='lower')
-            im1 = axs[1][i].imshow(np.array(y_pred[i]), vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
+            im0 = axs[0][i].imshow(y[i].numpy(), vmin=vmin, vmax=vmax,cmap=cmap, origin='lower')
+            im1 = axs[1][i].imshow(y_pred[i].numpy(), vmin=vmin, vmax=vmax, cmap=cmap, origin='lower')
 
             # set the title
             axs[0][i].set_title(f"True t={(i+1)*dt}")
@@ -143,8 +143,8 @@ def plot_spectrum(pred, target, path, num_t = 5):
         k_x_target, power_spectrum_target = zonal_averaged_power_spectrum(target, nlon=nlon, nlat=nlat)
 
         fig, ax = plt.subplots(1, 1, figsize=(12, 6))
-        ax.plot(np.array(k_x_pred), np.array(power_spectrum_pred), label='Predicted', color='blue')
-        ax.plot(np.array(k_x_target), np.array(power_spectrum_target), label='Target', color='orange')
+        ax.plot(k_x_pred.numpy(), power_spectrum_pred.numpy(), label='Predicted', color='blue')
+        ax.plot(k_x_target.numpy(), power_spectrum_target.numpy(), label='Target', color='orange')
         ax.set_xlabel('Zonal wavenumber')
         ax.set_ylabel('Power Spectrum')
         ax.set_xscale('log')
@@ -168,8 +168,8 @@ def plot_spectrum(pred, target, path, num_t = 5):
             k_x_pred, power_spectrum_pred = zonal_averaged_power_spectrum(pred[i], nlon=nlon, nlat=nlat)
             k_x_target, power_spectrum_target = zonal_averaged_power_spectrum(target[i], nlon=nlon, nlat=nlat)
 
-            axs[i].plot(np.array(k_x_pred), np.array(power_spectrum_pred), label='Predicted', color='blue')
-            axs[i].plot(np.array(k_x_target), np.array(power_spectrum_target), label='Target', color='orange')
+            axs[i].plot(k_x_pred.numpy(), power_spectrum_pred.numpy(), label='Predicted', color='blue')
+            axs[i].plot(k_x_target.numpy(), power_spectrum_target.numpy(), label='Target', color='orange')
             axs[i].set_xlabel('Zonal wavenumber')
             axs[i].set_ylabel('Power Spectrum')
             axs[i].set_xscale('log')
