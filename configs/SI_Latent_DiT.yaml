@@ -7,7 +7,7 @@ model:
             out_channels: 151 # 5 + 15 + 26*6 = 145
             dim: 1024
             num_heads: 8
-            num_blocks: 16
+            num_blocks: 20
             patch_size: 2
             scalar_dim: 1
             nlat: 45
@@ -84,7 +84,7 @@ data:
     val_num_inferences: 100 # only use 100 snapshots for validation
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
-    batch_size: 1
+    batch_size: 2
     num_data_workers: 1 
 
 training:
@@ -102,5 +102,5 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: null
-    accumulate_grad_batches: 4
+    accumulate_grad_batches: 2
     optimizer: adam
