@@ -5,9 +5,9 @@ model:
         model:
             in_channels: 308 # 2*176 + 2 + 3
             out_channels: 151 # 5 + 15 + 26*6 = 145
-            dim: 768
-            num_heads: 16
-            num_blocks: 12
+            dim: 512
+            num_heads: 8
+            num_blocks: 8
             patch_size: 4
             scalar_dim: 1
             nlat: 45
