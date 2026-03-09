@@ -28,4 +28,4 @@ echo "NUM_OF_NODES= ${NNODES} NUM_TASKS_PER_NODE= ${NUM_TASKS_PER_NODE} WORLD_SI
 
 config_file=configs/ae_SI_DDC.yaml
 
-python train.py --config=$CONFIG
+python train.py --config=$config_file
