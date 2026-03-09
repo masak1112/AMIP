@@ -64,6 +64,7 @@ def main(args):
     config['training']["log_dir"] = path
 
     os.makedirs(path, exist_ok=True) 
+    print(f"Logging to: {path}")
     save_yaml(config, path + "config.yml")
 
     datamodule = ClimateDataModule(dataconfig=dataconfig)
