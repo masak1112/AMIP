@@ -302,7 +302,7 @@ class GetDataset(Dataset):
 
         if self.epsilon_factor > 0.:
             torch.manual_seed(0)
-            
+
         self.print_info()
 
     def print_info(self):
@@ -661,9 +661,9 @@ class GetDataset(Dataset):
 
         if self.autoencoder:
             if self.diagnostic_input:
-                return surface_t, upper_air_t
-            else:
                 return surface_t, upper_air_t, diagnostic_t
+            else:
+                return surface_t, upper_air_t
 
         data_out = self._get_data(end_time, out=True)
 
