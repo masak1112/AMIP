@@ -240,9 +240,13 @@ class GetDataset(Dataset):
         )
 
         # Constant boundary fields (e.g. land-sea mask, orography)
-        self.constant_boundary_data, self.land_mask = self._load_constant_boundary_data()
-        if torch.any(torch.isnan(self.constant_boundary_data)):
-            raise ValueError('Constant boundary data contains NaN values.')
+        if len(self.constant_boundary_variables) > 0:
+            self.constant_boundary_data, self.land_mask = self._load_constant_boundary_data()
+            if torch.any(torch.isnan(self.constant_boundary_data)):
+                raise ValueError('Constant boundary data contains NaN values.')
+            self.use_boundary = True
+        else:
+            self.use_boundary = False
 
         # Inference index selection
         max_inference_idx = (
@@ -286,11 +290,12 @@ class GetDataset(Dataset):
                 self.upper_air_variables,
             )
 
-        self.varying_boundary_mean, self.varying_boundary_std = self._load_mean_std(
-            mean_path,
-            std_path,
-            self.varying_boundary_variables, upper_air=False,
-        )
+        if self.use_boundary:
+            self.varying_boundary_mean, self.varying_boundary_std = self._load_mean_std(
+                mean_path,
+                std_path,
+                self.varying_boundary_variables, upper_air=False,
+            )
 
         if self.diagnostic_variables:
             self.diagnostic_mean, self.diagnostic_std = self._load_mean_std(
@@ -338,7 +343,9 @@ class GetDataset(Dataset):
         self.variable_list_out.extend(self.surface_variables)
         self.variable_list_in = self.variable_list_out.copy()
         self.variable_list_out.extend(self.diagnostic_variables)
-        self.variable_list_in.extend(self.varying_boundary_variables)
+
+        if self.use_boundary:
+            self.variable_list_in.extend(self.varying_boundary_variables)
 
         if self.diagnostic_input: # add diagnostic variables to input list if configured
             self.variable_list_in.extend(self.diagnostic_variables)
@@ -413,7 +420,16 @@ class GetDataset(Dataset):
                     return upper_air, surface, diagnostic, varying_boundary
                 else:
                     return upper_air, surface, varying_boundary
-            return upper_air, surface
+            else:
+                if self.diagnostic_input:
+                    n_diag = len(self.diagnostic_variables)
+                    diagnostic = torch.tensor(
+                        data_array[offset:offset + n_diag].reshape(n_diag, nlat, nlon)
+                    ).to(torch.float32)
+                    diagnostic = self._fill_mask(diagnostic, self.diagnostic_variables)
+                    return upper_air, surface, diagnostic
+                else:
+                    return upper_air, surface
 
     def _fill_mask(self, data, variables, optional_variables=None):
         """Replace NaN values with predefined fill values from ``self.mask_fill``.
@@ -667,7 +683,10 @@ class GetDataset(Dataset):
             else:
                 upper_air_t, surface_t, varying_boundary_data = self._reshape_and_mask_variables(data_in, out=False)
         else:
-            upper_air_t, surface_t = self._reshape_and_mask_variables(data_in, out=False)
+            if self.diagnostic_input:
+                upper_air_t, surface_t, diagnostic_t = self._reshape_and_mask_variables(data_in, out=False)
+            else:
+                upper_air_t, surface_t = self._reshape_and_mask_variables(data_in, out=False)
 
         if self.autoencoder:
             if self.diagnostic_input:
