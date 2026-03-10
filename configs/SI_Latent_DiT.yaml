@@ -89,7 +89,7 @@ data:
 
 training:
     seed: 42
-    devices: 8
+    devices: 4
     num_nodes: 2
     accelerator: gpu
     strategy: ddp
