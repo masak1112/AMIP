@@ -204,10 +204,10 @@ class AutoencoderModule(L.LightningModule):
         # calculate the mean loss across batch, shape b for each key, b l for multilevel keys
         t2m_loss = loss_dict['2m_temperature'].mean(0) # surface temp, mean across batch dim
         pr_6h_loss = loss_dict['PRATEsfc_24h'].mean(0) # 6-hour accumulated PRATEsfc
-        z500_loss = loss_dict['geopotential'][..., 10].mean(0) # geopotential at level=10
-        u250_loss = loss_dict['u_component_of_wind'][..., 13].mean(0) # u wind at level=13
-        t850_loss = loss_dict['temperature'][..., 6].mean(0) # temp at level=6
-        q850_loss = loss_dict['specific_total_water'][..., 6].mean(0) # specific humidity at level=6
+        z500_loss = loss_dict['geopotential'][..., -10].mean(0) # geopotential at level=10
+        u250_loss = loss_dict['u_component_of_wind'][..., -13].mean(0) # u wind at level=13
+        t850_loss = loss_dict['temperature'][..., -6].mean(0) # temp at level=6
+        q850_loss = loss_dict['specific_total_water'][..., -6].mean(0) # specific humidity at level=6
         
         self.log('val/t2m', t2m_loss.item(), on_step=False, on_epoch=True, sync_dist=self.ddp) 
         self.log('val/pr_6h', pr_6h_loss.item(), on_step=False, on_epoch=True, sync_dist=self.ddp)
