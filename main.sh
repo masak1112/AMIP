@@ -9,6 +9,6 @@
 module load conda
 conda activate torch
 
-CONFIG=configs/SI_Latent_DiT.yaml
+CONFIG=configs/SI_Latent_DiT_med.yaml
 
 python train.py --config=$CONFIG
