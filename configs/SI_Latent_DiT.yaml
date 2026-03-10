@@ -103,5 +103,5 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: null
-    accumulate_grad_batches: 2
+    accumulate_grad_batches: 1
     optimizer: adam
