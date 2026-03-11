@@ -84,7 +84,7 @@ data:
     val_num_inferences: 100 # only use 100 snapshots for validation
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
-    batch_size: 2
+    batch_size: 4
     num_data_workers: 1 
 
 training:
@@ -103,5 +103,5 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT__42_2026-03-10T17-04-23/last.ckpt
-    accumulate_grad_batches: 2
+    accumulate_grad_batches: 1
     optimizer: adam

@@ -17,7 +17,7 @@ def plot_loss(losses, filename, key=None):
     plt.savefig(filename, dpi=300)
     plt.close()
 
-def plot_reconstruction(y_pred, y, filename, cmap='twilight_shifted'):
+def plot_reconstruction(y_pred, y, filename=None, cmap='twilight_shifted'):
     # y in shape [h w], y_pred in shape [h w]
 
     fig, axs = plt.subplots(2, 1, figsize=(6, 6))
@@ -36,8 +36,11 @@ def plot_reconstruction(y_pred, y, filename, cmap='twilight_shifted'):
     cbar_ax = fig.add_axes([0.88, 0.15, 0.02, 0.7])
     fig.colorbar(im0, cax=cbar_ax)
     # save the figure
-    plt.savefig(filename, dpi=300)
-    plt.close()
+    if filename is not None:
+        plt.savefig(filename, dpi=300)
+        plt.close()
+    else:
+        plt.show()
 
 
 def plot_result(y_pred, y, filename, num_t=5, cmap='twilight_shifted'):
@@ -131,7 +134,7 @@ def plot_ssr(ssr, title, t=120, save_path=None):
     plt.savefig(save_path)
     plt.close()
 
-def plot_spectrum(pred, target, path, num_t = 4):
+def plot_spectrum(pred, target, path=None, num_t = 4):
     # pred and target in shape (t, nlat, nlon)
     if pred.shape[0] == 1: # assume t is trivial
         pred = pred.squeeze()
@@ -151,8 +154,6 @@ def plot_spectrum(pred, target, path, num_t = 4):
         ax.set_yscale('log')
         ax.set_title('Zonal Averaged Power Spectrum')
         ax.legend()
-        plt.savefig(path, dpi=300)
-        plt.close()
     else:
         t_total = pred.shape[0]
 
@@ -183,8 +184,11 @@ def plot_spectrum(pred, target, path, num_t = 4):
             axs[i].set_title(f'Zonal Averaged Power Spectrum at t={(i+1)*dt}')
             axs[i].legend()
 
+    if path is not None:
         plt.savefig(path, dpi=300)
         plt.close()
+    else:
+        plt.show()
 
 def zonal_averaged_power_spectrum(field,
                                   nlon=360,
