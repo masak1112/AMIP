@@ -102,6 +102,6 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT__42_2026-03-09T16-28-57/last.ckpt
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT__42_2026-03-10T17-04-23/last.ckpt
     accumulate_grad_batches: 2
     optimizer: adam
