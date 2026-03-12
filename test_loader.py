@@ -8,7 +8,7 @@ import os
 config=get_yaml("configs/ae_SI_DDC.yaml")
 datamodule = ClimateDataModule(config['data'])
 
-train_dataset = datamodule.train_dataset
+train_dataset = datamodule.val_dataset
 
 for i in tqdm(range(len(train_dataset))):
     data_datetime  = train_dataset.start_date + timedelta(hours=train_dataset.dates[i])
