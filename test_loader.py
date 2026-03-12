@@ -22,3 +22,4 @@ for i in tqdm(range(len(train_dataset))):
 
     if not os.path.exists(data_file_path):
         print(f"Data file {data_file_path} does not exist.")
+        break
