@@ -240,7 +240,7 @@ class GetDataset(Dataset):
         )
 
         # hacky fix for corrupted file: /project/pedramh/AMIP/h5/1982_0717.h5
-        del self.dates[5101]
+        self.dates = np.delete(self.dates, 5101)
 
         # Constant boundary fields (e.g. land-sea mask, orography)
         if len(self.constant_boundary_variables) > 0:
