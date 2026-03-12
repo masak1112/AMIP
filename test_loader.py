@@ -3,7 +3,6 @@ from data.datamodule import ClimateDataModule
 from tqdm import tqdm
 from datetime import timedelta
 from data.amip_new import get_out_path
-import os 
 import h5py
 
 config=get_yaml("configs/ae_SI_DDC.yaml")
@@ -26,5 +25,7 @@ for i in tqdm(range(len(train_dataset))):
         f.close()
     except Exception as e:
         print(f"Error opening data file {data_file_path}: {e}")
+        print(train_dataset.dates[i])
+        print(i)
         break
             
