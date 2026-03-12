@@ -4,7 +4,7 @@ from tqdm import tqdm
 from datetime import timedelta
 from data.amip_new import get_out_path
 
-config=get_yaml("ae_SI_DDC.yaml")
+config=get_yaml("configs/ae_SI_DDC.yaml")
 datamodule = ClimateDataModule(config['data'])
 
 train_dataset = datamodule.train_dataset
