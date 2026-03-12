@@ -242,7 +242,7 @@ class GetDataset(Dataset):
         # hacky fix for corrupted file: /project/pedramh/AMIP/h5/1982_0717.h5
         try:
             self.dates = np.delete(self.dates, 5101)
-        except:
+        except: # not in validation set (2012-2013)
             pass 
 
         # Constant boundary fields (e.g. land-sea mask, orography)
