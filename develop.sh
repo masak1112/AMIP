@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #PBS -N SI_Latent_DiT
-#PBS -l select=1:ncpus=64:ngpus=4:mem=500G
+#PBS -l select=1:ncpus=32:ngpus=4:mem=256G
 #PBS -q develop
 #PBS -l walltime=00:05:00
 #PBS -A UCHI0014
@@ -12,5 +12,3 @@ conda activate torch
 CONFIG=configs/SI_Latent_DiT.yaml
 
 python train.py --config=$CONFIG
-
-#qinteractive -A UCHI0014 -l walltime=00:10:00 -l select=2:ncpus=8:ngpus=8:mem=120G

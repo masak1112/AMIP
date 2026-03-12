@@ -85,7 +85,7 @@ data:
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
     batch_size: 2
-    num_data_workers: 16 
+    num_data_workers: 8 
 
 training:
     seed: 42
