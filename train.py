@@ -74,7 +74,7 @@ def main(args):
                                   normalizer=datamodule.train_dataset)
         monitor = "val/t2m"
         mode = 'min'
-        every_n_train_steps = None
+        every_n_train_steps = 1000
     else:
         model = TrainModule(config,
                             normalizer=datamodule.train_dataset)
@@ -88,7 +88,7 @@ def main(args):
         mode=mode,
         dirpath=path,
         save_last=True,
-        save_top_k=1,
+        save_top_k=2,
         every_n_train_steps=every_n_train_steps,
     )
 
