@@ -16,7 +16,7 @@ ulimit -l unlimited
 ml python
 conda activate /project/pedramh/ayz/envs/torch2
 
-# sinteractive --account=pi-pedramh --partition=pedramh-gpu --nodes=1 --time=01:00:00 --ntasks-per-node=4 --gres=gpu:4 --cpus-per-task=8
+# sinteractive --account=pi-pedramh --partition=pedramh-gpu --nodes=1 --time=48:00:00 --ntasks-per-node=4 --gres=gpu:4 --cpus-per-task=8 --mem=500G
 
 echo nvidia-smi
 
