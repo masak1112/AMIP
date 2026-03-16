@@ -72,9 +72,9 @@ def main(args):
     if "AE" in modelconfig["model_name"]:
         model = AutoencoderModule(config=config,
                                   normalizer=datamodule.train_dataset)
-        monitor = "val/t2m"
-        mode = 'min'
-        every_n_train_steps = 1000
+        monitor = "step"
+        mode = 'max'
+        every_n_train_steps = 100
     else:
         model = TrainModule(config,
                             normalizer=datamodule.train_dataset)
