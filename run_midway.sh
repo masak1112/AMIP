@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --account=pi-pedramh
 #SBATCH --time=50:00:00
+#SBATCH --mem=500G
 #SBATCH -p pedramh-gpu 
 #SBATCH --nodes=1
 #SBATCH --mem-per-cpu=30000
@@ -20,4 +21,4 @@ export NCCL_IB_DISABLE=1
 
 config_file=configs/ae_SI_DDC.yaml
 
-python train.py --config=$config_file
+srun python train.py --config=$config_file
