@@ -20,4 +20,4 @@ export NCCL_IB_DISABLE=1
 
 config_file=configs/ae_SI_DDC.yaml
 
-srun python train.py --config=$config_file
+srun python trainAE.py --config=$config_file
