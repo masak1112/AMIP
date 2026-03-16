@@ -7,7 +7,8 @@
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:4
 #SBATCH --cpus-per-task=4 
-#SBATCH -j oe
+#SBATCH -o midway_%x_%j.out
+#SBATCH -e midway_%x_%j.err
 
 ml python
 conda activate /project/pedramh/ayz/envs/torch2
