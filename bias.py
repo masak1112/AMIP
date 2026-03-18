@@ -4,7 +4,7 @@ import torch
 import os 
 
 # Custom imports
-from common.utils import get_yaml, save_yaml, assemble_forcing, assemble_input
+from common.utils import get_yaml, save_yaml, assemble_forcing, assemble_input, disassemble_input
 from common.plotting import plot_reconstruction, plot_spectrum
 from modules.train_module import TrainModule
 from data.amip_new import GetDataset
@@ -179,16 +179,20 @@ def main(args):
             # update x (each member evolves independently)
             x = assemble_input(surface_pred, multilevel_pred, diagnostic_pred)
 
-            if (batch_idx + 1) % plot_every == 0:
-                print(f"Batch {batch_idx + 1}/{len(dataset)}")
+            if (batch_idx) % plot_every == 0:
+                print(f"Batch {batch_idx}/{len(dataset)}")
                 # save intermediate climatology (ensemble mean)
                 torch.save(climatology_surface.mean(dim=0).cpu(), path + f"climatology_surface_{batch_idx + 1}.pt")
                 torch.save(climatology_multilevel.mean(dim=0).cpu(), path + f"climatology_multilevel_{batch_idx + 1}.pt")
                 torch.save(climatology_diagnostic.mean(dim=0).cpu(), path + f"climatology_diagnostic_{batch_idx + 1}.pt")
 
-                surface_true_denorm = model.n.surface_inv_transform(surface_t1.unsqueeze(0).to(device))
-                multilevel_true_denorm = model.n.upper_air_inv_transform(upper_air_t1.unsqueeze(0).to(device))
-                diagnostic_true_denorm = model.n.diagnostic_inv_transform(diagnostic_t1.unsqueeze(0).to(device))
+                target_t = assemble_input(surface_t1.unsqueeze(0).to(device), upper_air_t1.unsqueeze(0).to(device), diagnostic_t1.unsqueeze(0).to(device))
+                target_t = model.encoder(target_t)
+                surface_t1, upper_air_t1, diagnostic_t1 = disassemble_input(target_t)
+
+                surface_true_denorm = model.n.surface_inv_transform(surface_t1)
+                multilevel_true_denorm = model.n.upper_air_inv_transform(upper_air_t1)
+                diagnostic_true_denorm = model.n.diagnostic_inv_transform(diagnostic_t1)
 
                 # use first ensemble member for plotting
                 pred_feat_dict = {}
