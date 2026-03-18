@@ -62,7 +62,6 @@ def main(args):
                         normalizer=dataset).to(device)
     state_dict = torch.load(checkpoint, map_location=device, weights_only=False)['state_dict']
     model.load_state_dict(state_dict)
-    model.eval()
 
     #ensemble_size = 8
     invariant = model.invariant_input.to(device) # 1 c nlat nlon
@@ -75,40 +74,39 @@ def main(args):
     all_multilevel_preds = torch.empty((len(dataset), len(model.multilevel_variables), model.nlevels, 45, 90), device=device)
     all_diagnostic_preds = torch.empty((len(dataset), len(model.diagnostic_variables), 45, 90), device=device)
 
-    with torch.no_grad():
-        for batch_idx in tqdm(range(len(dataset))):
-            if batch_idx == 0:
-                surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data = dataset.__getitem__(batch_idx)
-                surface_t = surface_t.unsqueeze(0).to(device)
-                upper_air_t = upper_air_t.unsqueeze(0).to(device)
-                diagnostic_t = diagnostic_t.unsqueeze(0).to(device)
+    for batch_idx in tqdm(range(len(dataset))):
+        if batch_idx == 0:
+            surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data = dataset.__getitem__(batch_idx)
+            surface_t = surface_t.unsqueeze(0).to(device)
+            upper_air_t = upper_air_t.unsqueeze(0).to(device)
+            diagnostic_t = diagnostic_t.unsqueeze(0).to(device)
 
-                varying_boundary_data = varying_boundary_data.unsqueeze(0).to(device)
+            varying_boundary_data = varying_boundary_data.unsqueeze(0).to(device)
 
-                x = assemble_input(surface_t, upper_air_t, diagnostic_t) # b c h w
-                c_grid = assemble_forcing(varying_boundary_data, invariant) # b c h w
+            x = assemble_input(surface_t, upper_air_t, diagnostic_t) # b c h w
+            c_grid = assemble_forcing(varying_boundary_data, invariant) # b c h w
 
-                if model.latent:
-                    x = model.encoder(x)
-                    c_grid = model.encoder(c_grid) # destroys some information in the forcing/invariants. Can use a learnable encoder?
-            
+            if model.latent:
+                x = model.encoder(x)
+                c_grid = model.encoder(c_grid) # destroys some information in the forcing/invariants. Can use a learnable encoder?
+        
 
-            else:
-                _, _, _, _, _, _, varying_boundary_data = dataset.__getitem__(batch_idx)
-                c_grid = assemble_forcing(varying_boundary_data.unsqueeze(0).to(device), invariant) # b c h w
+        else:
+            _, _, _, _, _, _, varying_boundary_data = dataset.__getitem__(batch_idx)
+            c_grid = assemble_forcing(varying_boundary_data.unsqueeze(0).to(device), invariant) # b c h w
 
-                if model.latent:
-                    c_grid = model.encoder(c_grid)
+            if model.latent:
+                c_grid = model.encoder(c_grid)
 
-            surface_pred, multilevel_pred, diagnostic_pred = model.forward(x, c_grid)
+        surface_pred, multilevel_pred, diagnostic_pred = model.forward(x, c_grid)
 
-            # save preds
-            all_surface_preds[batch_idx] = surface_pred.squeeze(0)
-            all_multilevel_preds[batch_idx] = multilevel_pred.squeeze(0)
-            all_diagnostic_preds[batch_idx] = diagnostic_pred.squeeze(0)
+        # save preds
+        all_surface_preds[batch_idx] = surface_pred.squeeze(0)
+        all_multilevel_preds[batch_idx] = multilevel_pred.squeeze(0)
+        all_diagnostic_preds[batch_idx] = diagnostic_pred.squeeze(0)
 
-            # update x
-            x = assemble_input(surface_pred, multilevel_pred, diagnostic_pred)
+        # update x
+        x = assemble_input(surface_pred, multilevel_pred, diagnostic_pred)
 
     torch.save(all_surface_preds.cpu(), path + "surface_preds.pt")
     torch.save(all_multilevel_preds.cpu(), path + "multilevel_preds.pt")
