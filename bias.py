@@ -208,6 +208,11 @@ def main(args):
 
                 plot_predictions(pred_feat_dict, target_feat_dict, path, batch_idx + 1)
 
+    # save ensemble climatologies
+    torch.save(climatology_surface.cpu(), path + "climatology_surface_ensemble.pt")
+    torch.save(climatology_multilevel.cpu(), path + "climatology_multilevel_ensemble.pt")
+    torch.save(climatology_diagnostic.cpu(), path + "climatology_diagnostic_ensemble.pt")
+
     # average across ensemble members
     torch.save(climatology_surface.mean(dim=0).cpu(), path + "climatology_surface.pt")
     torch.save(climatology_multilevel.mean(dim=0).cpu(), path + "climatology_multilevel.pt")
