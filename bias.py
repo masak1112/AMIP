@@ -54,7 +54,7 @@ def main(args):
 
     dataset = GetDataset(dataconfig,
                          year_start=1990,
-                         year_end=1996)
+                         year_end=2001)
     device_index = torch.cuda.current_device()
     device = f"cuda:{device_index}"
 
