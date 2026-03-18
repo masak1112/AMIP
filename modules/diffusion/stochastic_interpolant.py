@@ -4,12 +4,12 @@ import torch.nn as nn
 class SI_Scheduler(nn.Module):
     def __init__(self,
                  num_refinement_steps,  # this corresponds to physical time steps
-                 integrator='em',
+                 sampler='em',
                  ):
         super(SI_Scheduler, self).__init__()
 
         self.num_refinement_steps = num_refinement_steps
-        self.method = integrator
+        self.method = sampler
 
     def wide(self, t, ndim=2):
         if ndim == 2:
