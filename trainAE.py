@@ -82,7 +82,7 @@ def main(args):
         mode=mode,
         dirpath=path,
         save_last=True,
-        save_top_k=2,
+        save_top_k=1,
         every_n_train_steps=every_n_train_steps,
     )
 
