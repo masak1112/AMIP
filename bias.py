@@ -69,11 +69,10 @@ def main(args):
 
     print(f"Processing {len(dataset)} timesteps...")
 
-    # get start
-
-    all_surface_preds = torch.empty((len(dataset), len(model.surface_variables), 45, 90), device=device)
-    all_multilevel_preds = torch.empty((len(dataset), len(model.multilevel_variables), model.nlevels, 45, 90), device=device)
-    all_diagnostic_preds = torch.empty((len(dataset), len(model.diagnostic_variables), 45, 90), device=device)
+    # running mean accumulators
+    climatology_surface = torch.zeros((len(model.surface_variables), 45, 90), device=device)
+    climatology_multilevel = torch.zeros((len(model.multilevel_variables), model.nlevels, 45, 90), device=device)
+    climatology_diagnostic = torch.zeros((len(model.diagnostic_variables), 45, 90), device=device)
 
     with torch.no_grad():
         for batch_idx in tqdm(range(len(dataset))):
@@ -91,7 +90,7 @@ def main(args):
                 if model.latent:
                     x = model.encoder(x)
                     c_grid = model.encoder(c_grid) # destroys some information in the forcing/invariants. Can use a learnable encoder?
-            
+
 
             else:
                 _, _, _, _, _, _, varying_boundary_data = dataset.__getitem__(batch_idx)
@@ -102,21 +101,14 @@ def main(args):
 
             surface_pred, multilevel_pred, diagnostic_pred = model.forward(x, c_grid)
 
-            # save preds
-            all_surface_preds[batch_idx] = surface_pred.squeeze(0)
-            all_multilevel_preds[batch_idx] = multilevel_pred.squeeze(0)
-            all_diagnostic_preds[batch_idx] = diagnostic_pred.squeeze(0)
+            # running mean update
+            n = batch_idx + 1
+            climatology_surface += (surface_pred.squeeze(0) - climatology_surface) / n
+            climatology_multilevel += (multilevel_pred.squeeze(0) - climatology_multilevel) / n
+            climatology_diagnostic += (diagnostic_pred.squeeze(0) - climatology_diagnostic) / n
 
             # update x
             x = assemble_input(surface_pred, multilevel_pred, diagnostic_pred)
-
-    torch.save(all_surface_preds.cpu(), path + "surface_preds.pt")
-    torch.save(all_multilevel_preds.cpu(), path + "multilevel_preds.pt")
-    torch.save(all_diagnostic_preds.cpu(), path + "diagnostic_preds.pt")
-
-    climatology_surface = torch.mean(all_surface_preds, dim=0)
-    climatology_multilevel = torch.mean(all_multilevel_preds, dim=0)
-    climatology_diagnostic = torch.mean(all_diagnostic_preds, dim=0)
 
     torch.save(climatology_surface.cpu(), path + "climatology_surface.pt")
     torch.save(climatology_multilevel.cpu(), path + "climatology_multilevel.pt")
