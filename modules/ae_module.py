@@ -32,7 +32,7 @@ class AutoencoderModule(L.LightningModule):
         self.log_dir = config['training']['log_dir']
 
         self.n = normalizer
-   
+
         if self.model_name == "AE_DIT_DDC":
             from modules.models.DiT import DiT
             from modules.models.AE_simple import BilinearEncoder, BilinearDecoder
@@ -41,7 +41,14 @@ class AutoencoderModule(L.LightningModule):
             self.upsample = BilinearDecoder(**self.modelconfig["AE_DIT_DDC"]["encoder"])
             self.decoder = DiT(**self.modelconfig["AE_DIT_DDC"]["decoder"])
             self.scheduler = DataDependentInterpolant(**self.modelconfig["AE_DIT_DDC"]["scheduler"])
-            self.decoder_only = True
+        elif self.model_name == "AE_SI_Residual":
+            from modules.models.DiT import DiT
+            from modules.models.AE_simple import BilinearEncoder, BilinearDecoder
+            from modules.diffusion.stochastic_interpolant import SI_Scheduler
+            self.downsample = BilinearEncoder(**self.modelconfig["AE_DIT_DDC"]["encoder"])
+            self.upsample = BilinearDecoder(**self.modelconfig["AE_DIT_DDC"]["encoder"])
+            self.decoder = DiT(**self.modelconfig["AE_DIT_DDC"]["decoder"])
+            self.scheduler = SI_Scheduler(**self.modelconfig["AE_DIT_DDC"]["scheduler"])
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
