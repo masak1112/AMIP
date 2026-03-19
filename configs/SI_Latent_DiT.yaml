@@ -13,7 +13,7 @@ model:
             nlat: 45
             nlon: 90
         scheduler:
-            num_refinement_steps: 5
+            num_refinement_steps: 10
             num_train_steps: 11
             integrator: em
             sigma_coef: 0.5

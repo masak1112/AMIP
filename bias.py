@@ -105,7 +105,7 @@ def main(args):
     
     checkpoint = trainconfig['checkpoint']
     directory_path = os.path.dirname(checkpoint)
-    path = os.path.join(directory_path, "bias_logs/")
+    path = os.path.join(directory_path, "bias_10_logs/")
 
     os.makedirs(path, exist_ok=True) 
     print(f"Logging to: {path}")
