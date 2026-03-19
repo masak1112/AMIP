@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from einops import rearrange
 from modules.layers.old.fa_basics import modulate_fused
+import torch.nn.functional as F
 
 class FinalLayer(nn.Module):
     """
@@ -164,70 +165,70 @@ class SubPixelConvICNR_2D(nn.Module):
     Patch Embedding Recovery to 2D Image.
 
     Args:
-        img_size (tuple[int]): Lat, Lon
-        patch_size (tuple[int]): Lat, Lon
+        patch_size (tuple[int]): px, py
         in_chans (int): Number of input channels.
         out_chans (int): Number of output channels.
     """
 
-    def __init__(self, img_size, 
-                 patch_size, 
-                 in_chans, 
-                 out_chans, 
-                 cond_dim=None,
-                 num_lat = 64, 
-                 polar_pad = True, 
-                 grid_has_poles = False):
+    def __init__(self, patch_size, in_chans, out_chans):
         super().__init__()
-        self.img_size = img_size
-        self.patch_size = patch_size
         assert patch_size[0] == patch_size[1], 'mismatch'
-
-        if polar_pad:
-            self.pad_poles = PolarPad2d((1, 1))
-        else:
-            self.pad_poles = nn.ZeroPad2d((0, 0, 1, 1))
-        self.pad_circular = nn.CircularPad2d((1, 1, 0, 0))
-
-        self.conv = nn.Conv2d(in_chans, out_chans*patch_size[0]**2, kernel_size=3, stride=1, padding=0, bias=0)
-
+        
+        self.conv = nn.Conv2d(in_chans, 
+                              out_chans*patch_size[0]**2, 
+                              kernel_size=1, 
+                              stride=1, 
+                              padding=0, 
+                              bias=False)
+        
         self.pixelshuffle = nn.PixelShuffle(patch_size[0])
         weight = ICNR(self.conv.weight, 
                       initializer=nn.init.kaiming_normal_,
                       upscale_factor=patch_size[0])
         self.conv.weight.data.copy_(weight)   # initialize conv.weight
-        
-        '''
-        self.out_conv = nn.Sequential(nn.CircularPad2d((1, 1, 0, 0)),
-                                      PolarPad2d((1, 1), num_lat=num_lat, grid_has_poles=grid_has_poles),
-                                      nn.Conv2d(out_chans, out_chans, kernel_size=3, stride=1, padding=0, bias=0),
-                                      nn.GELU(),
-                                      nn.CircularPad2d((1, 1, 0, 0)),
-                                      PolarPad2d((1, 1), num_lat=num_lat, grid_has_poles=grid_has_poles),
-                                      nn.Conv2d(out_chans, out_chans, kernel_size=3, stride=1, padding=0, bias=0),
-                                      nn.GELU())
-        '''
-        
-        self.out_layer = FinalLayer(hidden_size=out_chans,
-                                    cond_dim=cond_dim, 
-                                    patch_size=1,
-                                    out_channels=out_chans,
-                                    modulate_2d=True)
 
-    def forward(self, x, cond=None):
-        # x in shape [b, nlat//p * nlon//p, dim]
-        x = rearrange(x, 'b (h w) c -> b c h w', h = self.img_size[0] // self.patch_size[0], w = self.img_size[1] // self.patch_size[1])
-
-        x_padded = self.pad_poles(self.pad_circular(x))
-        output = self.conv(x_padded) # [batch_size, out_chans * patch_size[0]**2, nlat//p, nlon//p]
+    def forward(self, x):
+        # x in shape [b, in_chans, h, w], where h, w are the height and width of the patchified feature map
+        output = self.conv(x)
         
-        output = self.pixelshuffle(output) # [batch_size, out_chans, nlat, nlon]
-        #output = self.out_conv(output) # [batch_size, out_chans, nlat, nlon]
-        
-        output = rearrange(output, 'b c h w -> b h w c')
-        output = self.out_layer(output, cond) # [batch_size, nlat, nlon, out_chans]
+        output = self.pixelshuffle(output)
 
         return output
+
+def sphere_pad(input, padding) -> torch.Tensor:
+    """
+
+    Args:
+        input: Input tensor of shape (B, C, H, W)
+
+    Returns:
+        Padded tensor with spherical boundary conditions
+    """
+    assert input.dim() == 4, (
+        "Input tensor must be 4D (batch, channels, height, width)"
+    )
+    assert input.shape[3] % 2 == 0, (
+        "Width of the input tensor must be even for proper shperical padding"
+    )
+    half_width = input.shape[3] // 2
+
+    left_pad, right_pad, top_pad, bottom_pad= padding[0], padding[1], padding[2], padding[3]
+
+    if top_pad > 0:
+        top_rows = input[:, :, : top_pad, :]
+        top_rows = torch.roll(top_rows, shifts=half_width, dims=3)
+        top_rows = torch.flip(top_rows, dims=[2])
+    else:
+        top_rows = torch.empty(0, device=input.device, dtype=input.dtype)
+    if bottom_pad > 0:
+        bottom_rows = input[:, :, -bottom_pad :, :]
+        bottom_rows = torch.roll(bottom_rows, shifts=half_width, dims=3)
+        bottom_rows = torch.flip(bottom_rows, dims=[2])
+    else:
+        bottom_rows = torch.empty(0, device=input.device, dtype=input.dtype)
+    input = torch.cat([top_rows, input, bottom_rows], dim=2)
+
+    return F.pad(input, (left_pad, right_pad, 0, 0), mode="circular")
 
 class PolarPad2d(nn.Module):
     """
@@ -237,19 +238,21 @@ class PolarPad2d(nn.Module):
         pad: (size of top padding, size of bottom padding)
         x: Image with shape (n_batches, n_channels, lat, lon)
     """
-    def __init__(self, pad):
+    def __init__(self, pad, num_lat = None):
         super().__init__()
         self.pad_top = pad[0]
         self.pad_bottom = pad[1]
+        self.num_lat = num_lat if num_lat is not None else 45
+        self.pad_idxs = torch.cat((torch.arange(self.pad_top), torch.arange(self.pad_top+1, self.num_lat+self.pad_top+1),
+                                    torch.arange(self.num_lat+self.pad_top+2, self.num_lat+self.pad_top+self.pad_bottom+2))).long()
+        self.pad_idxs.requires_grad_(requires_grad = False)
 
     def forward(self, x):
-        # assume x in shape (b, c, nlat, nlon), where nlat, nlon are even
-        num_lat = x.shape[-2]
-        pad_idxs = torch.cat((torch.arange(self.pad_top), torch.arange(self.pad_top+1, num_lat+self.pad_top+1),
-                                torch.arange(num_lat+self.pad_top+2, num_lat+self.pad_top+self.pad_bottom+2))).long()
-        x = nn.functional.pad(x, (0, 0, 1, 1), mode = 'constant', value = 0.)
-        padded_x = nn.functional.pad(x, (0, 0, self.pad_top, self.pad_bottom), mode = 'reflect')[..., pad_idxs, :]
-        
+        # x in shape b c nlat nlon
+
+        # first pad 1 pixel on top and bottom with constant 0, then pad self.pad_top pixels on top and self.pad_bottom pixels on bottom with reflect, then select the padded latitudes according to self.pad_idxs
+        padded_x = nn.functional.pad(nn.functional.pad(x, (0, 0, 1, 1), mode = 'constant', value = 0.),
+                                    (0, 0, self.pad_top, self.pad_bottom), mode = 'reflect')[..., self.pad_idxs, :]
         padded_x[..., :self.pad_top, :] = torch.roll(padded_x[..., :self.pad_top, :], padded_x.shape[-1] // 2, dims = -1)
         padded_x[..., -self.pad_bottom:, :] = torch.roll(padded_x[..., -self.pad_bottom:, :], padded_x.shape[-1] // 2, dims = -1)
         return padded_x

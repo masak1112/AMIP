@@ -7,7 +7,6 @@ import os
 
 # Custom imports
 from common.utils import get_yaml, save_yaml
-from modules.train_module import TrainModule
 from modules.ae_module import AutoencoderModule
 from data.datamodule import ClimateDataModule
 
@@ -69,14 +68,13 @@ def main(args):
 
     datamodule = ClimateDataModule(dataconfig=dataconfig)
 
-    if "AE" in modelconfig["model_name"]:
-        model = AutoencoderModule(config=config,
-                                  normalizer=datamodule.train_dataset)
-        monitor = "step"
-        mode = 'max'
-        every_n_train_steps = 100
+    model = AutoencoderModule(config=config,
+                                normalizer=datamodule.train_dataset)
+    monitor = "step"
+    mode = 'max'
+    every_n_train_steps = 100
 
-    checkpoint_callback_1  = ModelCheckpoint(
+    checkpoint_callback  = ModelCheckpoint(
         monitor=monitor,
         filename= "model_{epoch:02d}_{step}_best",
         mode=mode,
@@ -84,16 +82,6 @@ def main(args):
         save_last=True,
         save_top_k=1,
         every_n_train_steps=every_n_train_steps,
-    )
-
-    checkpoint_callback_2 = ModelCheckpoint(
-        monitor = "val/t2m",
-        mode = "min",
-        filename= "model_{epoch:02d}_{step}_best",
-        dirpath=path,
-        every_n_train_steps = 0,
-        every_n_epochs = 1,
-        train_time_interval = None,
     )
 
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
@@ -106,7 +94,7 @@ def main(args):
                         log_every_n_steps = trainconfig["log_every_n_steps"],
                         max_epochs = trainconfig["max_epochs"],
                         default_root_dir = path,
-                        callbacks=[checkpoint_callback_1, checkpoint_callback_2, lr_monitor, EMAWeightAveraging(trainconfig["ema_decay"])],
+                        callbacks=[checkpoint_callback, lr_monitor, EMAWeightAveraging(trainconfig["ema_decay"])],
                         logger=wandb_logger,
                         accumulate_grad_batches=trainconfig.get("accumulate_grad_batches", 1),
                         num_sanity_val_steps=trainconfig.get("num_sanity_val_steps", 1),

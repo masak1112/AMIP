@@ -12,11 +12,13 @@ model:
             scalar_dim: 1
             nlat: 45
             nlon: 90
+            unpatch: subpixel
         scheduler:
-            num_refinement_steps: 10
-            num_train_steps: 11
+            num_refinement_steps: 5
+            num_train_steps: 21
             integrator: em
             sigma_coef: 0.5
+            l_max: 45
         encoder:
             downsample_factor: 4
         #decoder:
@@ -102,6 +104,7 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT__42_2026-03-17T15-05-45/last.ckpt
+    #checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT__42_2026-03-17T15-05-45/last.ckpt
+    checkpoint: null 
     accumulate_grad_batches: 1
     optimizer: adam

@@ -14,10 +14,12 @@ model:
             nlat: 180
             nlon: 360
             scalar_dim: 1 # only interpolant timestep
+            unpatch: subpixel
         scheduler:
             num_refinement_steps: 5
-            num_train_steps: 11
-            sigma_coupling: 0.5
+            num_train_steps: 21
+            sigma_coupling: 1.0
+            l_max: 180
 
 data:
     data_dir: '/project/pedramh/AMIP/h5'
@@ -88,8 +90,8 @@ training:
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip
     wandb_mode: online
-    checkpoint: /project/pedramh/ayz/AMIP_logs/AE_DIT_DDC_SI_DDC_DiT_42_2026-03-16T12-46-51/last.ckpt
-    #checkpoint: null
-    description: SI_DDC_DiT
+    #checkpoint: /project/pedramh/ayz/AMIP_logs/AE_DIT_DDC_SI_DDC_DiT_42_2026-03-16T12-46-51/last.ckpt
+    checkpoint: null
+    description: SI_DDC_DiT_spherical
     accumulate_grad_batches: 2
     optimizer: adam

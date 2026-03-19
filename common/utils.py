@@ -70,6 +70,34 @@ def fix_state_dict(state_dict, prefix="decoder."):
         if k.startswith(prefix)
     }
 
+def load_vanilla_weights_for_subpixel(model, checkpoint_path, prefix="model."):
+    """Load weights from a vanilla-unpatch DiT checkpoint into a subpixel-unpatch DiT.
 
-    
-    
+    Discards `unpatchify_layer.*` and `out_proj.*` keys from the checkpoint
+    so the subpixel model's own unpatchify and output layers keep their
+    freshly-initialized weights.
+
+    Args:
+        model: DiT model instance with subpixel unpatching.
+        checkpoint_path: Path to a PyTorch Lightning checkpoint (.ckpt).
+        prefix: Key prefix added by Lightning (e.g. "model.").
+
+    Returns:
+        List of checkpoint keys that were skipped.
+    """
+    state_dict = torch.load(checkpoint_path, map_location="cpu", weights_only=False)["state_dict"]
+
+    # Strip Lightning prefix
+    state_dict = {
+        k[len(prefix):]: v
+        for k, v in state_dict.items()
+        if k.startswith(prefix)
+    }
+
+    # Filter out vanilla unpatch / output projection weights
+    skip_prefixes = ("unpatchify_layer.", "out_proj.")
+    filtered = {k: v for k, v in state_dict.items() if not k.startswith(skip_prefixes)}
+
+    model.load_state_dict(filtered, strict=False)
+    return model
+

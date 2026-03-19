@@ -1,16 +1,51 @@
 import torch
 import torch.nn as nn
 
+from einops import rearrange
+from torch_harmonics import InverseRealSHT
+import torch.nn as nn
+
+class SphereNoiseGenerator(nn.Module):
+    def __init__(self, l_max):
+        super(SphereNoiseGenerator, self).__init__()
+        self.l_max = l_max
+        self.isht = InverseRealSHT(l_max, l_max*2, grid="equiangular")
+
+    def forward(self, b, c, device, dtype=torch.complex64, l_max=None):
+        # sample coefficient in the frequency domain
+        # b: batch size, l_max: maximum degree
+        # return: [b, l_max, l_max + 1] # coefficient for real harmonics
+        if l_max is None:
+            l_max = self.l_max
+            coeffs = torch.randn(b*c, l_max, l_max + 1, device=device, dtype=dtype)
+        else:
+            assert l_max <= self.l_max
+            coeffs = torch.randn(b*c, self.l_max, self.l_max + 1, device=device, dtype=dtype)
+            # fill with zeros
+            coeffs[:, l_max:, :] = 0
+
+        noise = self.isht(coeffs)
+        noise = rearrange(noise, '(b c) h w -> b c h w ', b=b, c=c)
+        noise_means = torch.mean(noise, dim=(1, 2), keepdim=True)
+        noise_stds = torch.std(noise, dim=(1, 2), keepdim=True)
+        noise = (noise - noise_means) / noise_stds
+
+        return noise
+
 class Integrator:
     def __init__(self,
                  method='em',
                  ):
         self.method = method
 
-    def step_fn(self, y, drift, dt, noise_t):
+    def step_fn(self, y, drift, dt, noise_t, generator=None):
         # g_t: (b,) scalar sigma per sample; broadcast per-tensor to handle different ndims
         if self.method == 'em':  # Euler-Maruyama
-            dW = torch.sqrt(dt) * torch.randn_like(y)
+            if generator is not None:
+                noise = generator(y.shape[0], y.shape[1], device=y.device)
+            else:
+                noise = torch.randn_like(y)
+            dW = torch.sqrt(dt) * noise
             y_next = y + drift * dt + noise_t * dW
         elif self.method == 'euler':  # ODE
             y_next = y + drift * dt
@@ -18,7 +53,8 @@ class Integrator:
 
     def integrate(self,
                   y, c,
-                  model, timesteps, noise_fn):
+                  model, timesteps, noise_fn,
+                  generator=None):
         
         # y is current state along interpolant (noised prognostic states)
         # c is conditioning (current prognostic + forcing state)
@@ -34,7 +70,7 @@ class Integrator:
 
             drift = model(y, c, scalar_in)
 
-            y = self.step_fn(y, drift, dt, noise_t)
+            y = self.step_fn(y, drift, dt, noise_t, generator)
 
         return y
 
@@ -47,6 +83,7 @@ class DriftScheduler(nn.Module):
                  beta_fn="t",
                  antithetic_sampling=False,
                  sigma_sample=None,
+                 l_max=None
                  ):
         super(DriftScheduler, self).__init__()
 
@@ -59,6 +96,11 @@ class DriftScheduler(nn.Module):
         self.beta_fn = beta_fn
         self.antithetic_sampling = antithetic_sampling
         self.sigma_sample = sigma_sample if sigma_sample is not None else sigma_coef
+
+        if l_max is not None:
+            self.generator = SphereNoiseGenerator(l_max=l_max)
+        else:
+            self.generator = None
 
         print(f'Scheduler initialized with {self.num_train_timesteps} training steps and {self.num_refinement_steps} refinement steps.')
         print(f"sigma_coef: {self.sigma_coef}, integrator: {integrator}, beta_fn: {self.beta_fn}, antithetic_sampling: {self.antithetic_sampling}")
@@ -106,7 +148,10 @@ class DriftScheduler(nn.Module):
         return self.alpha_dot(t, ndim) * x0 + self.beta_dot(t, ndim) * x1
 
     def get_noise(self, x):
-        return torch.randn(x.shape, device=x.device, dtype=x.dtype)
+        if self.generator is not None:
+            return self.generator(x.shape[0], x.shape[1], device=x.device)
+        else:
+            return torch.randn(x.shape, device=x.device, dtype=x.dtype)
     
     def image_sq_norm(self, x):
         return x.pow(2).sum(-1).sum(-1).sum(-1)
@@ -176,7 +221,7 @@ class DriftScheduler(nn.Module):
             y = y + drift * dt_0
 
         noise_fn = lambda t: self.sigma(t, sample=True)
-        y = self.integrator.integrate(y, c, model, timesteps[1:], noise_fn)
+        y = self.integrator.integrate(y, c, model, timesteps[1:], noise_fn, self.generator)
 
         return y
 

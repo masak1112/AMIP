@@ -27,11 +27,19 @@ class DataDependentInterpolant(nn.Module):
     def __init__(self,
                  num_refinement_steps=5,
                  num_train_steps=None,
-                 sigma_coupling=0.0):
+                 sigma_coupling=0.0,
+                 l_max=None):
         super().__init__()
         self.num_refinement_steps = num_refinement_steps
         self.num_train_timesteps = num_train_steps if num_train_steps is not None else num_refinement_steps + 1
         self.sigma_coupling = sigma_coupling
+
+        if l_max is not None:
+            from modules.diffusion.dynamic_interpolant import SphereNoiseGenerator
+            self.l_max = l_max 
+            self.generator = SphereNoiseGenerator(l_max=l_max) 
+        else:
+            self.generator = None
 
     def alpha(self, t):
         """Interpolation coefficient for x0: alpha(t) = 1 - t"""
@@ -48,6 +56,13 @@ class DataDependentInterpolant(nn.Module):
     def beta_dot(self, t):
         """Time derivative of beta: 1"""
         return torch.ones_like(t)
+    
+    def get_noise(self, x):
+        """Generate noise for the data-dependent coupling."""
+        if self.generator is not None:
+            return self.generator(x.shape[0], x.shape[1], device=x.device)
+        else:
+            return torch.randn_like(x)
 
     def compute_loss(self, x_lowres, x_highres, model):
         """
@@ -76,7 +91,7 @@ class DataDependentInterpolant(nn.Module):
 
         # Data-dependent coupling: x0 = m(x1) + sigma * zeta
         if self.sigma_coupling > 0:
-            zeta = torch.randn_like(x_lowres)
+            zeta = self.get_noise(x_lowres)
             x0 = x_lowres + self.sigma_coupling * zeta
         else:
             x0 = x_lowres
@@ -133,7 +148,7 @@ class DataDependentInterpolant(nn.Module):
 
         # Starting point: X_0 = m(x1) + sigma * zeta
         if self.sigma_coupling > 0:
-            zeta = torch.randn_like(x_lowres)
+            zeta = self.get_noise(x_lowres)
             y = x_lowres + self.sigma_coupling * zeta
         else:
             y = x_lowres.clone()

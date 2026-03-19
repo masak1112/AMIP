@@ -10,7 +10,7 @@ from modules.layers.positional_encoding import (
     RotaryEmbedding,
     apply_2d_rotary_pos_emb,
 )
-from modules.layers.unpatchify import SubPixelConvICNR_2D, Unpatchify
+from modules.layers.unpatchify import SubPixelConvICNR_2D, Unpatchify, sphere_pad
 from modules.layers.patchify import PatchEmbed
 
 class DiTBlock(nn.Module):
@@ -112,11 +112,11 @@ class DiT(nn.Module):
                  dim=384,
                  num_heads=8,
                  num_blocks=8,
-                 patch_size=4,
+                 patch_size=2,
                  nlat=180,
                  nlon=360,
                  dropout=0.0,
-                 unpatch="vanilla",
+                 unpatch="subpixel",
                  scalar_dim=1):
         super().__init__()
         self.in_channels = in_channels
@@ -129,11 +129,17 @@ class DiT(nn.Module):
         self.nlon = nlon
         self.dropout = dropout
 
-        # Pad spatial dims to be divisible by patch_size
-        self.nlat_pad = math.ceil(nlat / patch_size) * patch_size
-        self.nlon_pad = math.ceil(nlon / patch_size) * patch_size
-        self.pad_lat = self.nlat_pad - nlat
-        self.pad_lon = self.nlon_pad - nlon
+        # Pad spatial dims to be divisible by patch_size              # test case if nlat,nlon = 45, 90
+        self.nlat_pad = math.ceil(nlat / patch_size) * patch_size     # 45/2 = 23 * 2 = 46
+        self.nlon_pad = math.ceil(nlon / patch_size) * patch_size     # 90/2 = 45 * 2 = 90
+        self.pad_lat = self.nlat_pad - nlat                           # 46 - 45 = 1
+        self.pad_lon = self.nlon_pad - nlon                           # 90 - 90 = 0
+
+        # Polar padding for latitude (split top/bottom), circular for longitude (split left/right)
+        self.pad_lat_top = math.ceil(self.pad_lat / 2)                # 1/2 = 0.5 -> 1
+        self.pad_lat_bottom = self.pad_lat - self.pad_lat_top         # 1 - 1 = 0
+        self.pad_lon_left = math.ceil(self.pad_lon / 2)               # 0/2 = 0
+        self.pad_lon_right = self.pad_lon - self.pad_lon_left         # 0 - 0 = 0
 
         self.grid_x = self.nlat_pad // patch_size
         self.grid_y = self.nlon_pad // patch_size
@@ -162,14 +168,13 @@ class DiT(nn.Module):
         self.sa_blocks = nn.ModuleList(sa_blocks)
 
         # Unpatchify
+        self.unpatch = unpatch
+
         if unpatch == "subpixel":
             self.unpatchify_layer = SubPixelConvICNR_2D(
-                img_size=(self.nlat_pad, self.nlon_pad),
                 patch_size=(patch_size, patch_size),
                 in_chans=dim,
-                out_chans=dim,
-                cond_dim=dim,
-                num_lat=self.nlat_pad)
+                out_chans=out_channels)
         elif unpatch == "vanilla":
             self.unpatchify_layer = Unpatchify(
                 grid_size=(self.grid_x, self.grid_y),
@@ -177,13 +182,12 @@ class DiT(nn.Module):
                 in_dim=dim,
                 out_dim=dim,
                 cond_dim=dim)
+            # Output projection (zero-initialized for stable training start)
+            self.out_proj = nn.Sequential(
+                nn.LayerNorm(dim),
+                nn.Linear(dim, out_channels))
         else:
             raise ValueError(f"unpatch type '{unpatch}' not supported")
-
-        # Output projection (zero-initialized for stable training start)
-        self.out_proj = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, out_channels))
 
         self.initialize_weights()
 
@@ -196,8 +200,17 @@ class DiT(nn.Module):
         self.apply(_basic_init)
 
         # Zero-init output projection for stable training
-        nn.init.constant_(self.out_proj[-1].weight, 0)
-        nn.init.constant_(self.out_proj[-1].bias, 0)
+        if self.unpatch == "vanilla":
+            nn.init.constant_(self.out_proj[-1].weight, 0)
+            nn.init.constant_(self.out_proj[-1].bias, 0)
+
+        # Re-apply ICNR init for subpixel conv (self.apply(_basic_init) overwrites it)
+        if self.unpatch == "subpixel":
+            from modules.layers.unpatchify import ICNR
+            weight = ICNR(self.unpatchify_layer.conv.weight,
+                          initializer=nn.init.kaiming_normal_,
+                          upscale_factor=self.patch_size)
+            self.unpatchify_layer.conv.weight.data.copy_(weight)
 
         # Re-zero-init AdaLN modulation outputs (apply overwrites them)
         for block in self.sa_blocks:
@@ -268,9 +281,8 @@ class DiT(nn.Module):
         x_input = torch.cat([x_noised, cond], dim=1)
 
         # Pad spatial dims to be divisible by patch_size
-        if self.pad_lat > 0 or self.pad_lon > 0:
-            # F.pad order: (left, right, top, bottom) for last two dims
-            x_input = F.pad(x_input, (0, self.pad_lon, 0, self.pad_lat), mode='reflect')
+        # Circular padding in longitude, polar padding in latitude
+        x_input = sphere_pad(x_input, padding=(self.pad_lon_left, self.pad_lon_right, self.pad_lat_top, self.pad_lat_bottom))
 
         # Convert channel-first to channel-last for PatchEmbed: [b, c, h, w] -> [b, h, w, c]
         x_nhwc = x_input.permute(0, 2, 3, 1)
@@ -294,17 +306,21 @@ class DiT(nn.Module):
         for sa_block in self.sa_blocks:
             x = sa_block(x, t_emb, rope_cos_lat, rope_sin_lat, rope_cos_lon, rope_sin_lon)
 
-        # Unpatchify: [b, n, dim] -> [b, nlat, nlon, dim]
-        x = self.unpatchify_layer(x, t_emb)
+        if self.unpatch == "vanilla":
+            # Unpatchify: [b, n, dim] -> [b, nlat, nlon, dim]
+            x = self.unpatchify_layer(x, t_emb)
 
-        # Output projection
-        x = self.out_proj(x)  # [b, nlat, nlon, out_channels]
+            # Output projection
+            x = self.out_proj(x)  # [b, nlat, nlon, out_channels]
 
-        # Convert back to channel-first: [b, h, w, c] -> [b, c, h, w]
-        x = x.permute(0, 3, 1, 2)
-
+            # Convert back to channel-first: [b, h, w, c] -> [b, c, h, w]
+            x = x.permute(0, 3, 1, 2)
+        else:
+            x = rearrange(x, 'b (ny nx) c -> b c ny nx', ny=self.grid_x, nx=self.grid_y)
+            x = self.unpatchify_layer(x)
+        
         # Crop back to original spatial dims
         if self.pad_lat > 0 or self.pad_lon > 0:
-            x = x[:, :, :nlat, :nlon]
+            x = x[:, :, self.pad_lat_top:self.pad_lat_top + nlat, self.pad_lon_left:self.pad_lon_left + nlon]
 
         return x

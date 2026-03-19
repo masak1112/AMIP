@@ -92,6 +92,12 @@ def main(args):
         every_n_train_steps=every_n_train_steps,
     )
 
+    # for bias fine-tuning, save every epoch
+    #checkpoint_callback = ModelCheckpoint(
+    #    every_n_epochs=1, # Saves every 1 epoch
+    #    save_top_k=-1     # Required to not overwrite previous ones if you want to keep all
+    #)
+
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
     
     trainer = L.Trainer(devices = trainconfig["devices"],
