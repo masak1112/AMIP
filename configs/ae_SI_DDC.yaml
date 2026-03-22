@@ -90,8 +90,8 @@ training:
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip
     wandb_mode: online
-    #checkpoint: /project/pedramh/ayz/AMIP_logs/AE_DIT_DDC_SI_DDC_DiT_42_2026-03-16T12-46-51/last.ckpt
-    checkpoint: null
+    checkpoint: /project/pedramh/ayz/AMIP_logs/AE_DIT_DDC_SI_DDC_DiT_spherical_42_2026-03-19T13-24-56/last.ckpt
+    #checkpoint: null
     description: SI_DDC_DiT_spherical
     accumulate_grad_batches: 2
     optimizer: adam
