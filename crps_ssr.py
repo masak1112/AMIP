@@ -151,7 +151,9 @@ def get_crps_chunk(pred, target, latitude):
     out = crps.compute_chunk(forecast, truth)
     return out["var"]
 
-def main(args, model_path, save_path, device='cuda'):
+def main(args, model_path, save_path, device=None):
+    if device is None:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
     config=get_yaml(args.config)
     config, modelconfig, trainconfig, dataconfig = process_args(args, config)
     torch.set_float32_matmul_precision('high') # to use tensor cores if available

@@ -181,7 +181,7 @@ class ResnetBlock(nn.Module):
             if self.use_conv_shortcut:
                 self.conv_shortcut = SphereConv2d(in_channels, out_channels, kernel_size=(3, 3), padding = (1, 1))
             else:
-                self.nin_shortcut = SphereConv2d(in_channels, out_channels, kernel_size=1, stride=(1, 1), padding=(0, 0))
+                self.nin_shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
         h = x
@@ -330,7 +330,6 @@ class DecoderCNN(nn.Module):
         self.feat_up = nn.ModuleList()
         for i_level in reversed(range(self.num_resolutions)):
             block = nn.ModuleList()
-            attn = nn.ModuleList()
             block_out = self.hidden_channels*ch_mult[i_level]
             for i_block in range(self.num_res_blocks+1):
                 block.append(ResnetBlock(in_channels=block_in,
@@ -339,7 +338,6 @@ class DecoderCNN(nn.Module):
 
             up = nn.Module()
             up.block = block
-            up.attn = attn
             if i_level != 0:
                 up.upsample = DCUpsample(block_in, 
                                             block_in)
@@ -398,8 +396,6 @@ class DecoderCNN(nn.Module):
         for i_level in reversed(range(self.num_resolutions)):
             for i_block in range(self.num_res_blocks+1):
                 h = self.up[i_level].block[i_block](h)
-                if len(self.up[i_level].attn) > 0:
-                    h = self.up[i_level].attn[i_block](h)
             if i_level != 0:
                 h = self.up[i_level].upsample(h)
             h = self.feat_up[i_level](h)
