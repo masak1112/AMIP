@@ -174,7 +174,8 @@ def main(args, model_path, save_path, device='cuda'):
 
     datamodule = ClimateDataModule(config["data"])
 
-    model = TrainModule(config=config,)
+    model = TrainModule(config=config,
+                        normalizer=datamodule.train_dataset)
     
     checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
     model.load_state_dict(checkpoint['state_dict'])
