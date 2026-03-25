@@ -161,12 +161,11 @@ def main(args, model_path, save_path, device='cuda'):
     checkpoint_path = model_path
     log_dir = save_path
     config['data']['batch_size'] = 1
-    time_horizon = 15 
-    config["data"]["dataset"]["val_nsteps"] = time_horizon
+    config["data"]["val_num_inferences"]= 36
+    config["data"]["val_num_inferences"]= 36
+    config['data']["forecast_lead_times"] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     ensemble_size = 51
-    plot_interval = 1
-    sample_interval = 40 # evaluate every 10 days
-    save_out=False
+    plot_interval = 2
     num_t = 6
 
     latitude = get_latitude(longitude_resolution=128, latitude_resolution=64)
