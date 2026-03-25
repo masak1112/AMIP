@@ -356,8 +356,8 @@ class DecoderCNN(nn.Module):
                 self.out_scale.append(featscale2(patch_size=init_patch_size, channels=block_in))
 
         self.norm_out = Normalize(block_in) 
-        self.conv_out = SphereConv2d(in_channels=z_channels,
-                                    out_channels=block_in,
+        self.conv_out = SphereConv2d(in_channels=block_in,
+                                    out_channels=z_channels,
                                     kernel_size=(3, 3), padding = (1, 1))
         
         # Apply He Initialization
