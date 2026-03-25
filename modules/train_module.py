@@ -102,9 +102,13 @@ class TrainModule(L.LightningModule):
 
         return loss 
 
-    def validation_step(self, batch, batch_idx): 
+    def validation_step(self, batch, batch_idx, evaluate=False): 
         # each batch contains val_nsteps number of snapshots
         loss_dict, pred_feat_dict, target_feat_dict = self.predict(batch)
+
+        if evaluate:
+            return pred_feat_dict, target_feat_dict
+
         self.log_losses(loss_dict)
 
         # visualize the prediction for first batch and on one gpu
