@@ -111,14 +111,14 @@ def get_ssr_chunk(pred, target, latitude):
 
     forecast = xr.Dataset(
         {
-            "var": (["realization", "time", "latitude", "longitude"], pred),
+            "var": (["realization", "time", "latitude", "longitude"], pred.cpu().numpy() if hasattr(pred, 'cpu') else pred),
         },
         coords={"latitude": latitude,}
     )
 
     truth = xr.Dataset(
         {
-            "var": (["time", "latitude", "longitude"], target),
+            "var": (["time", "latitude", "longitude"], target.cpu().numpy() if hasattr(target, 'cpu') else target),
         },
         coords={"latitude": latitude,}
     )
@@ -137,14 +137,14 @@ def get_crps_chunk(pred, target, latitude):
 
     forecast = xr.Dataset(
         {
-            "var": (["realization", "time", "latitude", "longitude"], pred),
+            "var": (["realization", "time", "latitude", "longitude"], pred.cpu().numpy() if hasattr(pred, 'cpu') else pred),
         },
         coords={"latitude": latitude,}
     )
 
     truth = xr.Dataset(
         {
-            "var": (["time", "latitude", "longitude"], target),
+            "var": (["time", "latitude", "longitude"], target.cpu().numpy() if hasattr(target, 'cpu') else target),
         },
         coords={"latitude": latitude,}
     )
