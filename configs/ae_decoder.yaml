@@ -14,7 +14,7 @@ model:
             out_channels: 151  # 6 + 26*9 + 9 = 249
             hidden_channels: 512
             z_channels: 151
-            num_out_blocks: 3
+            num_out_blocks: 2
             num_res_blocks: 3
 data:
     data_dir: '/glade/derecho/scratch/awikner/ERA5/h5'
