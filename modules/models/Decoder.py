@@ -60,17 +60,24 @@ class SphereConv2d(nn.Conv2d):
             Padded tensor with spherical boundary conditions
         """
 
-        half_width = input.shape[3] // 2
+        if padding[0] == 0 and padding[1] == 0:
+            return input
 
-        top_rows = input[:, :, : padding[0], :]
-        top_rows = torch.roll(top_rows, shifts=half_width, dims=3)
-        top_rows = torch.flip(top_rows, dims=[2])
-        bottom_rows = input[:, :, -padding[0] :, :]
-        bottom_rows = torch.roll(bottom_rows, shifts=half_width, dims=3)
-        bottom_rows = torch.flip(bottom_rows, dims=[2])
-        input = torch.cat([top_rows, input, bottom_rows], dim=2)
+        if padding[0] > 0:
+            half_width = input.shape[3] // 2
 
-        return F.pad(input, (padding[1], padding[1], 0, 0), mode="circular")
+            top_rows = input[:, :, : padding[0], :]
+            top_rows = torch.roll(top_rows, shifts=half_width, dims=3)
+            top_rows = torch.flip(top_rows, dims=[2])
+            bottom_rows = input[:, :, -padding[0] :, :]
+            bottom_rows = torch.roll(bottom_rows, shifts=half_width, dims=3)
+            bottom_rows = torch.flip(bottom_rows, dims=[2])
+            input = torch.cat([top_rows, input, bottom_rows], dim=2)
+
+        if padding[1] > 0:
+            input = F.pad(input, (padding[1], padding[1], 0, 0), mode="circular")
+
+        return input
 
     def top_conv(self, input: torch.Tensor) -> torch.Tensor:
         """

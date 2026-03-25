@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -N SI_Latent_DiT
+#PBS -N CRPS
 #PBS -l select=1:ncpus=8:ngpus=1:mem=64G
 #PBS -q develop
 #PBS -l walltime=02:00:00
