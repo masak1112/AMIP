@@ -267,4 +267,4 @@ if __name__ == "__main__":
     model_path = "/glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT__42_2026-03-17T15-05-45/last.ckpt"
     save_path = "/glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT__42_2026-03-17T15-05-45/CRPS_SSR"
 
-    main(args)
+    main(args, model_path, save_path)
