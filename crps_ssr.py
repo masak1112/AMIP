@@ -201,7 +201,7 @@ def main(args, model_path, save_path, device=None):
 
             batch = [item.to(device) for item in batch]
             
-            pred_feat_dict, target_feat_dict = model.validation_step(batch, batch_idx=idx, eval=True, ensemble_size=ensemble_size, return_ens=True)
+            pred_feat_dict, target_feat_dict = model.validation_step(batch, batch_idx=idx, evaluate=True)
             
             for key in idx_dict.keys():
                 # shape of crps, ssr is (t,)
