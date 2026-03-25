@@ -311,7 +311,7 @@ class DecoderCNN(nn.Module):
         self.nsurface = 6
         self.ndiagnostic = 9
         self.nlevels = 26
-        init_patch_size=1
+        init_patch_size = 2
 
         # compute in_ch_mult, block_in and curr_res at lowest res
         block_in = self.hidden_channels*ch_mult[self.num_resolutions-1]
