@@ -174,8 +174,7 @@ def main(args, model_path, save_path, device='cuda'):
 
     datamodule = ClimateDataModule(config["data"])
 
-    model = TrainModule(config=config,
-                        normalizer=datamodule.normalizer)
+    model = TrainModule(config=config,)
     
     checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
     model.load_state_dict(checkpoint['state_dict'])
@@ -196,9 +195,6 @@ def main(args, model_path, save_path, device='cuda'):
 
     with torch.no_grad():
         for idx, batch in enumerate(tqdm(loader)):
-            if (idx+1) % sample_interval != 0 and idx != 0:
-                print(f"Skipping batch {idx} for evaluation")
-                continue 
 
             batch = [item.to(device) for item in batch]
             
