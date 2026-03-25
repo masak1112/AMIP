@@ -56,7 +56,7 @@ class WeightedLoss(nn.Module):
                  nlevels=26,
                  nsurface=6,
                  nmulti=5,
-                 ndiag = 9,
+                 ndiag = 15,
                  normalize = True,
                  eps = 1e-3,
                  channel_first=True
@@ -256,8 +256,8 @@ class FairCRPSLoss(nn.Module):
                  diag_variable_weight=None,
                  nlevels=26,
                  nsurface=6,
-                 nmulti=9,
-                 ndiag=9,
+                 nmulti=5,
+                 ndiag=15,
                  alpha=1.0,
                  n_ensemble=2,
                  ):
