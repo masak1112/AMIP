@@ -28,7 +28,7 @@ from torch.utils.checkpoint import checkpoint
 # import global convolution and non-linear spectral layers
 # helpers
 from modules.layers.basics import MLP, DropPath, RealFFT2, SpectralAttention2d
-from modules.layers.s2convolutions import SpectralAttentionS2, SpectralConvS2 
+from modules.layers.old.s2convolutions import SpectralAttentionS2, SpectralConvS2 
 
 import math
 import warnings

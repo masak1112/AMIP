@@ -56,7 +56,7 @@ class TrainModule(L.LightningModule):
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
         if self.latent:
-            from modules.models.AE_simple import BilinearDownsample
+            from modules.layers.bilinear import BilinearDownsample
             #from modules.models.AE_decoder_hfs import DecoderHistory
 
             self.encoder = BilinearDownsample(**self.modelconfig['SI_Latent_DiT']["encoder"])
@@ -356,7 +356,15 @@ class TrainModule(L.LightningModule):
     def configure_optimizers(self):
         if self.optimizer_name == "adam":
             optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-        elif self.optimizer_name == "shampoo":
+        else:
+            raise NotImplementedError(f"Optimizer {self.optimizer_name} not implemented")
+
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
+
+        return [optimizer], [scheduler]
+    
+'''
+    elif self.optimizer_name == "shampoo":
             from distributed_shampoo import (
                 AdamPreconditionerConfig,
                 DDPDistributedConfig,
@@ -398,10 +406,5 @@ class TrainModule(L.LightningModule):
                 precondition_frequency=100,
                 preconditioner_config=DefaultSOAPConfig,
             )
-        else:
-            raise NotImplementedError(f"Optimizer {self.optimizer_name} not implemented")
-
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
-
-        return [optimizer], [scheduler]
+'''
     

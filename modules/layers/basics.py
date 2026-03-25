@@ -24,7 +24,7 @@ import torch.nn.functional as F
 from torch.cuda import amp
 from torch.utils.checkpoint import checkpoint
 from torch_harmonics import *
-from modules.layers.contractions import *
+from modules.layers.old.contractions import *
 import typing
 from einops import rearrange
 

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 
-from modules.layers.dc_layers import SphereConv2d, LayerNorm2d, LayerNorm3d, \
+from modules.layers.old.dc_layers import SphereConv2d, LayerNorm2d, LayerNorm3d, \
     PixelShuffleUpSampleLayer, PixelUnshuffleDownSampleLayer, ChannelAveragingDownSampleLayer, ChannelDuplicatingUpSampleLayer
 
 def conv(conv_type, **kwargs):

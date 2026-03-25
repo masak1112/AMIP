@@ -4,7 +4,7 @@ from einops import rearrange
 from timm.layers.mlp import SwiGLU
 from common.utils import disassemble_input, disassemble_prognostic_forcing, assemble_input
 
-from modules.layers.arches_layers import (
+from modules.layers.old.arches_layers import (
     CondBasicLayer,
     DCDownSample,
     LinVert,

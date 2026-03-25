@@ -59,6 +59,7 @@ class WeightedLoss(nn.Module):
                  ndiag = 9,
                  normalize = True,
                  eps = 1e-3,
+                 channel_first=True
                  ):
         super().__init__()
         self.loss_fn = nn.MSELoss(reduction='none')
@@ -109,6 +110,7 @@ class WeightedLoss(nn.Module):
 
         self.normalize = normalize
         self.eps = eps
+        self.channel_first= channel_first
 
     def forward(self,
                 surface_pred, surface_target,
@@ -116,7 +118,16 @@ class WeightedLoss(nn.Module):
                 diagnostic_pred, diagnostic_target
                 ):
 
-        
+        if self.channel_first:
+            # (b, c, nlat, nlon) -> (b, nlat, nlon, c)
+            surface_pred = surface_pred.permute(0, 2, 3, 1)
+            surface_target = surface_target.permute(0, 2, 3, 1)
+            diagnostic_pred = diagnostic_pred.permute(0, 2, 3, 1)
+            diagnostic_target = diagnostic_target.permute(0, 2, 3, 1)
+            # (b, c, nlevel, nlat, nlon) -> (b, nlevel, nlat, nlon, c)
+            multilevel_pred = multilevel_pred.permute(0, 2, 3, 4, 1)
+            multilevel_target = multilevel_target.permute(0, 2, 3, 4, 1)
+
         surface_loss = self.loss_fn(surface_pred, surface_target) # b nlat nlon nsurface
         surface_loss = surface_loss * self.surface_variable_weight.view(1, 1, 1, -1) # b nlat nlon nsurface
         surface_loss = surface_loss.sum(dim=-1) # b nlat nlon
@@ -358,14 +369,16 @@ class SpectralBaseLoss(nn.Module):
         surface_uv_idx=(4, 5),
         not_surface_uv_idx = (0, 1, 2, 3),
         multilevel_uv_idx=(1, 2),
-        not_multilevel_uv_idx=(0, 3, 4, 5),
+        not_multilevel_uv_idx=(0, 3, 4),
         vector_loss_weight=0.25,
         z500_weight=1.0,
+        channel_first=True,
     ):
         super().__init__()
         self.eps = eps
         self.absolute = absolute
         self.vector_loss_weight = vector_loss_weight
+        self.channel_first = channel_first
 
         self.sht  = th.RealSHT(*img_shape, grid=grid_type).float()
         self.vsht = th.RealVectorSHT(*img_shape, grid=grid_type).float()
@@ -401,6 +414,17 @@ class SpectralBaseLoss(nn.Module):
                     multilevel_pred, multilevel_target,
                     diagnostic_pred, diagnostic_target) -> torch.Tensor:
 
+        if self.channel_first:
+            # Permute to channels-last for variable indexing
+            # (b, c, nlat, nlon) -> (b, nlat, nlon, c)
+            surface_pred = surface_pred.permute(0, 2, 3, 1)
+            surface_target = surface_target.permute(0, 2, 3, 1)
+            diagnostic_pred = diagnostic_pred.permute(0, 2, 3, 1)
+            diagnostic_target = diagnostic_target.permute(0, 2, 3, 1)
+            # (b, c, nlevel, nlat, nlon) -> (b, nlevel, nlat, nlon, c)
+            multilevel_pred = multilevel_pred.permute(0, 2, 3, 4, 1)
+            multilevel_target = multilevel_target.permute(0, 2, 3, 4, 1)
+
         # surface: (B, nlat, nlon, nsurface) — variables in last dim
         surface_pred_uv = surface_pred[..., self.surface_uv_idx_tensor]         # B nlat nlon 2
         surface_target_uv = surface_target[..., self.surface_uv_idx_tensor]     # B nlat nlon 2
@@ -414,8 +438,16 @@ class SpectralBaseLoss(nn.Module):
         multilevel_target_scalar = multilevel_target[..., self.not_multilevel_uv_idx_tensor]
 
         # --- Scalar SHT loss (all non-wind channels) ---
-        forecasts = assemble_input(surface_pred_scalar, multilevel_pred_scalar, diagnostic_pred)
-        observations = assemble_input(surface_target_scalar, multilevel_target_scalar, diagnostic_target)
+        # Permute back to channel-first for assemble_input and SHT
+        # surface scalar: (B, nlat, nlon, C_s) -> (B, C_s, nlat, nlon)
+        # multilevel scalar: (B, nlevel, nlat, nlon, C_m) -> (B, C_m, nlevel, nlat, nlon)
+        # diagnostic: (B, nlat, nlon, ndiag) -> (B, ndiag, nlat, nlon)
+        forecasts = assemble_input(surface_pred_scalar.permute(0, 3, 1, 2),
+                                   multilevel_pred_scalar.permute(0, 4, 1, 2, 3),
+                                   diagnostic_pred.permute(0, 3, 1, 2))
+        observations = assemble_input(surface_target_scalar.permute(0, 3, 1, 2),
+                                      multilevel_target_scalar.permute(0, 4, 1, 2, 3),
+                                      diagnostic_target.permute(0, 3, 1, 2))
         forecasts = self.sht(forecasts) / 4.0 / math.pi
         observations = self.sht(observations) / 4.0 / math.pi
 
@@ -469,10 +501,11 @@ class SpectralBaseLoss(nn.Module):
         v_norm = torch.abs(o_v).reshape(N, C_v, H_v * W_v)
         vector_loss = torch.sum(v_crps * swv, dim=-1).mean() / \
                       (torch.sum(v_norm * swv, dim=-1).mean() + self.eps)
-        
+
 
         if self.z500_weight != 1.0:
-            z500_pred = multilevel_pred[..., 3]  # B nlevel nlat nlon
+            # z500 is variable index 3 in channels-last multilevel: (B, nlevel, nlat, nlon)
+            z500_pred = multilevel_pred[..., 3]
             z500_target = multilevel_target[..., 3]
 
             z500_forecasts = self.sht(z500_pred) / 4.0 / math.pi
@@ -486,10 +519,11 @@ class SpectralBaseLoss(nn.Module):
             
             B, C, H, W = z500_forecasts.shape
             spectral_weights_split = self.lm_weights.reshape(1, 1, H * W)
+            z500_norm = torch.abs(z500_observations).reshape(B, C, H * W)
 
             crps_z500 = torch.abs(z500_observations - z500_forecasts).reshape(B, C, H * W)
             z500_loss = torch.sum(crps_z500 * spectral_weights_split, dim=-1).mean() / \
-                        (torch.sum(norm * spectral_weights_split, dim=-1).mean() + self.eps)
+                        (torch.sum(z500_norm * spectral_weights_split, dim=-1).mean() + self.eps)
 
             return scalar_loss + self.vector_loss_weight * vector_loss + self.z500_weight * z500_loss
 

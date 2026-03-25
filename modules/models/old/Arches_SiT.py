@@ -6,7 +6,7 @@ import numpy as np
 from timm.layers.mlp import SwiGLU
 from common.utils import assemble_input, disassemble_input
 
-from modules.layers.arches_layers import (
+from modules.layers.old.arches_layers import (
     CondBasicLayer,
     DCDownSample,
     LinVert,

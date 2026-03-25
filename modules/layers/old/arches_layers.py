@@ -5,10 +5,10 @@ from timm.models.layers import DropPath, trunc_normal_
 from torch import nn
 import math 
 
-from .weatherlearn_utils.crop import crop3d
-from .weatherlearn_utils.earth_position_index import get_earth_position_index
-from .weatherlearn_utils.pad import get_pad3d
-from .weatherlearn_utils.shift_window_mask import (
+from ..weatherlearn_utils.crop import crop3d
+from ..weatherlearn_utils.earth_position_index import get_earth_position_index
+from ..weatherlearn_utils.pad import get_pad3d
+from ..weatherlearn_utils.shift_window_mask import (
     window_partition,
     window_reverse,
 )
