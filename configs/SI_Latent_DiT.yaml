@@ -12,7 +12,7 @@ model:
             scalar_dim: 1
             nlat: 45
             nlon: 90
-            unpatch: subpixel
+            unpatch: vanilla
         scheduler:
             num_refinement_steps: 5
             num_train_steps: 21
