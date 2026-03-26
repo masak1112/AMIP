@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #PBS -N SI_Latent_DiT
-#PBS -l select=1:ncpus=16:ngpus=4:mem=120G
+#PBS -l select=1:ncpus=32:ngpus=4:mem=256G
 #PBS -q main
 #PBS -l walltime=12:00:00
 #PBS -A UCHI0014
@@ -9,6 +9,6 @@
 module load conda
 conda activate torch
 
-CONFIG=configs/SI_Latent_DiT_0.5.yaml
+CONFIG=configs/SI_Latent_DiT_subpixel_0.25.yaml
 
 python train.py --config=$CONFIG
