@@ -89,7 +89,7 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip
     wandb_mode: online
-    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/Decoder_CNN_CNN_42_2026-03-26T02-06-58/last.ckpt
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/Decoder_CNN_CNN_42_2026-03-27T07-44-33/last.ckpt
     description: CNN
     accumulate_grad_batches: 16
     optimizer: adam
