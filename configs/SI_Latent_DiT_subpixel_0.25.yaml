@@ -17,7 +17,7 @@ model:
             num_refinement_steps: 5
             num_train_steps: 21
             integrator: em
-            sigma_coef: 0.25
+            sigma_coef: 1.0
         encoder:
             downsample_factor: 4
         #decoder:
@@ -95,7 +95,7 @@ training:
     accelerator: gpu
     strategy: ddp
     precision: 32-true
-    description: sigma_025
+    description: sigma_1
     check_val_every_n_epoch: 2
     log_every_n_steps: 10
     max_epochs: 50
