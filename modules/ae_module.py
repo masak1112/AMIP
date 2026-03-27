@@ -148,7 +148,7 @@ class AutoencoderModule(L.LightningModule):
 
         if batch_idx == 0: # only plot 1st batch
             if not self.ddp or self.global_rank == 0: # only run plotting on one gpu
-                self.plot_predictions(pred_dict, data_dict)
+                #self.plot_predictions(pred_dict, data_dict)
                 self.save_predictions(pred_dict, data_dict)
     
     @torch.no_grad()
