@@ -64,7 +64,7 @@ class DataDependentInterpolant(nn.Module):
         else:
             return torch.randn_like(x)
 
-    def compute_loss(self, x_lowres, x_highres, model):
+    def compute_loss(self, x_lowres, x_highres, model, cond=None):
         """
         Algorithm 1 from the paper: velocity matching training.
 
@@ -115,6 +115,10 @@ class DataDependentInterpolant(nn.Module):
         v_target = alpha_dot_t * x0 + beta_dot_t * x1  # = x1 - x0
 
         # Model predicts velocity
+
+        if cond is not None:
+            x_lowres = torch.cat([x_lowres, cond], dim=1)
+
         v_pred = model(I_t, x_lowres, t=t[:, None])
 
         # Loss: |b_hat|^2 - 2 * v_target . b_hat  (equivalent to MSE up to constant |v_target|^2)
@@ -125,7 +129,7 @@ class DataDependentInterpolant(nn.Module):
         return loss.mean()
 
     @torch.no_grad()
-    def sample(self, x_lowres, model, num_steps=None):
+    def sample(self, x_lowres, model, cond=None, num_steps=None):
         """
         Algorithm 2 from the paper: forward Euler ODE integration.
 
@@ -154,6 +158,9 @@ class DataDependentInterpolant(nn.Module):
             y = x_lowres.clone()
 
         dt = 1.0 / num_steps
+
+        if cond is not None:
+            x_lowres = torch.cat([x_lowres, cond], dim=1)
 
         for n in range(num_steps):
             t_n = n / num_steps

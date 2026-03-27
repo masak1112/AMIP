@@ -18,6 +18,6 @@ conda activate /project/pedramh/ayz/envs/torch2
 export NCCL_P2P_DISABLE=1
 export NCCL_IB_DISABLE=1
 
-config_file=configs/ae_SI_DDC.yaml
+config_file=configs/ae_SI_DDC_history.yaml
 
 srun python trainAE.py --config=$config_file

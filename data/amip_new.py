@@ -188,6 +188,7 @@ class GetDataset(Dataset):
         self.diagnostic_input = params.get('diagnostic_input', False) # whether to use diagnostic as prognostic
         self.validate = validate if not self.train else False
         self.autoencoder = params.get('autoencoder', False)
+        self.use_history = params.get('use_history', False)
 
         if not self.train and not self.params['forecast_lead_times']:
             self.params['forecast_lead_times'] = [1]
@@ -695,7 +696,7 @@ class GetDataset(Dataset):
             else:
                 upper_air_t, surface_t = self._reshape_and_mask_variables(data_in, out=False)
 
-        if self.autoencoder:
+        if self.autoencoder and not self.use_history: # only return one timestep if not using history
             if self.diagnostic_input:
                 return self.surface_transform(surface_t), self.upper_air_transform(upper_air_t), self.diagnostic_transform(diagnostic_t)
             else:
@@ -707,6 +708,14 @@ class GetDataset(Dataset):
             upper_air_t1, surface_t1, diagnostic_t1 = self._reshape_and_mask_variables(data_out, out=True)
         else:
             upper_air_t1, surface_t1 = self._reshape_and_mask_variables(data_out, out=True)
+
+        if self.autoencoder and self.use_history: # return two timesteps if using history (t and t+dt)
+            if self.diagnostic_input:
+                return self.surface_transform(surface_t), self.upper_air_transform(upper_air_t), self.diagnostic_transform(diagnostic_t), \
+                        self.surface_transform(surface_t1), self.upper_air_transform(upper_air_t1), self.diagnostic_transform(diagnostic_t1)
+            else:
+                return self.surface_transform(surface_t), self.upper_air_transform(upper_air_t), \
+                        self.surface_transform(surface_t1), self.upper_air_transform(upper_air_t1)
 
         # Normalize
         if self.params['predict_delta']:

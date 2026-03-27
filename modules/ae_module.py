@@ -34,6 +34,7 @@ class AutoencoderModule(L.LightningModule):
         self.n = normalizer
 
         self.diffusion = False 
+        self.use_history = self.modelconfig.get("use_history", False)
 
         if self.model_name == "AE_DIT_DDC":
             from modules.models.DiT import DiT
@@ -74,7 +75,8 @@ class AutoencoderModule(L.LightningModule):
 
         self.save_hyperparameters()
 
-    def forward(self, surface, multilevel, diagnostic):
+    def forward(self, surface, multilevel, diagnostic, 
+                surface_history = None, multilevel_history=None, diagnostic_history=None):
 
         # generate latents
         if self.diffusion:
@@ -82,7 +84,11 @@ class AutoencoderModule(L.LightningModule):
             x = assemble_input(z_surface, z_multilevel, z_diagnostic)
 
             # diffusion sampling
-            y = self.scheduler.sample(x, self.decoder)
+            if self.use_history:
+                cond = assemble_input(surface_history, multilevel_history, diagnostic_history)
+                y = self.scheduler.sample(x, self.decoder, cond)
+            else:
+                y = self.scheduler.sample(x, self.decoder)
         else:
             z_surface, z_multilevel, z_diagnostic = self.downsample(surface, multilevel, diagnostic)
             x = assemble_input(z_surface, z_multilevel, z_diagnostic)
@@ -91,17 +97,24 @@ class AutoencoderModule(L.LightningModule):
         surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
 
         return surface_pred, multilevel_pred, diagnostic_pred
-
     
     def training_step(self, batch, batch_idx):
         
-        surface_data, multilevel_data, diagnostic_data = batch
+        if self.use_history:
+            surface_data, multilevel_data, diagnostic_data, surface_history, multilevel_history, diagnostic_history = batch
+        else:
+            surface_data, multilevel_data, diagnostic_data = batch
 
         if self.diffusion:
             z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface_data, multilevel_data, diagnostic_data))
             x = assemble_input(z_surface, z_multilevel, z_diagnostic)
             y = assemble_input(surface_data, multilevel_data, diagnostic_data)
-            loss = self.scheduler.compute_loss(x, y, self.decoder)     
+
+            if self.use_history:
+                cond = assemble_input(surface_history, multilevel_history, diagnostic_history)
+                loss = self.scheduler.compute_loss(x, y, self.decoder, cond)
+            else:
+                loss = self.scheduler.compute_loss(x, y, self.decoder)     
         else:
             surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
             pixel_loss = self.criterion(surface_pred, surface_data,
@@ -117,10 +130,15 @@ class AutoencoderModule(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        
-        surface_data, multilevel_data, diagnostic_data = batch
 
-        surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
+        if self.use_history:
+            surface_data, multilevel_data, diagnostic_data, surface_history, multilevel_history, diagnostic_history = batch
+        else:
+            surface_data, multilevel_data, diagnostic_data = batch
+            surface_history, multilevel_history, diagnostic_history = None, None, None
+
+        surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data,
+                                                                      surface_history, multilevel_history, diagnostic_history)
       
         loss_dict, pred_dict, data_dict = self.compute_loss_val(surface_pred, surface_data,
                                                 multilevel_pred, multilevel_data,
