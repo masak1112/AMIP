@@ -34,7 +34,7 @@ class AutoencoderModule(L.LightningModule):
         self.n = normalizer
 
         self.diffusion = False 
-        self.use_history = self.modelconfig.get("use_history", False)
+        self.use_history = self.config['data'].get("use_history", False)
 
         if self.model_name == "AE_DIT_DDC":
             from modules.models.DiT import DiT
