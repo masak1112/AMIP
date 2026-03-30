@@ -86,10 +86,10 @@ training:
     max_epochs: 50
     ema_decay: 0.99
     num_sanity_val_steps: 1
-    log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
+    log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip
     wandb_mode: online
     checkpoint: null
-    description: CNN
+    description: CNN_history
     accumulate_grad_batches: 8
     optimizer: adam
