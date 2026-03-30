@@ -290,8 +290,8 @@ class featscale2(nn.Module):
         X = X.reshape(batch_size, channels, height//self.patch_size, width//self.patch_size, self.patch_size, self.patch_size)
         X = X.permute(0,1,2,4,3,5).reshape(batch_size, channels, height, width)
         return X
-
     
+
 class DecoderCNN(nn.Module):
     def __init__(self,
                  out_channels, # output channel dim
@@ -301,6 +301,8 @@ class DecoderCNN(nn.Module):
                  num_res_blocks = 4,
                  num_out_blocks=0,
                  resolution = (180, 360), 
+                 use_history = False,
+                 patch_size = 4,
                  ):
         super().__init__()
         self.hidden_channels = hidden_channels
@@ -308,9 +310,7 @@ class DecoderCNN(nn.Module):
         self.num_resolutions = len(ch_mult)
         self.num_res_blocks = num_res_blocks
         self.resolution = resolution
-        self.nsurface = 6
-        self.ndiagnostic = 9
-        self.nlevels = 26
+        self.use_history = use_history
         init_patch_size = 1
 
         # compute in_ch_mult, block_in and curr_res at lowest res
@@ -319,9 +319,18 @@ class DecoderCNN(nn.Module):
         curr_res = resolution[-1] // 2**(self.num_resolutions-1)
 
         # z to block_in
-        self.conv_in = SphereConv2d(in_channels=z_channels,
-                                    out_channels=block_in,
-                                    kernel_size=(3, 3), padding = (1, 1))
+        if use_history:
+            self.conv_in = SphereConv2d(in_channels=z_channels,
+                                        out_channels=block_in // 2,
+                                        kernel_size=(3, 3), padding = (1, 1))
+            
+            # doesn't need spherical padding since patch embed has padding = 0
+            self.history_in = nn.Conv2d(z_channels, block_in // 2, kernel_size=patch_size, stride=patch_size)
+
+        else:
+            self.conv_in = SphereConv2d(in_channels=z_channels,
+                                        out_channels=block_in,
+                                        kernel_size=(3, 3), padding = (1, 1))
 
         # middle
         self.mid = nn.Module()
@@ -386,12 +395,16 @@ class DecoderCNN(nn.Module):
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
-    def forward(self, z) -> torch.Tensor:
+    def forward(self, z, history=None) -> torch.Tensor:
 
         # x in shape b c nlat nlon
 
         # z to block_in
         h = self.conv_in(z)
+        
+        if self.use_history:
+            h_history = self.history_in(history)
+            h = torch.cat([h, h_history], dim=1)
 
         # middle
         h = self.mid.block_1(h)
