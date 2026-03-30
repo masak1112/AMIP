@@ -8,7 +8,6 @@ import os
 # Custom imports
 from common.utils import get_yaml, save_yaml
 from modules.train_module import TrainModule
-from modules.ae_module import AutoencoderModule
 from data.datamodule import ClimateDataModule
 
 # Lightning imports
@@ -69,34 +68,26 @@ def main(args):
 
     datamodule = ClimateDataModule(dataconfig=dataconfig)
 
-    if "AE" in modelconfig["model_name"]:
-        model = AutoencoderModule(config=config,
-                                  normalizer=datamodule.train_dataset)
-        monitor = "step"
-        mode = 'max'
-        every_n_train_steps = 100
-    else:
-        model = TrainModule(config,
-                            normalizer=datamodule.train_dataset)
-        monitor = "step"
-        mode = 'max'
-        every_n_train_steps = 100
+    model = TrainModule(config,
+                        normalizer=datamodule.train_dataset)
 
-    checkpoint_callback  = ModelCheckpoint(
-        monitor=monitor,
-        filename= "model_{epoch:02d}_{step}_best",
-        mode=mode,
-        dirpath=path,
-        save_last=True,
-        save_top_k=1,
-        every_n_train_steps=every_n_train_steps,
-    )
+    save_every = trainconfig.get("save_every", False)
 
-    # for bias fine-tuning, save every epoch
-    #checkpoint_callback = ModelCheckpoint(
-    #    every_n_epochs=1, # Saves every 1 epoch
-    #    save_top_k=-1     # Required to not overwrite previous ones if you want to keep all
-    #)
+    if save_every: # save each epoch for bias finetuning
+        checkpoint_callback = ModelCheckpoint(
+            every_n_epochs=1, # Saves every 1 epoch
+            save_top_k=-1     # Required to not overwrite previous ones if you want to keep all
+        )
+    else: # else save most recent copy
+        checkpoint_callback  = ModelCheckpoint(
+            monitor="step",
+            filename= "model_{epoch:02d}_{step}_best",
+            mode='max',
+            dirpath=path,
+            save_last=True,
+            save_top_k=1,
+            every_n_train_steps=100
+        )
 
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
     

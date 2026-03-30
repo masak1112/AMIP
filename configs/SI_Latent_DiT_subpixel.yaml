@@ -107,3 +107,4 @@ training:
     checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT__42_2026-03-29T09-08-03/last.ckpt
     accumulate_grad_batches: 1
     optimizer: adam
+    save_every: True
