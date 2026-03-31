@@ -75,6 +75,8 @@ def main(args):
 
     if save_every: # save each epoch for bias finetuning
         checkpoint_callback = ModelCheckpoint(
+            dirpath=path,
+            filename="model_{epoch:02d}",
             every_n_epochs=1, # Saves every 1 epoch
             save_top_k=-1     # Required to not overwrite previous ones if you want to keep all
         )
