@@ -130,6 +130,10 @@ class AutoencoderModule(L.LightningModule):
             spectral_loss = self.spectral_criterion(surface_pred, surface_data,
                                         multilevel_pred, multilevel_data,
                                         diagnostic_pred, diagnostic_data)
+            
+            self.log("train/pixel_loss", pixel_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
+            self.log("train/spectral_loss", spectral_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
+            
             loss = pixel_loss + self.spectral_loss_weight * spectral_loss
 
         self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
