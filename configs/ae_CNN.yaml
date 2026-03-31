@@ -5,7 +5,7 @@ model:
     surface_weight: null
     multi_level_weight: [1.0, 1.0, 1.0, 5.0, 1.0]
     diag_weight: null
-    spectral_loss_weight: 0.05
+    spectral_loss_weight: 0.10
     spectral_z_weight: 1.0
     Decoder_CNN:
         encoder:
@@ -16,6 +16,7 @@ model:
             z_channels: 151
             num_out_blocks: 2
             num_res_blocks: 3
+            use_history: False
 data:
     data_dir: '/glade/derecho/scratch/awikner/ERA5/h5'
     upper_air_variables: ["temperature",
@@ -60,6 +61,7 @@ data:
     std_path: "/glade/derecho/scratch/ayz/ERA5/h5/normalize_std.nc"
     forecast_lead_times: [1] 
     autoencoder: True
+    use_history: False
 
     calendar: 'standard'
     data_timedelta_hours: 6

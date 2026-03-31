@@ -9,6 +9,6 @@
 module load conda
 conda activate torch
 
-CONFIG=configs/ae_decoder.yaml
+CONFIG=configs/ae_CNN.yaml
 
 python trainAE.py --config=$CONFIG
