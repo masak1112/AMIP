@@ -6,8 +6,6 @@
 #PBS -A UCHI0014
 #PBS -j oe
 
-export NCCL_DEBUG=INFO
-export NCCL_DEBUG_SUBSYS=ALL
 export NCCL_TIMEOUT=1800
 export NCCL_P2P_DISABLE=1                                                                                                                                                                                                                                                       
 export NCCL_SHM_DISABLE=0 
