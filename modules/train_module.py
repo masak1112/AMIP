@@ -57,11 +57,15 @@ class TrainModule(L.LightningModule):
 
         if self.latent:
             from modules.layers.bilinear import BilinearDownsample
-            #from modules.models.AE_decoder_hfs import DecoderHistory
 
             self.encoder = BilinearDownsample(**self.modelconfig['SI_Latent_DiT']["encoder"])
-            #self.decoder = DecoderHistory(**self.modelconfig['SI_Latent_DiT']["decoder"])
-            #self.initialize_decoder()
+
+            if "decoder" in self.modelconfig['SI_Latent_DiT']:
+                from modules.models.Decoder import DecoderCNN
+                self.decoder = DecoderCNN(**self.modelconfig['SI_Latent_DiT']["decoder"])
+                self.initialize_decoder()
+            else:
+                self.decoder = None
 
         if config['training']['strategy'] == 'ddp' or config['training']['strategy'] == 'ddp_find_unused_parameters_true':
             self.ddp = True
@@ -71,7 +75,22 @@ class TrainModule(L.LightningModule):
         self.save_hyperparameters()
 
     def initialize_decoder(self):
-        raise NotImplementedError("Decoder initialization not implemented yet")
+        decoder_checkpoint = self.modelconfig['SI_Latent_DiT'].get("decoder_checkpoint", None)
+        if decoder_checkpoint is None:
+            raise ValueError("decoder_checkpoint must be specified in config when using a decoder")
+
+        state_dict = torch.load(decoder_checkpoint, map_location='cpu', weights_only=False)['state_dict']
+        # Extract decoder weights from the AutoencoderModule checkpoint
+        decoder_state_dict = {}
+        for k, v in state_dict.items():
+            if k.startswith("decoder."):
+                decoder_state_dict[k[len("decoder."):]] = v
+
+        self.decoder.load_state_dict(decoder_state_dict)
+        self.decoder.eval()
+        for param in self.decoder.parameters():
+            param.requires_grad = False
+        print(f"Loaded pretrained decoder from {decoder_checkpoint}")
 
     def forward(self, x, c_grid):
         # x is flattened state, c is scalar conditioning
@@ -136,7 +155,8 @@ class TrainModule(L.LightningModule):
 
         invariant = self.invariant_input.expand(b, -1, -1, -1).to(device) # b c nlat nlon
 
-        if self.latent:
+        has_decoder = self.latent and self.decoder is not None
+        if self.latent and not has_decoder:
             nlat = nlat // 4
             nlon = nlon // 4
 
@@ -186,14 +206,18 @@ class TrainModule(L.LightningModule):
             multilevel_target_t = targets_upper_air[:, t] # b c nlevel nlat nlon
             diagnostic_target_t = targets_diagnostic[:, t] # b c nlat nlon 
 
-            if self.latent:
-                #surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = \
-                #    self.decoder(surface_history, multilevel_history, diagnostic_history,
-                #                 surface_pred, multilevel_pred, diagnostic_pred)
+            if has_decoder:
+                # Decode latent predictions to full resolution
+                latent_pred = assemble_input(surface_pred, multilevel_pred, diagnostic_pred)
+                decoded_pred = self.decoder(latent_pred)
+                surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(decoded_pred)
+
+            elif self.latent:
+                # No decoder: compare in latent space
                 surface_pred_decoded = surface_pred
                 multilevel_pred_decoded = multilevel_pred
                 diagnostic_pred_decoded = diagnostic_pred
-                
+
                 target_t = assemble_input(surface_target_t, multilevel_target_t, diagnostic_target_t)
                 target_t = self.encoder(target_t)
                 surface_target_t, multilevel_target_t, diagnostic_target_t = disassemble_input(target_t)

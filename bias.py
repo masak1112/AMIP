@@ -130,14 +130,22 @@ def main(args):
     invariant = model.invariant_input.to(device) # 1 c nlat nlon
     invariant = invariant.expand(ensemble_size, -1, -1, -1) # e c nlat nlon
 
+    has_decoder = model.latent and model.decoder is not None
+    if has_decoder:
+        clim_nlat, clim_nlon = model.nlat, model.nlon  # full resolution
+    elif model.latent:
+        clim_nlat, clim_nlon = 45, 90  # latent resolution
+    else:
+        clim_nlat, clim_nlon = model.nlat, model.nlon
+
     print(f"Processing {len(dataset)} timesteps with ensemble size {ensemble_size}...")
 
     plot_every = 500
 
     # per-member running mean accumulators: e c h w / e c l h w
-    climatology_surface = torch.zeros((ensemble_size, len(model.surface_variables), 45, 90), device=device)
-    climatology_multilevel = torch.zeros((ensemble_size, len(model.multilevel_variables), model.nlevels, 45, 90), device=device)
-    climatology_diagnostic = torch.zeros((ensemble_size, len(model.diagnostic_variables), 45, 90), device=device)
+    climatology_surface = torch.zeros((ensemble_size, len(model.surface_variables), clim_nlat, clim_nlon), device=device)
+    climatology_multilevel = torch.zeros((ensemble_size, len(model.multilevel_variables), model.nlevels, clim_nlat, clim_nlon), device=device)
+    climatology_diagnostic = torch.zeros((ensemble_size, len(model.diagnostic_variables), clim_nlat, clim_nlon), device=device)
 
     with torch.no_grad():
         for batch_idx in tqdm(range(len(dataset))):
@@ -166,9 +174,17 @@ def main(args):
 
             surface_pred, multilevel_pred, diagnostic_pred = model.forward(x, c_grid) # e c h w / e c l h w
 
-            surface_pred_denorm = model.n.surface_inv_transform(surface_pred)
-            multilevel_pred_denorm = model.n.upper_air_inv_transform(multilevel_pred)
-            diagnostic_pred_denorm = model.n.diagnostic_inv_transform(diagnostic_pred)
+            if has_decoder:
+                latent_pred = assemble_input(surface_pred, multilevel_pred, diagnostic_pred)
+                decoded_pred = model.decoder(latent_pred)
+                surface_decoded, multilevel_decoded, diagnostic_decoded = disassemble_input(decoded_pred)
+                surface_pred_denorm = model.n.surface_inv_transform(surface_decoded)
+                multilevel_pred_denorm = model.n.upper_air_inv_transform(multilevel_decoded)
+                diagnostic_pred_denorm = model.n.diagnostic_inv_transform(diagnostic_decoded)
+            else:
+                surface_pred_denorm = model.n.surface_inv_transform(surface_pred)
+                multilevel_pred_denorm = model.n.upper_air_inv_transform(multilevel_pred)
+                diagnostic_pred_denorm = model.n.diagnostic_inv_transform(diagnostic_pred)
 
             # per-member running mean update
             n = batch_idx + 1
@@ -186,13 +202,21 @@ def main(args):
                 torch.save(climatology_multilevel.mean(dim=0).cpu(), path + f"climatology_multilevel_{batch_idx + 1}.pt")
                 torch.save(climatology_diagnostic.mean(dim=0).cpu(), path + f"climatology_diagnostic_{batch_idx + 1}.pt")
 
-                target_t = assemble_input(surface_t1.unsqueeze(0).to(device), upper_air_t1.unsqueeze(0).to(device), diagnostic_t1.unsqueeze(0).to(device))
-                target_t = model.encoder(target_t)
-                surface_t1, upper_air_t1, diagnostic_t1 = disassemble_input(target_t)
-
-                surface_true_denorm = model.n.surface_inv_transform(surface_t1)
-                multilevel_true_denorm = model.n.upper_air_inv_transform(upper_air_t1)
-                diagnostic_true_denorm = model.n.diagnostic_inv_transform(diagnostic_t1)
+                if has_decoder:
+                    # Targets stay at full resolution
+                    surface_t1_dev = surface_t1.unsqueeze(0).to(device)
+                    upper_air_t1_dev = upper_air_t1.unsqueeze(0).to(device)
+                    diagnostic_t1_dev = diagnostic_t1.unsqueeze(0).to(device)
+                    surface_true_denorm = model.n.surface_inv_transform(surface_t1_dev)
+                    multilevel_true_denorm = model.n.upper_air_inv_transform(upper_air_t1_dev)
+                    diagnostic_true_denorm = model.n.diagnostic_inv_transform(diagnostic_t1_dev)
+                else:
+                    target_t = assemble_input(surface_t1.unsqueeze(0).to(device), upper_air_t1.unsqueeze(0).to(device), diagnostic_t1.unsqueeze(0).to(device))
+                    target_t = model.encoder(target_t)
+                    surface_t1, upper_air_t1, diagnostic_t1 = disassemble_input(target_t)
+                    surface_true_denorm = model.n.surface_inv_transform(surface_t1)
+                    multilevel_true_denorm = model.n.upper_air_inv_transform(upper_air_t1)
+                    diagnostic_true_denorm = model.n.diagnostic_inv_transform(diagnostic_t1)
 
                 # use first ensemble member for plotting
                 pred_feat_dict = {}
