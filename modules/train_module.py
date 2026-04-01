@@ -209,7 +209,12 @@ class TrainModule(L.LightningModule):
             if has_decoder:
                 # Decode latent predictions to full resolution
                 latent_pred = assemble_input(surface_pred, multilevel_pred, diagnostic_pred)
-                decoded_pred = self.decoder(latent_pred)
+                if self.decoder.use_history:
+                    decoded_pred = self.decoder(latent_pred, history)
+                    # Update history to the decoded full-res output for the next timestep
+                    history = decoded_pred.detach()
+                else:
+                    decoded_pred = self.decoder(latent_pred)
                 surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(decoded_pred)
 
             elif self.latent:
