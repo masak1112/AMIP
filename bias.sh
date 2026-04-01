@@ -2,7 +2,7 @@
 #PBS -N bias_10
 #PBS -l select=1:ncpus=4:ngpus=1:mem=120G
 #PBS -q develop
-#PBS -l walltime=02:30:00
+#PBS -l walltime=03:00:00
 #PBS -A UCHI0014
 #PBS -j oe
 

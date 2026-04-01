@@ -64,6 +64,8 @@ class TrainModule(L.LightningModule):
                 from modules.models.Decoder import DecoderCNN
                 self.decoder = DecoderCNN(**self.modelconfig['SI_Latent_DiT']["decoder"])
                 self.initialize_decoder()
+                # Allow loading from checkpoints trained without the decoder
+                self.strict_loading = False
             else:
                 self.decoder = None
 

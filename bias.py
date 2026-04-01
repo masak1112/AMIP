@@ -105,7 +105,7 @@ def main(args):
     
     checkpoint = trainconfig['checkpoint']
     directory_path = os.path.dirname(checkpoint)
-    path = os.path.join(directory_path, "bias_10_logs/")
+    path = os.path.join(directory_path, "bias_logs/")
 
     os.makedirs(path, exist_ok=True) 
     print(f"Logging to: {path}")
@@ -123,7 +123,10 @@ def main(args):
     model = TrainModule(config,
                         normalizer=dataset).to(device)
     state_dict = torch.load(checkpoint, map_location=device, weights_only=False)['state_dict']
-    model.load_state_dict(state_dict)
+    # strict=False: the TrainModule checkpoint was trained without a decoder,
+    # so it has no decoder.* keys. The decoder weights are already loaded
+    # from the AE checkpoint in initialize_decoder().
+    model.load_state_dict(state_dict, strict=False)
     model.eval()
 
     ensemble_size = 8
