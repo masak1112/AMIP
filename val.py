@@ -51,6 +51,8 @@ def main(args):
     path = trainconfig["log_dir"] + name + "/"
     config['training']["log_dir"] = path
 
+    dataconfig['val_num_inferences'] = 0 # use entire val set
+
     os.makedirs(path, exist_ok=True) 
     save_yaml(config, path + "config.yml")
 
