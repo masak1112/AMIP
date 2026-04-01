@@ -95,3 +95,4 @@ training:
     description: CNN
     accumulate_grad_batches: 16
     optimizer: adam
+    plot_val: True

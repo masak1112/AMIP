@@ -25,6 +25,7 @@ class AutoencoderModule(L.LightningModule):
         self.horizontal_resolution = self.dataconfig['horizontal_resolution']
         self.nlat, self.nlon = self.horizontal_resolution
         self.nlevels = len(self.dataconfig['levels'])
+        self.plot_val = self.config['training'].get("plot_val", False)
 
         self.modelconfig = config['model']
         self.model_name = self.modelconfig["model_name"]
@@ -159,7 +160,8 @@ class AutoencoderModule(L.LightningModule):
 
         if batch_idx == 0: # only plot 1st batch
             if not self.ddp or self.global_rank == 0: # only run plotting on one gpu
-                #self.plot_predictions(pred_dict, data_dict)
+                if self.plot_val:
+                    self.plot_predictions(pred_dict, data_dict)
                 self.save_predictions(pred_dict, data_dict)
     
     @torch.no_grad()
