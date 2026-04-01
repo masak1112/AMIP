@@ -174,7 +174,6 @@ class Decoder(nn.Module):
         self.num_out_blocks = num_out_blocks
         if num_out_blocks > 0:
             self.out_blocks = nn.ModuleList()
-            self.out_scale = nn.ModuleList()
             for i in range(num_out_blocks):
                 self.out_blocks.append(ResnetBlock(in_channels=block_in,
                                        out_channels=block_out))
@@ -224,7 +223,6 @@ class Decoder(nn.Module):
         if self.num_out_blocks > 0:
             for i in range(len(self.out_blocks)):
                 h = self.out_blocks[i](h)
-                h = self.out_scale[i](h)
 
         h = self.norm_out(h)
         h = nonlinearity(h)
