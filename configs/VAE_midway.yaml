@@ -74,7 +74,7 @@ data:
     val_num_inferences: 0 # use entire val set
     diagnostic_input: True # specific to AE model, we need diagnostic at time t, since we are training a downscaler
 
-    batch_size: 8
+    batch_size: 4
     num_data_workers: 4
 
 training:
@@ -93,5 +93,5 @@ training:
     wandb_mode: online
     checkpoint: null
     description: VAE
-    accumulate_grad_batches: 1
+    accumulate_grad_batches: 2
     optimizer: adam
