@@ -11,7 +11,7 @@ model:
     VAE_CNN:
         encoder:
             in_channels: 151  
-            hidden_channels: 256
+            hidden_channels: 384
             z_channels: 64 # 2x the z channels of the AE, since we are doing a VAE
             num_in_blocks: 2
             num_res_blocks: 4
