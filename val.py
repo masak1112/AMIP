@@ -2,29 +2,17 @@
 import argparse
 from datetime import datetime
 import torch
-from torch.optim.swa_utils import get_ema_avg_fn
 import os 
 
 # Custom imports
 from common.utils import get_yaml, save_yaml
 from modules.train_module import TrainModule
-from modules.ae_module import AutoencoderModule
 from data.datamodule import ClimateDataModule
 
 # Lightning imports
 import lightning as L
-from lightning.pytorch.callbacks import LearningRateMonitor, WeightAveraging
 from lightning.pytorch import seed_everything
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.callbacks import ModelCheckpoint
-
-class EMAWeightAveraging(WeightAveraging):
-    def __init__(self, decay=0.995):
-        super().__init__(avg_fn=get_ema_avg_fn(decay=decay))
-
-    def should_update(self, step_idx=None, epoch_idx=None):
-        # always update
-        return True
 
 def process_args(args, config):
     modelconfig = config['model']
@@ -62,40 +50,14 @@ def main(args):
                                mode=trainconfig["wandb_mode"])
     path = trainconfig["log_dir"] + name + "/"
     config['training']["log_dir"] = path
-    use_compile = config['training'].get("use_compile", False)
 
     os.makedirs(path, exist_ok=True) 
     save_yaml(config, path + "config.yml")
 
     datamodule = ClimateDataModule(dataconfig=dataconfig)
 
-    if "AE" in modelconfig["model_name"]:
-        model = AutoencoderModule(config=config,
-                                  normalizer=datamodule.normalizer)
-        monitor = "val/t2m"
-        mode = 'min'
-        every_n_train_steps = None
-    else:
-        model = TrainModule(config,
-                            normalizer=datamodule.normalizer)
-        monitor = "step"
-        mode = 'max'
-        every_n_train_steps = 100
-
-    if use_compile:
-        model = torch.compile(model)
-
-    checkpoint_callback  = ModelCheckpoint(
-        monitor=monitor,
-        filename= "model_{epoch:02d}_{step}_best",
-        mode=mode,
-        dirpath=path,
-        save_last=True,
-        save_top_k=1,
-        every_n_train_steps=every_n_train_steps,
-    )
-
-    lr_monitor = LearningRateMonitor(logging_interval='epoch')
+    model = TrainModule(config,
+                        normalizer=datamodule.train_dataset)
     
     trainer = L.Trainer(devices = trainconfig["devices"],
                         num_nodes = trainconfig.get("num_nodes", 1),
@@ -105,7 +67,6 @@ def main(args):
                         log_every_n_steps = trainconfig["log_every_n_steps"],
                         max_epochs = trainconfig["max_epochs"],
                         default_root_dir = path,
-                        callbacks=[checkpoint_callback, lr_monitor, EMAWeightAveraging(trainconfig["ema_decay"])],
                         logger=wandb_logger,
                         accumulate_grad_batches=trainconfig.get("accumulate_grad_batches", 1),
                         num_sanity_val_steps=trainconfig.get("num_sanity_val_steps", 1),

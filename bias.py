@@ -160,6 +160,10 @@ def main(args):
                 x = assemble_input(surface_t, upper_air_t, diagnostic_t) # e c h w
                 c_grid = assemble_forcing(varying_boundary_data, invariant) # e c h w
 
+                # Initialize history for decoder with use_history (full-res input at t=0)
+                if has_decoder and model.decoder.use_history:
+                    history = x.clone()
+
                 if model.latent:
                     x = model.encoder(x)
                     c_grid = model.encoder(c_grid)
@@ -176,7 +180,11 @@ def main(args):
 
             if has_decoder:
                 latent_pred = assemble_input(surface_pred, multilevel_pred, diagnostic_pred)
-                decoded_pred = model.decoder(latent_pred)
+                if model.decoder.use_history:
+                    decoded_pred = model.decoder(latent_pred, history)
+                    history = decoded_pred.detach()
+                else:
+                    decoded_pred = model.decoder(latent_pred)
                 surface_decoded, multilevel_decoded, diagnostic_decoded = disassemble_input(decoded_pred)
                 surface_pred_denorm = model.n.surface_inv_transform(surface_decoded)
                 multilevel_pred_denorm = model.n.upper_air_inv_transform(multilevel_decoded)

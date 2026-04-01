@@ -188,6 +188,10 @@ class TrainModule(L.LightningModule):
                 pred_feat_dict[diagnostic_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=device) # b t h w
                 target_feat_dict[diagnostic_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=device) # b t h w
 
+        # Initialize history for decoder with use_history
+        if has_decoder and self.decoder.use_history:
+            history = assemble_input(surface_t, upper_air_t, diagnostic_t)  # full-res input at t=0
+
         for t in range(nt):
             # assemble forcings
             forcing_input = varying_boundary_data[:, t] # b nlat nlon c

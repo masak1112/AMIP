@@ -26,8 +26,9 @@ model:
             z_channels: 151
             num_out_blocks: 2
             num_res_blocks: 3
-            use_history: False
-        decoder_checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/Decoder_CNN_CNN_42_2026-03-31T12-17-51/last.ckpt
+            use_history: True 
+            patch_size: 4
+        decoder_checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/Decoder_CNN_History/last.ckpt
 
 data:
     data_dir: '/glade/derecho/scratch/awikner/ERA5/h5'
@@ -105,4 +106,5 @@ training:
     checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT__42_2026-03-31T08-49-33/model_epoch=43.ckpt
     accumulate_grad_batches: 1
     optimizer: adam
+    description: history
     save_every: True
