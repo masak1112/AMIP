@@ -95,7 +95,7 @@ training:
     accelerator: gpu
     strategy: ddp
     precision: 32-true
-    check_val_every_n_epoch: 2
+    check_val_every_n_epoch: 1
     log_every_n_steps: 10
     max_epochs: 50
     ema_decay: 0.99
@@ -103,7 +103,7 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT__42_2026-03-29T09-08-03/last.ckpt
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT__42_2026-03-31T08-49-33/last.ckpt
     accumulate_grad_batches: 1
     optimizer: adam
     save_every: True
