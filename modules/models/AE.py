@@ -220,7 +220,6 @@ class Decoder(nn.Module):
                 h = self.up[i_level].block[i_block](h)
             if i_level != 0:
                 h = self.up[i_level].upsample(h)
-            h = self.feat_up[i_level](h)
 
         if self.num_out_blocks > 0:
             for i in range(len(self.out_blocks)):
