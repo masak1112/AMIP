@@ -9,6 +9,6 @@
 module load conda
 conda activate torch
 
-CONFIG=configs/SI_Latent_DiT_subpixel.yaml
+CONFIG=configs/SI_Latent_DiT_subpixel_latent.yaml
 
 python train.py --config=$CONFIG

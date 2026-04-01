@@ -17,17 +17,9 @@ model:
             num_refinement_steps: 5
             num_train_steps: 21
             integrator: em
-            sigma_coef: 0.25
+            sigma_coef: 0.5
         encoder:
             downsample_factor: 4
-        decoder:
-            out_channels: 151  # 6 + 26*5 + 15 = 151
-            hidden_channels: 512
-            z_channels: 151
-            num_out_blocks: 2
-            num_res_blocks: 3
-            use_history: False
-        decoder_checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/Decoder_CNN_CNN_42_2026-03-31T12-17-51/last.ckpt
 
 data:
     data_dir: '/glade/derecho/scratch/awikner/ERA5/h5'
@@ -105,5 +97,5 @@ training:
     checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT__42_2026-03-31T08-49-33/model_epoch=43.ckpt
     accumulate_grad_batches: 1
     optimizer: adam
+    description: latent_only
     save_every: True
-    description: sigma_0.25
