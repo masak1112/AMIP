@@ -7,7 +7,7 @@ model:
     diag_weight: null
     spectral_loss_weight: 0.10
     spectral_z_weight: 1.0
-    kl_weight: 1.0e-5
+    kl_weight: 1.0e-6
     VAE_CNN:
         encoder:
             in_channels: 151  
