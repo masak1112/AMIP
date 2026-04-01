@@ -103,9 +103,10 @@ def main(args):
     seed_everything(seed)
     torch.set_float32_matmul_precision("high")
     
+    description = trainconfig.get("description", "")
     checkpoint = trainconfig['checkpoint']
     directory_path = os.path.dirname(checkpoint)
-    path = os.path.join(directory_path, "bias_logs/")
+    path = os.path.join(directory_path, f"bias_logs_{description}/")
 
     os.makedirs(path, exist_ok=True) 
     print(f"Logging to: {path}")
