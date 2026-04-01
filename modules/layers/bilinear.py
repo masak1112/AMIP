@@ -2,7 +2,7 @@ from typing import Any
 import torch
 from einops import rearrange
 import torch.nn.functional as F
-
+from common.utils import assemble_input
 
 class BilinearDownsample():
     def __init__(self,
@@ -25,8 +25,15 @@ class BilinearEncoder():
         super().__init__()
         self.downsample_factor = downsample_factor
 
-    def __call__(self, surface, multilevel, diagnostic) -> Any:
-        return self.forward(surface, multilevel, diagnostic)
+    def __call__(self, surface, multilevel, diagnostic, assemble=False) -> Any:
+
+        z_surface, z_multilevel, z_diagnostic = self.forward(surface, multilevel, diagnostic)
+
+        if assemble:
+            z = assemble_input(z_surface, z_multilevel, z_diagnostic)
+            return z
+        else:
+            return self.forward(surface, multilevel, diagnostic)
     
     def forward(self, surface, multilevel, diagnostic=None) -> torch.Tensor:
         # surface in shape b c nlat nlon

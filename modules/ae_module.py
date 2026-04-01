@@ -4,6 +4,7 @@ import torch
 from common.loss import latitude_weighted_rmse
 from common.utils import assemble_input, disassemble_input
 from common.plotting import plot_reconstruction, plot_spectrum
+from modules.layers.distributions import DiagonalGaussianDistribution
 
 class AutoencoderModule(L.LightningModule):
     def __init__(self,
@@ -52,7 +53,7 @@ class AutoencoderModule(L.LightningModule):
             from modules.layers.bilinear import BilinearEncoder
             from common.loss import SpectralBaseLoss, WeightedLoss
 
-            self.downsample = BilinearEncoder(**self.modelconfig["Decoder_CNN"]["encoder"])
+            self.encoder = BilinearEncoder(**self.modelconfig["Decoder_CNN"]["encoder"])
             self.decoder = DecoderCNN(**self.modelconfig["Decoder_CNN"]["decoder"])
 
             self.criterion = WeightedLoss(latitude_resolution=180,
@@ -66,6 +67,26 @@ class AutoencoderModule(L.LightningModule):
             self.spectral_loss_weight = self.modelconfig["spectral_loss_weight"] # 0.05
             self.spectral_criterion = SpectralBaseLoss(img_shape=(180, 360),
                                                     z500_weight= self.modelconfig["spectral_z_weight"])
+        elif self.model_name == "VAE_CNN":
+            from modules.models.AE import Encoder, Decoder
+            from common.loss import SpectralBaseLoss, WeightedLoss
+
+            self.kl_weight = self.modelconfig.get("kl_weight", 1e-6)
+            self.encoder = Encoder(**self.modelconfig["VAE_CNN"]["encoder"])
+            self.decoder = Decoder(**self.modelconfig["VAE_CNN"]["decoder"])
+
+            self.criterion = WeightedLoss(latitude_resolution=180,
+                                longitude_resolution=360,
+                                nlevels = 26,
+                                level_weight=self.modelconfig["level_weight"],
+                                surface_variable_weight=self.modelconfig["surface_weight"],
+                                multi_level_variable_weight=self.modelconfig["multi_level_weight"],
+                                diag_variable_weight=self.modelconfig["diag_weight"])
+
+            self.spectral_loss_weight = self.modelconfig["spectral_loss_weight"]
+            self.spectral_criterion = SpectralBaseLoss(img_shape=(180, 360),
+                                                    z500_weight= self.modelconfig["spectral_z_weight"])
+
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
@@ -76,7 +97,7 @@ class AutoencoderModule(L.LightningModule):
 
         self.save_hyperparameters()
 
-    def forward(self, surface, multilevel, diagnostic, 
+    def forward(self, surface, multilevel, diagnostic,
                 surface_history = None, multilevel_history=None, diagnostic_history=None):
 
         if self.use_history:
@@ -84,21 +105,23 @@ class AutoencoderModule(L.LightningModule):
 
         if self.diffusion:
             z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface, multilevel, diagnostic))
-            x = assemble_input(z_surface, z_multilevel, z_diagnostic)
+            z = assemble_input(z_surface, z_multilevel, z_diagnostic)
 
             # diffusion sampling
             if self.use_history:
-                y = self.scheduler.sample(x, self.decoder, cond)
+                y = self.scheduler.sample(z, self.decoder, cond)
             else:
-                y = self.scheduler.sample(x, self.decoder)
+                y = self.scheduler.sample(z, self.decoder)
         else:
-            z_surface, z_multilevel, z_diagnostic = self.downsample(surface, multilevel, diagnostic)
-            x = assemble_input(z_surface, z_multilevel, z_diagnostic)
+            x = assemble_input(surface, multilevel, diagnostic)
+            h = self.encoder(x)
+            self.posterior = DiagonalGaussianDistribution(h)
+            z = self.posterior.sample()
 
             if self.use_history:
-                y = self.decoder(x, cond)
+                y = self.decoder(z, cond)
             else:
-                y = self.decoder(x)
+                y = self.decoder(z)
 
         surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
 
@@ -131,11 +154,13 @@ class AutoencoderModule(L.LightningModule):
             spectral_loss = self.spectral_criterion(surface_pred, surface_data,
                                         multilevel_pred, multilevel_data,
                                         diagnostic_pred, diagnostic_data)
-            
+            kl_loss = self.posterior.kl().mean()
+
             self.log("train/pixel_loss", pixel_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
             self.log("train/spectral_loss", spectral_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
-            
-            loss = pixel_loss + self.spectral_loss_weight * spectral_loss
+            self.log("train/kl_loss", kl_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
+
+            loss = pixel_loss + self.spectral_loss_weight * spectral_loss + self.kl_weight * kl_loss
 
         self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
 
@@ -284,7 +309,7 @@ class AutoencoderModule(L.LightningModule):
     
     def configure_optimizers(self):
 
-        optimizer = torch.optim.Adam(list(self.decoder.parameters()), lr=self.lr)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.9)
 
         return [optimizer], [scheduler]
