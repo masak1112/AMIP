@@ -13,7 +13,8 @@ class EDMScheduler():
                  P_std=1.2,
                  ndim=2,
                  sde=False,
-                 sigma_sampling='log_uniform'):
+                 sigma_sampling='log_uniform',
+                 noise_shape = None,):
         
         self.skip_percent = 0
         self.noise_steps = num_steps
@@ -26,6 +27,7 @@ class EDMScheduler():
         self.P_std = P_std
         self.ndim = ndim
         self.sde = sde
+        self.noise_shape = noise_shape
         self.sigma_sampling = sigma_sampling
 
     def batch_mult(self, x, y):
@@ -108,7 +110,10 @@ class EDMScheduler():
             t_steps = (sigma_max ** (1 / rho) + step_indices / (num_steps - 1) * (sigma_min ** (1 / rho) - sigma_max ** (1 / rho))) ** rho
             t_steps = torch.cat([self.round_sigma(t_steps), torch.zeros_like(t_steps[:1])]) # t_N = 0
             
-            x_next = torch.randn_like(initial_cond, device=device)
+            if self.noise_shape:
+                x_next = torch.randn((initial_cond.shape[0], *self.noise_shape), device=device)
+            else:
+                x_next = torch.randn_like(initial_cond, device=device)
 
             x_next = x_next * t_steps[0]
 
