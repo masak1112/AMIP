@@ -13,73 +13,30 @@ Key concepts:
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
-from scipy.fft import fft2, fftshift
 from common.utils import get_yaml
 from data.amip_new import GetDataset
+import torch 
+
+from common.plotting import zonal_averaged_power_spectrum
 
 
-# ---------------------------------------------------------------------------
-# 1. Synthetic climate field generation
-# ---------------------------------------------------------------------------
-
-def make_climate_field(nx=256, ny=128, field_type="geopotential", seed=42):
-    """
-    Generate a synthetic 2D climate-like field on a lat-lon-ish grid.
-
-    Each field type has a different power spectrum:
-      - geopotential (Z500): very red spectrum, dominated by planetary-scale waves
-      - temperature (T2m):   red spectrum with a strong seasonal/diurnal mean offset
-      - precipitation:       flatter spectrum, small-scale variability, skewed
-    """
-    rng = np.random.default_rng(seed)
-    kx = np.fft.fftfreq(nx, d=1.0 / nx)
-    ky = np.fft.fftfreq(ny, d=1.0 / ny)
-    KX, KY = np.meshgrid(kx, ky)
-    K = np.sqrt(KX**2 + KY**2)
-    K[0, 0] = 1  # avoid division by zero
-
-    if field_type == "geopotential":
-        # Very red spectrum: power ∝ k^{-4}, strong planetary-scale signal
-        amplitude = K ** (-2.0)
-        # Add a large "seasonal cycle" offset (the dominant mode)
-        seasonal_offset = 80.0
-        label = "Z500-like (geopotential)"
-        cmap = "RdBu_r"
-    elif field_type == "temperature":
-        # Red spectrum: power ∝ k^{-3}, moderate seasonal offset
-        amplitude = K ** (-1.5)
-        seasonal_offset = 40.0
-        label = "T2m-like (temperature)"
-        cmap = "RdBu_r"
-    elif field_type == "precipitation":
-        # Flatter spectrum: power ∝ k^{-1.5}, weak large-scale signal
-        amplitude = K ** (-0.75)
-        seasonal_offset = 2.0
-        label = "Precip-like (precipitation)"
-        cmap = "YlGnBu"
-    else:
-        raise ValueError(f"Unknown field type: {field_type}")
-
-    # Generate random phases and build the field via inverse FFT
-    phases = rng.uniform(0, 2 * np.pi, size=(ny, nx))
-    spectrum = amplitude * np.exp(1j * phases)
-    field = np.real(np.fft.ifft2(spectrum))
-
-    # Normalize to unit variance, then add the seasonal offset
-    field = field / field.std()
-    field = field + seasonal_offset
-
-    return field, label, cmap
-
-
-def load_field(config):
+def load_field():
     config = get_yaml("configs/SI_Latent_DiT.yaml")
     dataconfig = config["data"]
     dataset = GetDataset(dataconfig,
                          year_start = 2010,
                          year_end = 2011)
     batch = dataset.__getitem__(0)
+    surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data = batch 
 
+    t2m = surface_t[2]
+    z500 = upper_air_t[3, -10]
+    precip = diagnostic_t[8]
+    q850 = upper_air_t[4, -6]
+    t850 = upper_air_t[0, -6]
+    u250 = upper_air_t[1, -13]
+
+    return np.array(z500), np.array(t2m), np.array(precip), np.array(q850), np.array(t850), np.array(u250)
     
 
 
@@ -104,39 +61,6 @@ def add_noise(x, sigma):
     """Apply Gaussian noise at level σ: x_noisy = x + σ * ε."""
     eps = np.random.randn(*x.shape)
     return x + sigma * eps
-
-
-# ---------------------------------------------------------------------------
-# 3. Power spectrum computation
-# ---------------------------------------------------------------------------
-
-def azimuthal_power_spectrum(field):
-    """
-    Compute the azimuthally averaged 2D power spectrum.
-
-    Returns wavenumbers k and the power P(k).
-    """
-    ny, nx = field.shape
-    F = fftshift(fft2(field - field.mean()))
-    power_2d = np.abs(F) ** 2 / (nx * ny)
-
-    # Wavenumber grid
-    kx = np.fft.fftshift(np.fft.fftfreq(nx, d=1.0))
-    ky = np.fft.fftshift(np.fft.fftfreq(ny, d=1.0))
-    KX, KY = np.meshgrid(kx, ky)
-    K = np.sqrt(KX**2 + KY**2)
-
-    # Bin by wavenumber
-    k_max = min(nx, ny) // 2
-    k_bins = np.arange(1, k_max + 1)
-    power_1d = np.zeros(len(k_bins))
-    for i, k in enumerate(k_bins):
-        mask = (K >= k - 0.5) & (K < k + 0.5)
-        if mask.any():
-            power_1d[i] = power_2d[mask].mean()
-
-    return k_bins, power_1d
-
 
 # ---------------------------------------------------------------------------
 # 4. Visualization
@@ -163,9 +87,17 @@ def visualize_noising(sigma_min=0.02, sigma_max=200.0):
         left=0.05, right=0.97,
     )
 
+    cmap = "twilight_shifted"
+
+    z500, t2m, precip, q850, t850, u250 = load_field()
+
+    fields = [z500, t2m, precip]
+
     for row_idx, ftype in enumerate(field_types):
-        field, label, cmap = make_climate_field(field_type=ftype)
-        inner = outer[row_idx].subgridspec(2, len(sigma_levels), height_ratios=[1, 1.1])
+        
+        field = fields[row_idx]
+        label = field_types[row_idx].capitalize()
+        inner = outer[row_idx].subgridspec(2, len(sigma_levels), height_ratios=[1, 2])
 
         vmin, vmax = field.min(), field.max()
         # Expand range for noised versions
@@ -182,12 +114,14 @@ def visualize_noising(sigma_min=0.02, sigma_max=200.0):
             else:
                 noised = add_noise(field, sigma)
                 title = f"σ = {sigma}"
-            ax.imshow(noised, cmap=cmap, vmin=vmin_plot, vmax=vmax_plot, aspect="auto")
+            im = ax.imshow(noised, cmap=cmap, vmin=vmin_plot, vmax=vmax_plot, aspect="auto")
             ax.set_xticks([])
             ax.set_yticks([])
             ax.set_title(title, fontsize=9)
             if col == 0:
                 ax.set_ylabel(label, fontsize=10, fontweight="bold")
+
+        fig.colorbar(im, ax=fig.axes[:len(sigma_levels)], orientation="horizontal", fraction=0.02, pad=0.02)
 
         # ---- Bottom sub-row: power spectra ----
         ax_spec = fig.add_subplot(inner[1, :])
@@ -198,14 +132,14 @@ def visualize_noising(sigma_min=0.02, sigma_max=200.0):
                 noised = field
                 lbl = "Clean signal"
                 ls = "-"
-                lw = 2.5
+                lw = 1
             else:
                 noised = add_noise(field, sigma)
                 lbl = f"σ = {sigma}"
-                ls = "-"
-                lw = 1.5
-            k, P = azimuthal_power_spectrum(noised)
-            ax_spec.loglog(k, P, ls=ls, lw=lw, color=colors[col], label=lbl)
+                ls = "--"
+                lw = 0.5
+            k, P = zonal_averaged_power_spectrum(torch.tensor(noised))
+            ax_spec.loglog(k, P, ls=ls, lw=lw, color=colors[col], label=lbl, alpha=0.5)
 
         # Show the flat noise floor for reference at a few sigma levels
         for sigma in [0.02, 1.0, 200.0]:
@@ -225,7 +159,7 @@ def visualize_noising(sigma_min=0.02, sigma_max=200.0):
         ax_spec.set_xlim(1, None)
         ax_spec.grid(True, alpha=0.3, which="both")
 
-    plt.savefig("/home/claude/noise_schedule_demo.png", dpi=150, bbox_inches="tight")
+    plt.savefig("logs/noise_schedule_demo.png", dpi=150, bbox_inches="tight")
     plt.close()
     print("Saved: noise_schedule_demo.png")
 
@@ -235,7 +169,10 @@ def visualize_signal_leak(sigma_max_values=[1.0, 10.0, 80.0, 200.0]):
     Demonstrate signal leak: at σ_max too small, you can still recover
     the large-scale mean by spatial averaging.
     """
-    field, _, _ = make_climate_field(field_type="geopotential")
+    
+    z500, t2m, precip, q850, t850, u250 = load_field()
+    field = z500
+    
     field_mean = field.mean()
     field_std = field.std()
 
@@ -252,7 +189,7 @@ def visualize_signal_leak(sigma_max_values=[1.0, 10.0, 80.0, 200.0]):
     for col, smax in enumerate(sigma_max_values):
         noised = add_noise(field, smax)
         snr_global = field_mean**2 / smax**2
-        snr_mode1 = (field_std * np.sqrt(field.size))**2 / (smax**2 * field.size)
+        #snr_mode1 = (field_std * np.sqrt(field.size))**2 / (smax**2 * field.size)
 
         # Top row: noised field
         ax = axes[0, col]
@@ -293,7 +230,7 @@ def visualize_signal_leak(sigma_max_values=[1.0, 10.0, 80.0, 200.0]):
             ax2.set_ylabel("Signal hidden", fontsize=10, color="green", fontweight="bold")
 
     plt.tight_layout()
-    plt.savefig("/home/claude/signal_leak_demo.png", dpi=150, bbox_inches="tight")
+    plt.savefig("logs/signal_leak_demo.png", dpi=150, bbox_inches="tight")
     plt.close()
     print("Saved: signal_leak_demo.png")
 
@@ -352,7 +289,7 @@ def visualize_log_uniform_distribution(sigma_min=0.02, sigma_max=200.0, n=50000)
         ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig("/home/claude/noise_distributions.png", dpi=150, bbox_inches="tight")
+    plt.savefig("logs/noise_distributions.png", dpi=150, bbox_inches="tight")
     plt.close()
     print("Saved: noise_distributions.png")
 
