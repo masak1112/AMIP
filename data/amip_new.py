@@ -29,7 +29,6 @@ from datetime import timedelta
 from itertools import product
 from os.path import join
 from torch.utils.data import DataLoader, Dataset
-from torch.utils.data.distributed import DistributedSampler
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +187,7 @@ class GetDataset(Dataset):
         self.diagnostic_input = params.get('diagnostic_input', False) # whether to use diagnostic as prognostic
         self.validate = validate if not self.train else False
         self.autoencoder = params.get('autoencoder', False)
-        self.use_history = params.get('use_history', False)
+        self.return_calendar = params.get('return_calendar', False)
 
         if not self.train and not self.params['forecast_lead_times']:
             self.params['forecast_lead_times'] = [1]
@@ -689,11 +688,34 @@ class GetDataset(Dataset):
             else:
                 upper_air_t, surface_t = self._reshape_and_mask_variables(data_in, out=False)
 
-        if self.autoencoder and not self.use_history: # only return one timestep if not using history
-            if self.diagnostic_input:
-                return self.surface_transform(surface_t), self.upper_air_transform(upper_air_t), self.diagnostic_transform(diagnostic_t)
-            else:
-                return self.surface_transform(surface_t), self.upper_air_transform(upper_air_t)
+        if self.autoencoder: # assume using diagnostics
+            
+            surface_t = self.surface_transform(surface_t)
+            upper_air_t = self.upper_air_transform(upper_air_t)
+            diagnostic_t = self.diagnostic_transform(diagnostic_t)
+
+            if self.return_calendar: 
+
+                data_year = start_time.year
+                seconds_into_year = int(
+                    (start_time - self.datetime_class(data_year, 1, 1, hour=0,
+                                                        has_year_zero=self.has_year_zero)).total_seconds()
+                )
+
+                # Using the remainder and floor division logic
+                doy = (seconds_into_year // 86400) + 1
+                sod = seconds_into_year % 86400 
+
+                varying_boundary_data = self.boundary_transform(varying_boundary_data) # co2 sst
+                co2 = varying_boundary_data[0, 0]
+                varying_boundary_data = varying_boundary_data[1:, :, :] # remove co2 from boundary data and return separately
+
+                calendar = torch.tensor([sod, doy, co2], dtype=torch.float32)
+
+                return surface_t, upper_air_t, diagnostic_t, varying_boundary_data, calendar
+            
+            return surface_t, upper_air_t, diagnostic_t
+
 
         data_out = self._get_data(end_time, out=True)
 
@@ -701,14 +723,6 @@ class GetDataset(Dataset):
             upper_air_t1, surface_t1, diagnostic_t1 = self._reshape_and_mask_variables(data_out, out=True)
         else:
             upper_air_t1, surface_t1 = self._reshape_and_mask_variables(data_out, out=True)
-
-        if self.autoencoder and self.use_history: # return two timesteps if using history (t and t+dt)
-            if self.diagnostic_input:
-                return self.surface_transform(surface_t), self.upper_air_transform(upper_air_t), self.diagnostic_transform(diagnostic_t), \
-                        self.surface_transform(surface_t1), self.upper_air_transform(upper_air_t1), self.diagnostic_transform(diagnostic_t1)
-            else:
-                return self.surface_transform(surface_t), self.upper_air_transform(upper_air_t), \
-                        self.surface_transform(surface_t1), self.upper_air_transform(upper_air_t1)
 
         # Normalize
         if self.params['predict_delta']:

@@ -1,17 +1,19 @@
 # This implementation code is largely based on the code from this GitHub repository: https://github.com/yuanzhi-zhu/mini_edm
-import torch 
+import math
+import torch
 
 class EDMScheduler():
     def __init__(self, 
-                 num_steps=10,
-                 sigma_min=0.002,
-                 sigma_max=80,
+                 num_steps=18,
+                 sigma_min=0.01,
+                 sigma_max=200,
                  rho=7,
-                 sigma_data=0.5,
+                 sigma_data=1.0,
                  P_mean=-1.2,
                  P_std=1.2,
                  ndim=2,
-                 sde=False):
+                 sde=False,
+                 sigma_sampling='log_uniform'):
         
         self.skip_percent = 0
         self.noise_steps = num_steps
@@ -24,6 +26,7 @@ class EDMScheduler():
         self.P_std = P_std
         self.ndim = ndim
         self.sde = sde
+        self.sigma_sampling = sigma_sampling
 
     def batch_mult(self, x, y):
         if self.ndim == 2:
@@ -36,8 +39,17 @@ class EDMScheduler():
         # x, shape [b nx ny d], is the current state
         # cond is optional, shape [b cond_dim] is the conditioning vector
 
-        rnd_normal = torch.randn([y.shape[0]], device=y.device) # shape [B]
-        sigma = (rnd_normal * self.P_std + self.P_mean).exp() # log-normal distribution
+        if self.sigma_sampling == 'log_uniform':
+            log_sigma_min = math.log(self.sigma_min)
+            log_sigma_max = math.log(self.sigma_max)
+            rnd_uniform = torch.rand([y.shape[0]], device=y.device)
+            sigma = (rnd_uniform * (log_sigma_max - log_sigma_min) + log_sigma_min).exp()
+        elif self.sigma_sampling == 'log_normal':
+            rnd_normal = torch.randn([y.shape[0]], device=y.device)
+            sigma = (rnd_normal * self.P_std + self.P_mean).exp()
+        else:
+            raise ValueError(f"Unknown sigma_sampling: {self.sigma_sampling}")
+        
         weight = (sigma ** 2 + self.sigma_data ** 2) / (sigma * self.sigma_data) ** 2 # loss weighting
         
         noise = torch.randn_like(y) 
@@ -64,9 +76,7 @@ class EDMScheduler():
 
         preconditioned_x = self.batch_mult(c_in, x)
 
-        model_in = torch.cat([initial_cond, preconditioned_x], dim=-1) # b nx ny 2d
-
-        model_output = model(model_in, sigma_t=c_noise, **kwargs)
+        model_output = model(preconditioned_x, t=c_noise, cond=initial_cond, **kwargs)
 
         return self.batch_mult(c_skip, x) + self.batch_mult(c_out, model_output)
         
@@ -76,7 +86,7 @@ class EDMScheduler():
             sigma = sigma * torch.ones([x.shape[0]], device=x.device)
         return self.model_forward_wrapper(x.float(), sigma.float(), model, initial_cond=initial_cond, **kwargs)
 
-    def sample(self, initial_cond, model, edm_solver="euler", **kwargs):
+    def sample(self, initial_cond, model, edm_solver="heun", **kwargs):
         """
         Main sample loop for EDMs
         initial_cond: the conditioning input, shape [b nx ny d]

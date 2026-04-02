@@ -36,8 +36,9 @@ class AutoencoderModule(L.LightningModule):
         self.n = normalizer
 
         self.diffusion = False 
-        self.use_history = self.config['data'].get("use_history", False)
+        self.return_calendar = self.config['data'].get("return_calendar", False)
 
+        '''
         if self.model_name == "AE_DIT_DDC":
             from modules.models.DiT import DiT
             from modules.layers.bilinear import BilinearEncoder, BilinearDecoder
@@ -67,7 +68,9 @@ class AutoencoderModule(L.LightningModule):
             self.spectral_loss_weight = self.modelconfig["spectral_loss_weight"] # 0.05
             self.spectral_criterion = SpectralBaseLoss(img_shape=(180, 360),
                                                     z500_weight= self.modelconfig["spectral_z_weight"])
-        elif self.model_name == "VAE_CNN":
+        '''
+
+        if self.model_name == "VAE_CNN":
             from modules.models.AE import Encoder, Decoder
             from common.loss import SpectralBaseLoss, WeightedLoss
 
@@ -86,7 +89,19 @@ class AutoencoderModule(L.LightningModule):
             self.spectral_loss_weight = self.modelconfig["spectral_loss_weight"]
             self.spectral_criterion = SpectralBaseLoss(img_shape=(180, 360),
                                                     z500_weight= self.modelconfig["spectral_z_weight"])
+            
+        elif self.model_name == "Decoder_EDM":
+            from modules.models.AE import Encoder
+            from modules.models.DiT import cDiT
+            from modules.diffusion.edm import EDMScheduler
 
+            self.encoder = Encoder(**self.modelconfig["Decoder_EDM"]["encoder"])
+            self.decoder = cDiT(**self.modelconfig["Decoder_EDM"]["decoder"])
+            self.scheduler = EDMScheduler(**self.modelconfig["Decoder_EDM"]["scheduler"])
+            self.diffusion = True 
+
+            # load encoder weights 
+            self.initialize_encoder()
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
@@ -97,31 +112,44 @@ class AutoencoderModule(L.LightningModule):
 
         self.save_hyperparameters()
 
-    def forward(self, surface, multilevel, diagnostic,
-                surface_history = None, multilevel_history=None, diagnostic_history=None):
+    def initialize_encoder(self):
+        encoder_checkpoint = self.modelconfig[self.model_name].get("encoder_checkpoint", None)
+        if encoder_checkpoint is None:
+            raise ValueError("encoder_checkpoint must be specified in config when using a encoder")
 
-        if self.use_history:
-            cond = assemble_input(surface_history, multilevel_history, diagnostic_history)
+        state_dict = torch.load(encoder_checkpoint, map_location='cpu', weights_only=False)['state_dict']
+
+        # Extract encoder weights from the AutoencoderModule checkpoint
+        encoder_state_dict = {}
+        for k, v in state_dict.items():
+            if k.startswith("encoder."):
+                encoder_state_dict[k[len("encoder."):]] = v
+
+        self.encoder.load_state_dict(encoder_state_dict)
+        self.encoder.eval()
+        for param in self.encoder.parameters():
+            param.requires_grad = False
+        print(f"Loaded pretrained encoder from {encoder_checkpoint}")
+
+    def encode(self, x):
+        h = self.encoder(x)
+        self.posterior = DiagonalGaussianDistribution(h)
+        z = self.posterior.sample()
+        return z
+
+    def forward(self, surface, multilevel, diagnostic,
+                forcing_data = None, calendar_data = None):
 
         if self.diffusion:
-            z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface, multilevel, diagnostic))
-            z = assemble_input(z_surface, z_multilevel, z_diagnostic)
+            x = assemble_input(surface, multilevel, diagnostic)
+            z = self.encode(x)
 
-            # diffusion sampling
-            if self.use_history:
-                y = self.scheduler.sample(z, self.decoder, cond)
-            else:
-                y = self.scheduler.sample(z, self.decoder)
+            y = self.scheduler.sample(z, self.decoder, grid_cond = forcing_data, scalar_cond = calendar_data)
         else:
             x = assemble_input(surface, multilevel, diagnostic)
-            h = self.encoder(x)
-            self.posterior = DiagonalGaussianDistribution(h)
-            z = self.posterior.sample()
+            z = self.encode(x)
 
-            if self.use_history:
-                y = self.decoder(z, cond)
-            else:
-                y = self.decoder(z)
+            y = self.decoder(z)
 
         surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
 
@@ -129,25 +157,22 @@ class AutoencoderModule(L.LightningModule):
     
     def training_step(self, batch, batch_idx):
         
-        if self.use_history:
-            surface_history, multilevel_history, diagnostic_history, surface_data, multilevel_data, diagnostic_data = batch
+        if self.return_calendar:
+            surface_data, multilevel_data, diagnostic_data, forcing_data, calendar_data = batch
         else:
             surface_data, multilevel_data, diagnostic_data = batch
-            surface_history, multilevel_history, diagnostic_history = None, None, None
+            forcing_data = None 
+            calendar_data = None
 
         if self.diffusion:
-            z_surface, z_multilevel, z_diagnostic = self.upsample(*self.downsample(surface_data, multilevel_data, diagnostic_data))
-            x = assemble_input(z_surface, z_multilevel, z_diagnostic)
+            x = assemble_input(surface_data, multilevel_data, diagnostic_data)
+            z = self.encode(x)
+
             y = assemble_input(surface_data, multilevel_data, diagnostic_data)
 
-            if self.use_history:
-                cond = assemble_input(surface_history, multilevel_history, diagnostic_history)
-                loss = self.scheduler.compute_loss(x, y, self.decoder, cond)
-            else:
-                loss = self.scheduler.compute_loss(x, y, self.decoder)     
+            loss = self.scheduler.compute_loss(z, y, self.decoder, grid_cond = forcing_data, scalar_cond = calendar_data)     
         else:
-            surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data,
-                                                                          surface_history, multilevel_history, diagnostic_history)
+            surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
             pixel_loss = self.criterion(surface_pred, surface_data,
                                         multilevel_pred, multilevel_data,
                                         diagnostic_pred, diagnostic_data)
@@ -168,14 +193,15 @@ class AutoencoderModule(L.LightningModule):
 
     def validation_step(self, batch, batch_idx):
 
-        if self.use_history:
-            surface_history, multilevel_history, diagnostic_history, surface_data, multilevel_data, diagnostic_data = batch
+        if self.return_calendar:
+            surface_data, multilevel_data, diagnostic_data, forcing_data, calendar_data = batch
         else:
             surface_data, multilevel_data, diagnostic_data = batch
-            surface_history, multilevel_history, diagnostic_history = None, None, None
+            forcing_data = None 
+            calendar_data = None
 
         surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data,
-                                                                      surface_history, multilevel_history, diagnostic_history)
+                                                                      forcing_data, calendar_data)
       
         loss_dict, pred_dict, data_dict = self.compute_loss_val(surface_pred, surface_data,
                                                 multilevel_pred, multilevel_data,

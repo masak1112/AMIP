@@ -1,13 +1,33 @@
 model:
-    model_name: SI_Decoder
+    model_name: EDM_Decoder
     lr: 5.0e-5
-    SI_Decoder:
+    EDM_Decoder:
         decoder:
-            out_channels: 151  
-            hidden_channels: 256
-            z_channels: 32
-            num_out_blocks: 2
+            in_channels: 191 
+            out_channels: 151 
+            dim: 1536
+            num_heads: 16
+            num_blocks: 20
+            patch_size: 3
+            cond_dim: 4
+            nlat: 180
+            nlon: 360
+            unpatch: vanilla
+        encoder:
+            in_channels: 151  
+            hidden_channels: 384
+            z_channels: 64 # 2x the z channels of the AE, since we are doing a VAE
+            num_in_blocks: 2
             num_res_blocks: 4
+        scheduler:
+            num_steps: 18
+            sigma_min: 0.01
+            sigma_max: 100
+            rho: 7
+            sigma_data: 1.0
+            sigma_sampling: log_uniform
+        encoder_checkpoint: /project/pedramh/ayz/AMIP_logs/VAE_CNN_VAE_42_2026-04-01T17-27-24/last.ckpt
+
 data:
     data_dir: '/project/pedramh/AMIP/h5'
     upper_air_variables: ["temperature",
@@ -36,14 +56,9 @@ data:
                        "mn2t_24h", 
                        "mx2t_24h", 
                        "mxtpr_24h"]
-    constant_boundary_variables: ["geopotential_at_surface", 
-                                    "land_sea_mask"]
-    varying_boundary_variables: ["DSWRFtoa", 
-                                "global_mean_co2",
-                                "sea_surface_temperature", # has nans
-                                "sea_ice_cover"] # has nans
-    mask_fill: {'sea_surface_temperature': 270.,
-                'sea_ice_cover': 0.}
+    varying_boundary_variables: ["global_mean_co2",
+                                "sea_surface_temperature",] # has nans
+    mask_fill: {'sea_surface_temperature': 270.}
     train_year_start: 1979
     train_year_end: 2012
     val_year_start: 2012
@@ -52,7 +67,7 @@ data:
     std_path: "/home/anthonyz/amip/normalize_std.nc"
     forecast_lead_times: [1] 
     autoencoder: True
-    use_history: False
+    return_calendar: True
 
     calendar: 'standard'
     data_timedelta_hours: 6
@@ -62,10 +77,11 @@ data:
     horizontal_resolution: [180, 360]
     predict_delta: False
     epsilon_factor: 0
-    val_num_inferences: 0 # use entire val set
+    val_num_inferences: 100 
     diagnostic_input: True # specific to AE model, we need diagnostic at time t, since we are training a downscaler
+    return_calendar: True
 
-    batch_size: 4
+    batch_size: 2
     num_data_workers: 4
 
 training:
@@ -83,6 +99,6 @@ training:
     project: amip
     wandb_mode: online
     checkpoint: null
-    description: VAE
+    description: EDM
     accumulate_grad_batches: 2
     optimizer: adam
