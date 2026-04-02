@@ -708,7 +708,7 @@ class GetDataset(Dataset):
                 sod = seconds_into_year % 86400 
 
                 varying_boundary_data = self.boundary_transform(varying_boundary_data) # co2 sst
-                co2 = varying_boundary_data[0, 0]
+                co2 = varying_boundary_data[0, 0, 0] # c nlat nlon -> 1
                 varying_boundary_data = varying_boundary_data[1:, :, :] # remove co2 from boundary data and return separately
 
                 calendar = torch.tensor([sod, doy, co2], dtype=torch.float32)
