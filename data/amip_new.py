@@ -246,7 +246,7 @@ class GetDataset(Dataset):
                 raise ValueError('Constant boundary data contains NaN values.')
             self.use_boundary = True
         else:
-            self.use_boundary = False
+            self.use_boundary = params.get('use_boundary', False)
 
         # Inference index selection
         max_inference_idx = (
