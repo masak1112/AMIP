@@ -246,7 +246,7 @@ class GetDataset(Dataset):
                 raise ValueError('Constant boundary data contains NaN values.')
             self.use_boundary = True
         else:
-            self.use_boundary = params.get('use_boundary', False)
+            self.use_boundary = False
 
         # Inference index selection
         max_inference_idx = (
@@ -305,6 +305,7 @@ class GetDataset(Dataset):
             )
 
         self._build_variable_lists()
+        print(self.variable_list_in)
 
         if self.epsilon_factor > 0.:
             torch.manual_seed(0)
