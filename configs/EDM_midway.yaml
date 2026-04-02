@@ -1,7 +1,7 @@
 model:
-    model_name: EDM_Decoder
+    model_name: Decoder_EDM
     lr: 5.0e-5
-    EDM_Decoder:
+    Decoder_EDM:
         decoder:
             in_channels: 191 
             out_channels: 151 
