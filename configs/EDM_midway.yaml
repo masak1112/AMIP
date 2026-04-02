@@ -22,7 +22,7 @@ model:
         scheduler:
             num_steps: 18
             sigma_min: 0.01
-            sigma_max: 100
+            sigma_max: 200
             rho: 7
             sigma_data: 1.0
             sigma_sampling: log_uniform
