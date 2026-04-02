@@ -56,6 +56,7 @@ data:
                        "mn2t_24h", 
                        "mx2t_24h", 
                        "mxtpr_24h"]
+    constant_boundary_variables: []
     varying_boundary_variables: ["global_mean_co2",
                                 "sea_surface_temperature",] # has nans
     mask_fill: {'sea_surface_temperature': 270.}
