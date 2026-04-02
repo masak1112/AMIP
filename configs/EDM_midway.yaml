@@ -25,6 +25,7 @@ model:
             rho: 7
             sigma_data: 1.0
             sigma_sampling: log_uniform
+            noise_shape: [151, 180, 360]
         encoder_checkpoint: /project/pedramh/ayz/AMIP_logs/VAE_CNN_VAE_42_2026-04-01T17-27-24/last.ckpt
 
 data:
