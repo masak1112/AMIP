@@ -1,15 +1,65 @@
 import torch
 import torch.nn as nn
 
+def sample_logit_normal(shape, m=0.0, s=1.0, device='cpu', dtype=torch.float32):
+    """
+    Samples from a logit-normal distribution.
+    
+    Args:
+        shape (tuple or int): The shape of the desired output tensor (e.g., batch size).
+        m (float or torch.Tensor): Location parameter (mean of the underlying normal distribution).
+                                   Negative biases towards data (p0), positive towards noise (p1).
+        s (float or torch.Tensor): Scale parameter (standard deviation of the normal distribution).
+        device (str or torch.device): Device to place the tensor on.
+        dtype (torch.dtype): Data type of the tensor.
+        
+    Returns:
+        torch.Tensor: Timestep samples 't' in the range (0, 1).
+    """
+    # 1. Sample u ~ N(m, s)
+    # torch.randn generates samples from N(0, 1)
+    u = torch.randn(shape, device=device, dtype=dtype)
+    u = u * s + m
+    
+    # 2. Map it through the standard logistic function (sigmoid)
+    # sigmoid(u) = 1 / (1 + exp(-u))
+    t = torch.sigmoid(u)
+    return t
+
+def sample_power_law(n_steps, rho, device = 'cpu'):
+    """
+    Sample timesteps according to a power-law distribution.
+    
+    Args:
+        n_steps (int): Number of timesteps to sample.
+        rho (float): Power-law exponent. Higher values concentrate samples near 0.
+    
+    Returns:
+        torch.Tensor: Timesteps sampled from the power-law distribution, in the range (0, 1).
+    """
+    n = torch.arange(0, n_steps, device=device, dtype=torch.float32)
+    t = (1 -n / (n_steps-1)) ** rho
+    
+    # returns n_steps values from 1 to 0, with more concentration near 0 for higher rho
+    return t
+
 class SI_Scheduler(nn.Module):
     def __init__(self,
                  num_refinement_steps,  # this corresponds to physical time steps
-                 sampler='em',
+                 sampler='euler',
+                 train_sampler='logit_normal',
+                 inference_sampler='power',
+                 rho = 3.0,
+                 noise_shape = (180, 360, 151)
                  ):
         super(SI_Scheduler, self).__init__()
 
         self.num_refinement_steps = num_refinement_steps
         self.method = sampler
+        self.train_sampler = train_sampler
+        self.inference_sampler = inference_sampler
+        self.rho = rho
+        self.noise_shape = noise_shape
 
     def wide(self, t, ndim=2):
         if ndim == 2:
@@ -56,69 +106,77 @@ class SI_Scheduler(nn.Module):
     def image_sq_norm(self, x):
         return x.pow(2).sum(-1).sum(-1).sum(-1)
 
-    def compute_loss(self, x_lowres, x_highres, model):
+    def compute_loss(self, x, y, model, **kwargs):
         """
 
         Args:
-            x_lowres: [b, c, h, w] — m(x1), the upsampled low-res (source base);
-                      also concatenated channel-wise with I_t as model input
-            x_highres: [b, c, h, w] — x1, ground truth (target distribution)
-            model: velocity predictor, called as model(I_t, t, cond=x_lowres, history=cond)
-            cond: [b, c, h, w] — optional high-res prior state/history for cross-attention
+            x: conditional information. [b c zlat zlon]
+            y: Target state. [b, c, h, w]
+            model: velocity predictor
+            **kwargs: additional arguments for the model (e.g., conditioning)
 
         Returns:
             scalar loss
         """
 
-        device = x_lowres.device
+        device = x.device
 
         # sample timestep, no need to train on t=1
-        t = torch.rand(x_lowres.shape[0], device=device)  # shape (b,)
+        if self.train_sampler == "logit_normal":
+            t = sample_logit_normal(x.shape[0], device=device)
+        elif self.train_sampler == "uniform":
+            t = torch.rand(x.shape[0], device=device)  # shape (b,)
+        else:
+            raise ValueError(f"Unknown train_sampler: {self.train_sampler}")
 
-        x0 = x_highres - x_lowres # target is the resolution residual
-        eps = self.get_noise(x_lowres) # source is the noise distribution
+        x0 = y
+        eps = self.get_noise(y) # source is the noise distribution
 
         I_t = self.I(x0, eps, t)  # shape (b, d, nx, ny)
         dIdt = self.dIdt(x0, eps, t)  # shape (b, d, nx, ny)
 
-        v_pred = model(I_t, x_lowres, t=t[:, None]) # pass lowres as conditioning
+        v_pred = model(I_t, t=t[:, None], cond=x, **kwargs) # pass lowres as conditioning
 
         loss = self.image_sq_norm(v_pred - dIdt)  # shape (b,)
 
         return loss.mean()
 
     @torch.no_grad()
-    def sample(self, x_lowres, model, num_steps=None):
+    def sample(self, x, model, num_steps=None, **kwargs):
 
         if num_steps is None:
             num_steps = self.num_refinement_steps
 
-        timesteps = torch.linspace(1, 0, num_steps + 1, device=x_lowres.device)
+        if self.inference_sampler == "power":
+            timesteps = sample_power_law(num_steps + 1, self.rho, device = x.device)
+        elif self.inference_sampler == "uniform":
+            timesteps = torch.linspace(1, 0, num_steps + 1, device=x.device)
+        else:
+            raise ValueError(f"Unknown inference_sampler: {self.inference_sampler}")
 
-        # start y at source distribution (standard Gaussian, matching sigma(1)=1)
-        y = self.get_noise(x_lowres)
+        if self.noise_shape is not None:
+            y = self.get_noise(self.noise_shape)
+        else:
+            y = self.get_noise(x.shape)
 
         for i_t in range(len(timesteps) - 1):
             t_current = timesteps[i_t]
             t_next = timesteps[i_t + 1]
             dt = t_next - t_current  # negative (integrating 1 -> 0)
 
-            t_batch = t_current.expand(y.shape[0])
-            scalar_in = t_batch.float().unsqueeze(-1)
+            t_batch = t_current.expand(y.shape[0]).float().unsqueeze(-1)
 
-            v = model(y, x_lowres, scalar_in)
+            v = model(y, t_batch, cond=x, **kwargs)  # predict velocity at current timestep
 
             if self.method == 'em':  # SDE (Euler-Maruyama)
-                drift = self.sde_drift(v, y, t_batch)
+                drift = self.sde_drift(v, y, t_batch) # drift correction
                 noise_t = self.sigma(t_batch)
                 dW = torch.sqrt(torch.abs(dt)) * torch.randn_like(y)
                 y = y + drift * dt + noise_t * dW
             else:  # ODE (Euler)
                 y = y + v * dt
 
-        out = x_lowres + y
+        return y
 
-        return out
-
-    def forward(self, x_lowres, model, num_steps=None):
-        return self.sample(x_lowres, model, num_steps=num_steps)
+    def forward(self, x_lowres, model, num_steps=None, **kwargs):
+        return self.sample(x_lowres, model, num_steps=num_steps, **kwargs)
