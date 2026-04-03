@@ -25,7 +25,7 @@ model:
             train_sampler: logit_normal
             inference_sampler: power
             rho: 3.0
-            noise_shape: [180, 360, 151]
+            noise_shape: [151, 180, 360]
         encoder_checkpoint: /project/pedramh/ayz/AMIP_logs/VAE_CNN_VAE_42_2026-04-01T17-27-24/last.ckpt
 
 data:
