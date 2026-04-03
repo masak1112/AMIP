@@ -102,6 +102,15 @@ class AutoencoderModule(L.LightningModule):
 
             # load encoder weights 
             self.initialize_encoder()
+        elif self.model_name == "Decoder_SI":
+            from modules.models.AE import Encoder
+            from modules.models.DiT import cDiT
+            from modules.diffusion.stochastic_interpolant import SI_Scheduler
+
+            self.encoder = Encoder(**self.modelconfig["Decoder_SI"]["encoder"])
+            self.decoder = cDiT(**self.modelconfig["Decoder_SI"]["decoder"])
+            self.scheduler = SI_Scheduler(**self.modelconfig["Decoder_SI"]["scheduler"])
+            self.diffusion = True
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 

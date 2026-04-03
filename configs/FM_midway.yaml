@@ -1,7 +1,7 @@
 model:
-    model_name: Decoder_EDM
+    model_name: Decoder_SI
     lr: 5.0e-5
-    Decoder_EDM:
+    Decoder_SI:
         decoder:
             in_channels: 191 
             out_channels: 151 
@@ -12,6 +12,7 @@ model:
             cond_dim: 4
             nlat: 180
             nlon: 360
+            grid_in_dim: 3 # SST SIC DSWRFtoa
         encoder:
             in_channels: 151  
             hidden_channels: 384
@@ -19,13 +20,12 @@ model:
             num_in_blocks: 2
             num_res_blocks: 4
         scheduler:
-            num_steps: 18
-            sigma_min: 0.01
-            sigma_max: 200
-            rho: 7
-            sigma_data: 1.0
-            sigma_sampling: log_uniform
-            noise_shape: [151, 180, 360]
+            num_refinement_steps: 10
+            sampler: euler
+            train_sampler: logit_normal
+            inference_sampler: power
+            rho: 3.0
+            noise_shape: [180, 360, 151]
         encoder_checkpoint: /project/pedramh/ayz/AMIP_logs/VAE_CNN_VAE_42_2026-04-01T17-27-24/last.ckpt
 
 data:
@@ -59,8 +59,11 @@ data:
     constant_boundary_variables: ["geopotential_at_surface", 
                                     "land_sea_mask"]
     varying_boundary_variables: ["global_mean_co2",
-                                "sea_surface_temperature",] # has nans
-    mask_fill: {'sea_surface_temperature': 270.}
+                                "DSWRFtoa",
+                                "sea_surface_temperature",
+                                "sea_ice_cover"] # has nans
+    mask_fill: {'sea_surface_temperature': 270.,
+                'sea_ice_cover': 0.}
     train_year_start: 1979
     train_year_end: 2012
     val_year_start: 2012
