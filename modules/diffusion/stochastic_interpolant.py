@@ -88,6 +88,14 @@ class SI_Scheduler(nn.Module):
     def get_noise(self, x):
         return torch.randn(x.shape, device=x.device, dtype=x.dtype)
 
+    def get_initial_noise(self, x):
+        """Generate initial noise for sampling, matching batch size from conditioning input x."""
+        b = x.shape[0]
+        if self.noise_shape is not None:
+            return torch.randn(b, *self.noise_shape, device=x.device, dtype=x.dtype)
+        else:
+            return torch.randn_like(x)
+
     def sde_drift(self, v, x, t, ndim=2):
         """Score-corrected drift for the generative SDE.
 
@@ -154,10 +162,7 @@ class SI_Scheduler(nn.Module):
         else:
             raise ValueError(f"Unknown inference_sampler: {self.inference_sampler}")
 
-        if self.noise_shape is not None:
-            y = self.get_noise(self.noise_shape)
-        else:
-            y = self.get_noise(x.shape)
+        y = self.get_initial_noise(x)
 
         for i_t in range(len(timesteps) - 1):
             t_current = timesteps[i_t]
