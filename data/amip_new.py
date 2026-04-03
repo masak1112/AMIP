@@ -305,7 +305,6 @@ class GetDataset(Dataset):
             )
 
         self._build_variable_lists()
-        print(self.variable_list_in)
 
         if self.epsilon_factor > 0.:
             torch.manual_seed(0)

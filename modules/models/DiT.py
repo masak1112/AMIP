@@ -348,6 +348,7 @@ class cDiT(nn.Module):
                  nlat=180,
                  nlon=360,
                  dropout=0.0,
+                 grid_in_dim = 1,
                  cond_dim=4):
         super().__init__()
         self.in_channels = in_channels
@@ -370,7 +371,7 @@ class cDiT(nn.Module):
             hidden_size=dim,
             flatten=False)
         
-        self.embed_grid = SphereConv2d(in_channels = 1, out_channels = cond_dim, kernel_size=(3,3))
+        self.embed_grid = SphereConv2d(in_channels = grid_in_dim, out_channels = cond_dim, kernel_size=(3,3))
         self.embed_calendar = CalendarEmbedding(nlon=nlon, nlat=nlat, embed_channels=cond_dim)
 
         # 2D RoPE: one RotaryEmbedding per spatial axis
