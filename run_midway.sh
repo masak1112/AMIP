@@ -18,6 +18,6 @@ conda activate /project/pedramh/ayz/envs/torch2
 export NCCL_P2P_DISABLE=1
 export NCCL_IB_DISABLE=1
 
-config_file=configs/EDM_midway.yaml
+config_file=configs/FM_midway.yaml
 
 srun python trainAE.py --config=$config_file
