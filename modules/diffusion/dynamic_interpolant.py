@@ -52,13 +52,13 @@ class Integrator:
         return y_next
 
     def integrate(self,
-                  y, c,
+                  y, cond, c_grid,
                   model, timesteps, noise_fn,
                   generator=None):
-        
+
         # y is current state along interpolant (noised prognostic states)
-        # c is conditioning (current prognostic + forcing state)
-        # c_scalar is scalar conditioning (e.g. time, invariants)
+        # cond is conditioning (current prognostic state)
+        # c_grid is grid-scale conditioning (forcings + invariants, original resolution)
 
         for i_t in range(len(timesteps) - 1):
             t_current = timesteps[i_t]
@@ -68,7 +68,7 @@ class Integrator:
 
             scalar_in = t_current.float().expand(y.shape[0]).unsqueeze(-1)
 
-            drift = model(y, c, scalar_in)
+            drift = model(y, cond, scalar_in, c_grid)
 
             y = self.step_fn(y, drift, dt, noise_t, generator)
 
@@ -174,27 +174,21 @@ class DriftScheduler(nn.Module):
         I = self.I(x, y, t)  # shape (b, d, nx, ny)
         dIdt = self.dIdt(x, y, t)  # shape (b, d, nx, ny)
 
-        c_scalar = t.view(-1, 1)
-
-        # use current state + forcing as conditioning
-        c = torch.cat([x, c_grid], dim=1) # shape (b, d + c_dim, nx, ny)
-
         if self.antithetic_sampling:
             raise NotImplementedError("Antithetic sampling not implemented yet.")
         else:
             I_noised = I + sigma_t * W_t * noise
             target = dIdt + sigma_dot_t * W_t * noise
 
-            pred = model(I_noised, c, c_scalar)
+            pred = model(I_noised, x, t.view(-1, 1), c_grid)
 
             loss= self.image_sq_norm(pred - target).mean()
 
         return loss
 
     def sample(self, model, x, c_grid, refinement_steps=None):
-        # x contains current prognostic state
-        # c_grid contains current forcing state
-        # c_scalar contains current scalar conditioning (e.g. time, invariants)
+        # x contains current prognostic state (latent space)
+        # c_grid contains current forcing state (original resolution)
 
         if refinement_steps is None:
             refinement_steps = self.num_refinement_steps
@@ -204,15 +198,15 @@ class DriftScheduler(nn.Module):
         # start y at source distribution, which is current state
         y = x.clone()
 
-        # assemble conditioning, which is current prognostic + forcing state
-        c = torch.cat([x, c_grid], dim=1) # shape (b, d + c_dim, nx, ny)
+        # conditioning is the current prognostic state (latent)
+        cond = x
 
         # first step taken analytically to avoid g_T singularity issues at t=0 with EM
         sigma_0 = self.sigma(timesteps[0].expand(x.shape[0]), sample=True)  # shape (b, 1, 1, 1)
         dt_0 = timesteps[1] - timesteps[0]
         scalar_in = timesteps[0].float().expand(x.shape[0]).unsqueeze(-1)
 
-        drift = model(y, c, scalar_in)
+        drift = model(y, cond, scalar_in, c_grid)
 
         if self.method == 'em':
             dW = torch.sqrt(dt_0)
@@ -221,7 +215,7 @@ class DriftScheduler(nn.Module):
             y = y + drift * dt_0
 
         noise_fn = lambda t: self.sigma(t, sample=True)
-        y = self.integrator.integrate(y, c, model, timesteps[1:], noise_fn, self.generator)
+        y = self.integrator.integrate(y, cond, c_grid, model, timesteps[1:], noise_fn, self.generator)
 
         return y
 
