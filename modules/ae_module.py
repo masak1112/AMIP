@@ -102,15 +102,29 @@ class AutoencoderModule(L.LightningModule):
 
             # load encoder weights 
             self.initialize_encoder()
+
         elif self.model_name == "Decoder_SI":
             from modules.models.AE import Encoder
-            from modules.models.DiT import cDiT
+            from modules.models.DiT import cDiT, PatchBoundaryRefiner
             from modules.diffusion.stochastic_interpolant import SI_Scheduler
 
             self.encoder = Encoder(**self.modelconfig["Decoder_SI"]["encoder"])
             self.decoder = cDiT(**self.modelconfig["Decoder_SI"]["decoder"])
             self.scheduler = SI_Scheduler(**self.modelconfig["Decoder_SI"]["scheduler"])
             self.diffusion = True
+
+            refiner_cfg = self.modelconfig["Decoder_SI"].get("refiner", None)
+            
+            if refiner_cfg is not None:
+                out_channels = self.modelconfig["Decoder_SI"]["decoder"]["out_channels"]
+                self.refiner = PatchBoundaryRefiner(
+                    channels=out_channels,
+                    hidden=refiner_cfg.get("dim", 64),
+                )
+                self.refiner_weight = refiner_cfg.get("weight", 0.1)
+
+            # load encoder weights 
+            self.initialize_encoder()
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
@@ -154,6 +168,8 @@ class AutoencoderModule(L.LightningModule):
             z = self.encode(x)
 
             y = self.scheduler.sample(z, self.decoder, grid_cond = forcing_data, scalar_cond = calendar_data)
+            if hasattr(self, 'refiner'):
+                y = self.refiner(y)
         else:
             x = assemble_input(surface, multilevel, diagnostic)
             z = self.encode(x)
@@ -179,7 +195,19 @@ class AutoencoderModule(L.LightningModule):
 
             y = assemble_input(surface_data, multilevel_data, diagnostic_data)
 
-            loss = self.scheduler.compute_loss(z, y, self.decoder, grid_cond = forcing_data, scalar_cond = calendar_data)     
+            has_refiner = hasattr(self, 'refiner')
+
+            if has_refiner:
+                vel_loss, x0_hat, x0_target = self.scheduler.compute_loss(
+                    z, y, self.decoder, return_x0_hat=True,
+                    grid_cond=forcing_data, scalar_cond=calendar_data)
+                x0_refined = self.refiner(x0_hat)
+                refiner_loss = ((x0_refined - x0_target) ** 2).mean()
+                loss = vel_loss + self.refiner_weight * refiner_loss
+                self.log("train/vel_loss", vel_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
+                self.log("train/refiner_loss", refiner_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
+            else:
+                loss = self.scheduler.compute_loss(z, y, self.decoder, grid_cond=forcing_data, scalar_cond=calendar_data)
         else:
             surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
             pixel_loss = self.criterion(surface_pred, surface_data,

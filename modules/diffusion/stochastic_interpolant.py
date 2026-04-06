@@ -114,17 +114,18 @@ class SI_Scheduler(nn.Module):
     def image_sq_norm(self, x):
         return x.pow(2).sum(-1).sum(-1).sum(-1)
 
-    def compute_loss(self, x, y, model, **kwargs):
+    def compute_loss(self, x, y, model, return_x0_hat=False, **kwargs):
         """
 
         Args:
             x: conditional information. [b c zlat zlon]
             y: Target state. [b, c, h, w]
             model: velocity predictor
+            return_x0_hat: if True, also return the estimated x_0 from the velocity prediction
             **kwargs: additional arguments for the model (e.g., conditioning)
 
         Returns:
-            scalar loss
+            scalar loss, and optionally (x0_hat, x0_target)
         """
 
         device = x.device
@@ -147,6 +148,10 @@ class SI_Scheduler(nn.Module):
 
         loss = self.image_sq_norm(v_pred - dIdt)  # shape (b,)
 
+        if return_x0_hat:
+            # x_0 = I_t - t * v for linear interpolant (alpha=1-t, sigma=t)
+            x0_hat = I_t - self.wide(t) * v_pred
+            return loss.mean(), x0_hat, x0
         return loss.mean()
 
     @torch.no_grad()

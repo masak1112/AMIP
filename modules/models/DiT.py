@@ -15,6 +15,29 @@ from modules.layers.unpatchify import SubPixelConvICNR_2D, Unpatchify, sphere_pa
 from modules.layers.patchify import PatchEmbed
 from modules.layers.embedding import CalendarEmbedding
 
+class PatchBoundaryRefiner(nn.Module):
+    """Lightweight conv smoother applied only to x_0 estimates, not velocities."""
+    def __init__(self, channels, hidden=64):
+        super().__init__()
+        self.net = nn.Sequential(
+            SphereConv2d(channels, hidden, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.GELU(),
+            SphereConv2d(hidden, hidden, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.GELU(),
+            SphereConv2d(hidden, hidden, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.GELU(),
+            SphereConv2d(hidden, hidden, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.GELU(),
+            nn.Conv2d(hidden, channels, kernel_size=1),
+        )
+        # Zero-init final layer so it starts as identity
+        nn.init.zeros_(self.net[-1].weight)
+        nn.init.zeros_(self.net[-1].bias)
+
+    def forward(self, x):
+        return x + self.net(x)
+
+
 class DiTBlock(nn.Module):
     """
     Vanilla self-attention transformer block with AdaLN-Zero timestep conditioning

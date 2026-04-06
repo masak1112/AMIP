@@ -103,48 +103,6 @@ class Unpatchify(nn.Module):
         imgs = imgs.permute(0, 2, 3, 1) # [b, nlat, nlon, c]
 
         return imgs
-    
-
-class UnpatchifyHPX(nn.Module):
-    """
-    Unpatchify a tensor.
-
-    Args:
-        img_size (tuple[int]): Lat, Lon
-        patch_size (tuple[int]): Lat, Lon
-        in_chans (int): Number of input channels.
-        out_chans (int): Number of output channels.
-    """
-
-    def __init__(self, grid_side, grid_face, patch_size, in_dim, out_dim, cond_dim=None):
-        super().__init__()
-        self.grid_side = grid_side 
-        self.grid_face = grid_face 
-        self.patch_size = patch_size
-        self.out_dim = out_dim
-        self.in_dim = in_dim
-
-        self.out_layer = FinalLayer(hidden_size=in_dim,
-                                    cond_dim=cond_dim,
-                                    patch_size=patch_size,
-                                    out_channels=out_dim,
-                                    hpx=True)
-    
-    def forward(self, x, cond=None):
-        # x in shape [b, nface//p * nside//p * nside//p, dim]
-        x = self.out_layer(x, cond) # [batch_size, nface//p * nside//p * nside//p, patch_size**3 * out_dim]
-        c = self.out_dim
-        h = w = self.grid_side
-        f = self.grid_face
-
-        assert f * h * w == x.shape[1]
-        pf = ph = pw = self.patch_size
-        x = x.reshape(shape=(x.shape[0], f, h, w, pf, ph, pw, c))
-        x = torch.einsum('nfhwpqrc->ncfphqwr', x)
-        imgs = x.reshape(shape=(x.shape[0], c, f * pf, h * ph, w * pw)) # [b, c, f, nside, nside]
-        imgs = imgs.permute(0, 2, 3, 4, 1) # [b, f, nside, nside, c]
-
-        return imgs
 
 # borrowed from 
 #https://gist.github.com/A03ki/2305398458cb8e2155e8e81333f0a965
@@ -260,34 +218,6 @@ class PolarPad2d(nn.Module):
         padded_x[..., :self.pad_top, :] = torch.roll(padded_x[..., :self.pad_top, :], padded_x.shape[-1] // 2, dims = -1)
         padded_x[..., -self.pad_bottom:, :] = torch.roll(padded_x[..., -self.pad_bottom:, :], padded_x.shape[-1] // 2, dims = -1)
         return padded_x
-
-
-class PolarPad3d(nn.Module):
-    """
-    Padding for convolutions on a 3D grid over the pole.
-
-    Args:
-        pad: (size of top padding, size of bottom padding, size of level padding)
-        x: Image with shape (n_batches, n_channels, lat, lon, nlevel)
-    """
-    def __init__(self, pad): # assume grid does not have poles
-        super().__init__()
-        self.pad_top = pad[0]
-        self.pad_bottom = pad[1]
-
-    def forward(self, x):
-        # x in shape b c nlat nlon nlevel, assume nlat, nlon are even
-        num_lat = x.shape[-3]
-        pad_idxs = torch.cat((torch.arange(self.pad_top), torch.arange(self.pad_top+1, num_lat+self.pad_top+1),
-                                    torch.arange(num_lat+self.pad_top+2, num_lat+self.pad_top+self.pad_bottom+2))).long()
-
-        x = nn.functional.pad(x, (0, 0, 1, 1, 0, 0), mode = 'constant', value = 0.)
-        padded_x = nn.functional.pad(x, (0, 0, self.pad_top, self.pad_bottom, 0, 0), mode = 'reflect')[..., pad_idxs, :, :]
-
-        padded_x[..., :self.pad_top, :] = torch.roll(padded_x[..., :self.pad_top, :], padded_x.shape[-1] // 2, dims = -1)
-        padded_x[..., -self.pad_bottom:, :] = torch.roll(padded_x[..., -self.pad_bottom:, :], padded_x.shape[-1] // 2, dims = -1)
-        return padded_x
-
 
 class Interpolate(nn.Module):
     """Interpolation module."""
