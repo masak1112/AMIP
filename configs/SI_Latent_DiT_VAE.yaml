@@ -113,4 +113,4 @@ training:
     partial_checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT_VAE_42_2026-04-06T06-08-10/last.ckpt 
     accumulate_grad_batches: 1
     optimizer: adam
-    description: VAE
+    description: VAE_interpolate
