@@ -111,6 +111,6 @@ training:
     #checkpoint: /project/pedramh/ayz/AMIP_logs/Decoder_SI_EDM_42_2026-04-05T17-36-01/last.ckpt
     checkpoint: null
     partial_checkpoint: /project/pedramh/ayz/AMIP_logs/Decoder_SI_EDM_42_2026-04-05T17-36-01/last.ckpt
-    description: null
+    description: refiner
     accumulate_grad_batches: 2
     optimizer: adam
