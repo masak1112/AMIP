@@ -108,7 +108,9 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT_VAE_42_2026-04-05T18-56-36/last.ckpt
+    #checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT_VAE_42_2026-04-05T18-56-36/last.ckpt
+    checkpoint: null
+    partial_checkpoint: 
     accumulate_grad_batches: 1
     optimizer: adam
     description: VAE

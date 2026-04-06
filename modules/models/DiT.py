@@ -192,7 +192,7 @@ class DiT(nn.Module):
                 patch_size=(patch_size, patch_size),
                 in_chans=dim,
                 out_chans=out_channels)
-        elif self.unpatchify == "interpolate":
+        elif unpatch == "interpolate":
             self.unpatchify_layer = PatchInterpolate2D(grid_size=(self.grid_x, self.grid_y),
                                                        patch_size=(patch_size, patch_size),
                                                        in_chans=dim,
@@ -358,7 +358,7 @@ class cDiT(nn.Module):
                  dropout=0.0,
                  grid_in_dim = 1,
                  cond_dim=4,
-                 unpatchify = "vanilla"):
+                 unpatch = "vanilla"):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -369,7 +369,7 @@ class cDiT(nn.Module):
         self.nlat = nlat
         self.nlon = nlon
         self.dropout = dropout
-        self.unpatchify = unpatchify
+        self.unpatchify = unpatch
 
         self.grid_x = self.nlat // patch_size
         self.grid_y = self.nlon // patch_size
