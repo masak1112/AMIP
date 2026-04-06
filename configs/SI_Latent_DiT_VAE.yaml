@@ -1,6 +1,6 @@
 model:
     model_name: SI_Latent_DiT
-    lr: 1.0e-5
+    lr: 5.0e-5
     SI_Latent_DiT:
         model:
             in_channels: 64 # x_noised (32) + cond (32); c_grid_embed_dim added internally
@@ -91,7 +91,7 @@ data:
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
     batch_size: 2
-    num_data_workers: 16 
+    num_data_workers: 8 
 
 training:
     seed: 42
