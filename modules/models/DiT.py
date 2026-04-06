@@ -405,7 +405,7 @@ class cDiT(nn.Module):
                                                        patch_size=(patch_size, patch_size),
                                                        in_chans=dim,
                                                        out_chans=out_channels,
-                                                       hidden_dim=dim,)
+                                                       hidden_dim=dim // 2,)
         else:
             self.unpatchify_layer = Unpatchify(
                 grid_size=(self.grid_x, self.grid_y),
