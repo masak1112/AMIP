@@ -188,9 +188,16 @@ class DiT(nn.Module):
 
         if unpatch == "subpixel":
             self.unpatchify_layer = SubPixelConvICNR_2D(
+                grid_size = (self.grid_x, self.grid_y),
                 patch_size=(patch_size, patch_size),
                 in_chans=dim,
                 out_chans=out_channels)
+        elif self.unpatchify == "interpolate":
+            self.unpatchify_layer = PatchInterpolate2D(grid_size=(self.grid_x, self.grid_y),
+                                                       patch_size=(patch_size, patch_size),
+                                                       in_chans=dim,
+                                                       out_chans=out_channels,
+                                                       hidden_dim=dim,)
         elif unpatch == "vanilla":
             self.unpatchify_layer = Unpatchify(
                 grid_size=(self.grid_x, self.grid_y),
@@ -317,15 +324,10 @@ class DiT(nn.Module):
         for sa_block in self.sa_blocks:
             x = sa_block(x, t_emb, rope_cos_lat, rope_sin_lat, rope_cos_lon, rope_sin_lon)
 
-        if self.unpatch == "vanilla":
-            # Unpatchify: [b, n, dim] -> [b, nlat, nlon, dim]
-            x = self.unpatchify_layer(x, t_emb)
+        x = self.unpatchify_layer(x, t_emb)
 
-            # Convert back to channel-first: [b, h, w, c] -> [b, c, h, w]
-            x = x.permute(0, 3, 1, 2)
-        else:
-            x = rearrange(x, 'b (ny nx) c -> b c ny nx', ny=self.grid_x, nx=self.grid_y)
-            x = self.unpatchify_layer(x)
+        # Convert back to channel-first: [b, h, w, c] -> [b, c, h, w]
+        x = x.permute(0, 3, 1, 2)
         
         # Crop back to original spatial dims
         if self.pad_lat > 0 or self.pad_lon > 0:

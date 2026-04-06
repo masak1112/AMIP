@@ -12,7 +12,7 @@ model:
             scalar_dim: 1
             nlat: 45
             nlon: 90
-            unpatch: vanilla
+            unpatch: interpolate
             c_grid_dim: 6 # 4 varying boundary + 2 invariant from assemble_forcing
             c_grid_embed_dim: 4
             c_grid_downsample: 4

@@ -171,10 +171,11 @@ class SubPixelConvICNR_2D(nn.Module):
         out_chans (int): Number of output channels.
     """
 
-    def __init__(self, patch_size, in_chans, out_chans):
+    def __init__(self, grid_size, patch_size, in_chans, out_chans):
         super().__init__()
         assert patch_size[0] == patch_size[1], 'mismatch'
         
+        self.grid_x, self.grid_y = grid_size
         self.conv = nn.Conv2d(in_chans, 
                               out_chans*patch_size[0]**2, 
                               kernel_size=1, 
@@ -189,6 +190,8 @@ class SubPixelConvICNR_2D(nn.Module):
         self.conv.weight.data.copy_(weight)   # initialize conv.weight
 
     def forward(self, x):
+        x = rearrange(x, 'b (ny nx) c -> b c ny nx', ny=self.grid_x, nx=self.grid_y)
+        
         # x in shape [b, in_chans, h, w], where h, w are the height and width of the patchified feature map
         output = self.conv(x)
         
@@ -390,6 +393,6 @@ class PatchInterpolate2D(nn.Module):
         x = self.head(x) # b, out_chans, h*patch_size, w*patch_size
 
         x = rearrange(x, 'b c h w -> b h w c')
-        
+
         return x
 
