@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #PBS -N SI_Latent_DiT
-#PBS -l select=1:ncpus=32:ngpus=4:mem=256G
+#PBS -l select=1:ncpus=64:ngpus=4:mem=256G
 #PBS -q main
 #PBS -l walltime=12:00:00
 #PBS -A UCHI0014
