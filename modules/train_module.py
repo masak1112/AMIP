@@ -4,6 +4,7 @@ import torch
 from common.loss import latitude_weighted_rmse
 from common.plotting import plot_result, plot_spectrum
 from common.utils import assemble_forcing, disassemble_input, assemble_input
+from modules.layers.distributions import DiagonalGaussianDistribution
 
 class TrainModule(L.LightningModule):
     def __init__(self,
@@ -56,18 +57,13 @@ class TrainModule(L.LightningModule):
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
         if self.latent:
-            from modules.layers.bilinear import BilinearDownsample
+            from modules.models.AE import Encoder, Decoder
 
-            self.encoder = BilinearDownsample(**self.modelconfig['SI_Latent_DiT']["encoder"])
-
-            if "decoder" in self.modelconfig['SI_Latent_DiT']:
-                from modules.models.Decoder import DecoderCNN
-                self.decoder = DecoderCNN(**self.modelconfig['SI_Latent_DiT']["decoder"])
-                self.initialize_decoder()
-                # Allow loading from checkpoints trained without the decoder
-                self.strict_loading = False
-            else:
-                self.decoder = None
+            self.encoder = Encoder(**self.modelconfig['SI_Latent_DiT']["encoder"])
+            self.decoder = Decoder(**self.modelconfig['SI_Latent_DiT']["decoder"])
+            self.initialize_vae()
+            # Allow loading from checkpoints trained without the VAE
+            self.strict_loading = False
 
         if config['training']['strategy'] == 'ddp' or config['training']['strategy'] == 'ddp_find_unused_parameters_true':
             self.ddp = True
@@ -76,31 +72,42 @@ class TrainModule(L.LightningModule):
 
         self.save_hyperparameters()
 
-    def initialize_decoder(self):
-        decoder_checkpoint = self.modelconfig['SI_Latent_DiT'].get("decoder_checkpoint", None)
-        if decoder_checkpoint is None:
-            raise ValueError("decoder_checkpoint must be specified in config when using a decoder")
+    def initialize_vae(self):
+        vae_checkpoint = self.modelconfig['SI_Latent_DiT'].get("vae_checkpoint", None)
+        if vae_checkpoint is None:
+            raise ValueError("vae_checkpoint must be specified in config when using VAE encoder/decoder")
 
-        state_dict = torch.load(decoder_checkpoint, map_location='cpu', weights_only=False)['state_dict']
-        # Extract decoder weights from the AutoencoderModule checkpoint
+        state_dict = torch.load(vae_checkpoint, map_location='cpu', weights_only=False)['state_dict']
+
+        encoder_state_dict = {}
         decoder_state_dict = {}
         for k, v in state_dict.items():
-            if k.startswith("decoder."):
+            if k.startswith("encoder."):
+                encoder_state_dict[k[len("encoder."):]] = v
+            elif k.startswith("decoder."):
                 decoder_state_dict[k[len("decoder."):]] = v
 
+        self.encoder.load_state_dict(encoder_state_dict)
         self.decoder.load_state_dict(decoder_state_dict)
+
+        self.encoder.eval()
         self.decoder.eval()
+        for param in self.encoder.parameters():
+            param.requires_grad = False
         for param in self.decoder.parameters():
             param.requires_grad = False
-        print(f"Loaded pretrained decoder from {decoder_checkpoint}")
+        print(f"Loaded pretrained VAE from {vae_checkpoint}")
+
+    def encode(self, x, deterministic=False):
+        h = self.encoder(x)
+        posterior = DiagonalGaussianDistribution(h, deterministic=deterministic)
+        z = posterior.sample()
+        return z
 
     def forward(self, x, c_grid):
-        # x is flattened state, c is scalar conditioning
+        # x is latent state, c_grid is grid-scale conditioning (original resolution)
         y = self.scheduler.sample(self.model, x, c_grid)
-            
-        surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
-        return surface_pred, multilevel_pred, diagnostic_pred
-    
+        return y
     
     def training_step(self, batch, batch_idx):
 
@@ -113,9 +120,9 @@ class TrainModule(L.LightningModule):
         y = assemble_input(surface_t1, upper_air_t1, diagnostic_t1) # b c h w
 
         if self.latent:
-            x = self.encoder(x)
-            y = self.encoder(y)
-            c_grid = self.encoder(c_grid) # destroys some information in the forcing/invariants. Can use a learnable encoder?
+            with torch.no_grad():
+                x = self.encode(x)
+                y = self.encode(y)
 
         loss = self.scheduler.compute_loss(self.model, x, c_grid, y)   
 
@@ -157,11 +164,6 @@ class TrainModule(L.LightningModule):
 
         invariant = self.invariant_input.expand(b, -1, -1, -1).to(device) # b c nlat nlon
 
-        has_decoder = self.latent and self.decoder is not None
-        if self.latent and not has_decoder:
-            nlat = nlat // 4
-            nlon = nlon // 4
-
         # optimizes memory usage by calculating losses on the fly. Only plot certain timesteps, levels, variables of interest.
 
         loss_dict = {}
@@ -190,56 +192,41 @@ class TrainModule(L.LightningModule):
                 pred_feat_dict[diagnostic_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=device) # b t h w
                 target_feat_dict[diagnostic_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=device) # b t h w
 
-        # Initialize history for decoder with use_history
-        if has_decoder and self.decoder.use_history:
-            history = assemble_input(surface_t, upper_air_t, diagnostic_t)  # full-res input at t=0
+        # Encode initial state to latent space for autoregressive rollout
+        if self.latent:
+            x_latent = self.encode(assemble_input(surface_t, upper_air_t, diagnostic_t))
 
         for t in range(nt):
             # assemble forcings
-            forcing_input = varying_boundary_data[:, t] # b nlat nlon c
-
-            x = assemble_input(surface_t, upper_air_t, diagnostic_t) # b c h w
+            forcing_input = varying_boundary_data[:, t] # b c h w
             c_grid = assemble_forcing(forcing_input, invariant) # b c h w
 
             if self.latent:
-                x = self.encoder(x) if t == 0 else x
-                c_grid = self.encoder(c_grid)
-            
-            # make prediction
-            surface_pred, multilevel_pred, diagnostic_pred = self.forward(x, c_grid)
+                # predict in latent space
+                y_latent = self.forward(x_latent, c_grid)
+
+                # decode for metrics
+                decoded_pred = self.decoder(y_latent)
+                surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(decoded_pred)
+
+                # update latent state for next autoregressive step
+                x_latent = y_latent
+            else:
+                x = assemble_input(surface_t, upper_air_t, diagnostic_t) # b c h w
+                y = self.forward(x, c_grid)
+                surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(y)
+
+                # update inputs for next autoregressive step
+                surface_t = surface_pred_decoded
+                upper_air_t = multilevel_pred_decoded
+                diagnostic_t = diagnostic_pred_decoded
 
             surface_target_t = targets_surface[:, t] # b c nlat nlon
             multilevel_target_t = targets_upper_air[:, t] # b c nlevel nlat nlon
-            diagnostic_target_t = targets_diagnostic[:, t] # b c nlat nlon 
-
-            if has_decoder:
-                # Decode latent predictions to full resolution
-                latent_pred = assemble_input(surface_pred, multilevel_pred, diagnostic_pred)
-                if self.decoder.use_history:
-                    decoded_pred = self.decoder(latent_pred, history)
-                    # Update history to the decoded full-res output for the next timestep
-                    history = decoded_pred.detach()
-                else:
-                    decoded_pred = self.decoder(latent_pred)
-                surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(decoded_pred)
-
-            elif self.latent:
-                # No decoder: compare in latent space
-                surface_pred_decoded = surface_pred
-                multilevel_pred_decoded = multilevel_pred
-                diagnostic_pred_decoded = diagnostic_pred
-
-                target_t = assemble_input(surface_target_t, multilevel_target_t, diagnostic_target_t)
-                target_t = self.encoder(target_t)
-                surface_target_t, multilevel_target_t, diagnostic_target_t = disassemble_input(target_t)
-
-            else:
-                surface_pred_decoded = surface_pred
-                multilevel_pred_decoded = multilevel_pred
-                diagnostic_pred_decoded = diagnostic_pred
+            diagnostic_target_t = targets_diagnostic[:, t] # b c nlat nlon
 
             surface_pred_denorm = self.n.surface_inv_transform(surface_pred_decoded)
-            surface_true_denorm = self.n.surface_inv_transform(surface_target_t)  
+            surface_true_denorm = self.n.surface_inv_transform(surface_target_t)
             multilevel_pred_denorm = self.n.upper_air_inv_transform(multilevel_pred_decoded)
             multilevel_true_denorm = self.n.upper_air_inv_transform(multilevel_target_t)
             diagnostic_pred_denorm = self.n.diagnostic_inv_transform(diagnostic_pred_decoded)
@@ -247,7 +234,7 @@ class TrainModule(L.LightningModule):
 
             # get losses
             for c, surface_feat_name in enumerate(self.surface_variables):
-                loss_dict[surface_feat_name][:, t] = latitude_weighted_rmse(surface_pred_denorm[:, c], 
+                loss_dict[surface_feat_name][:, t] = latitude_weighted_rmse(surface_pred_denorm[:, c],
                                                                            surface_true_denorm[:, c],
                                                                            nlon=nlon,
                                                                            nlat=nlat,
@@ -255,9 +242,9 @@ class TrainModule(L.LightningModule):
                 if t in t_plot and surface_feat_name in plot_keys:
                     pred_feat_dict[surface_feat_name][:, i_plot] = surface_pred_denorm[:, c]
                     target_feat_dict[surface_feat_name][:, i_plot] = surface_true_denorm[:, c]
-                    
+
             for c, multilevel_feat_name in enumerate(self.multilevel_variables):
-                loss_dict[multilevel_feat_name][:, t] = latitude_weighted_rmse(multilevel_pred_denorm[:, c], 
+                loss_dict[multilevel_feat_name][:, t] = latitude_weighted_rmse(multilevel_pred_denorm[:, c],
                                                                                  multilevel_true_denorm[:, c],
                                                                                  nlon=nlon,
                                                                                  nlat=nlat,
@@ -274,7 +261,7 @@ class TrainModule(L.LightningModule):
                     target_feat_dict[multilevel_feat_name][:, i_plot] = multilevel_true_denorm[:, c, l_plot]
 
             for c, diagnostic_feat_name in enumerate(self.diagnostic_variables):
-                loss_dict[diagnostic_feat_name][:, t] = latitude_weighted_rmse(diagnostic_pred_denorm[:, c], 
+                loss_dict[diagnostic_feat_name][:, t] = latitude_weighted_rmse(diagnostic_pred_denorm[:, c],
                                                                               diagnostic_true_denorm[:, c],
                                                                               nlon=nlon,
                                                                               nlat=nlat,
@@ -282,11 +269,6 @@ class TrainModule(L.LightningModule):
                 if t in t_plot and diagnostic_feat_name in plot_keys:
                     pred_feat_dict[diagnostic_feat_name][:, i_plot] = diagnostic_pred_denorm[:, c]
                     target_feat_dict[diagnostic_feat_name][:, i_plot] = diagnostic_true_denorm[:, c]
-            
-            # update inputs
-            surface_t = surface_pred
-            upper_air_t = multilevel_pred
-            diagnostic_t = diagnostic_pred
 
             if t in t_plot:
                 i_plot += 1

@@ -1,35 +1,42 @@
 model:
-    model_name: Decoder_SI
+    model_name: SI_Latent_DiT
     lr: 5.0e-5
-    Decoder_SI:
-        decoder:
-            in_channels: 191 
-            out_channels: 151 
+    SI_Latent_DiT:
+        model:
+            in_channels: 64 # x_noised (32) + cond (32); c_grid_embed_dim added internally
+            out_channels: 32
             dim: 1536
-            num_heads: 16
+            num_heads: 8
             num_blocks: 20
-            patch_size: 3
-            cond_dim: 4
-            nlat: 180
-            nlon: 360
-            grid_in_dim: 3 # SST SIC DSWRFtoa
+            patch_size: 2
+            scalar_dim: 1
+            nlat: 45
+            nlon: 90
+            unpatch: vanilla
+            c_grid_dim: 6 # 4 varying boundary + 2 invariant from assemble_forcing
+            c_grid_embed_dim: 4
+            c_grid_downsample: 4
+        scheduler:
+            num_refinement_steps: 5
+            num_train_steps: 21
+            integrator: em
+            sigma_coef: 0.5
         encoder:
             in_channels: 151  
             hidden_channels: 384
             z_channels: 64 # 2x the z channels of the AE, since we are doing a VAE
             num_in_blocks: 2
             num_res_blocks: 4
-        scheduler:
-            num_refinement_steps: 10
-            sampler: euler
-            train_sampler: logit_normal
-            inference_sampler: power
-            rho: 3.0
-            noise_shape: [151, 180, 360]
-        encoder_checkpoint: /project/pedramh/ayz/AMIP_logs/VAE_CNN_VAE_42_2026-04-01T17-27-24/last.ckpt
+        decoder:
+            out_channels: 151  
+            hidden_channels: 256
+            z_channels: 32
+            num_out_blocks: 2
+            num_res_blocks: 4
+        vae_checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/vae/last.ckpt
 
 data:
-    data_dir: '/project/pedramh/AMIP/h5'
+    data_dir: '/glade/derecho/scratch/awikner/ERA5/h5'
     upper_air_variables: ["temperature",
                   "u_component_of_wind",
                   "v_component_of_wind",
@@ -58,9 +65,9 @@ data:
                        "mxtpr_24h"]
     constant_boundary_variables: ["geopotential_at_surface", 
                                     "land_sea_mask"]
-    varying_boundary_variables: ["global_mean_co2",
-                                "DSWRFtoa",
-                                "sea_surface_temperature",
+    varying_boundary_variables: ["DSWRFtoa", 
+                                "global_mean_co2",
+                                "sea_surface_temperature", # has nans
                                 "sea_ice_cover"] # has nans
     mask_fill: {'sea_surface_temperature': 270.,
                 'sea_ice_cover': 0.}
@@ -68,11 +75,9 @@ data:
     train_year_end: 2012
     val_year_start: 2012
     val_year_end: 2013
-    mean_path: "/home/anthonyz/amip/normalize_mean.nc"
-    std_path: "/home/anthonyz/amip/normalize_std.nc"
-    forecast_lead_times: [1] 
-    autoencoder: True
-    return_calendar: True
+    mean_path: "/glade/derecho/scratch/ayz/ERA5/h5/normalize_mean.nc"
+    std_path: "/glade/derecho/scratch/ayz/ERA5/h5/normalize_std.nc"
+    forecast_lead_times: [1, 3, 5, 10]
 
     calendar: 'standard'
     data_timedelta_hours: 6
@@ -82,16 +87,16 @@ data:
     horizontal_resolution: [180, 360]
     predict_delta: False
     epsilon_factor: 0
-    val_num_inferences: 100 
-    diagnostic_input: True # specific to AE model, we need diagnostic at time t, since we are training a downscaler
-    return_calendar: True
+    val_num_inferences: 100 # only use 100 snapshots for validation
+    diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
     batch_size: 2
-    num_data_workers: 4
+    num_data_workers: 8 
 
 training:
     seed: 42
     devices: 4
+    num_nodes: 1
     accelerator: gpu
     strategy: ddp
     precision: 32-true
@@ -100,10 +105,10 @@ training:
     max_epochs: 50
     ema_decay: 0.99
     num_sanity_val_steps: 1
-    log_dir: /project/pedramh/ayz/AMIP_logs/
-    project: amip
+    log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
+    project: amip_forecast
     wandb_mode: online
-    checkpoint: /project/pedramh/ayz/AMIP_logs/Decoder_SI_EDM_42_2026-04-03T11-11-20/last.ckpt
-    description: EDM
-    accumulate_grad_batches: 2
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT_VAE_42_2026-04-05T18-56-36/last.ckpt
+    accumulate_grad_batches: 1
     optimizer: adam
+    description: VAE

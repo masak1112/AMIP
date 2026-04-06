@@ -118,8 +118,11 @@ class DiT(nn.Module):
                  nlat=180,
                  nlon=360,
                  dropout=0.0,
-                 unpatch="subpixel",
-                 scalar_dim=1):
+                 unpatch="vanilla",
+                 scalar_dim=1,
+                 c_grid_dim=0,
+                 c_grid_embed_dim=4,
+                 c_grid_downsample=4):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -130,6 +133,7 @@ class DiT(nn.Module):
         self.nlat = nlat
         self.nlon = nlon
         self.dropout = dropout
+        self.c_grid_dim = c_grid_dim
 
         # Pad spatial dims to be divisible by patch_size              # test case if nlat,nlon = 45, 90
         self.nlat_pad = math.ceil(nlat / patch_size) * patch_size     # 45/2 = 23 * 2 = 46
@@ -147,9 +151,19 @@ class DiT(nn.Module):
         self.grid_y = self.nlon_pad // patch_size
         self.with_poles = False
 
+        # c_grid downsampling: (c_grid_dim, 180, 360) -> (c_grid_embed_dim, 45, 90)
+        if c_grid_dim > 0:
+            self.c_grid_embed = nn.Conv2d(c_grid_dim, c_grid_embed_dim,
+                                          kernel_size=c_grid_downsample,
+                                          stride=c_grid_downsample)
+            patch_in_channels = in_channels + c_grid_embed_dim
+        else:
+            self.c_grid_embed = None
+            patch_in_channels = in_channels
+
         self.patch_embed_main = PatchEmbed(
             patch_size=patch_size,
-            in_chans=in_channels,
+            in_chans=patch_in_channels,
             hidden_size=dim,
             flatten=False)
 
@@ -182,12 +196,8 @@ class DiT(nn.Module):
                 grid_size=(self.grid_x, self.grid_y),
                 patch_size=(patch_size, patch_size),
                 in_dim=dim,
-                out_dim=dim,
+                out_dim=out_channels,
                 cond_dim=dim)
-            # Output projection (zero-initialized for stable training start)
-            self.out_proj = nn.Sequential(
-                nn.LayerNorm(dim),
-                nn.Linear(dim, out_channels))
         else:
             raise ValueError(f"unpatch type '{unpatch}' not supported")
 
@@ -200,11 +210,6 @@ class DiT(nn.Module):
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0)
         self.apply(_basic_init)
-
-        # Zero-init output projection for stable training
-        if self.unpatch == "vanilla":
-            nn.init.constant_(self.out_proj[-1].weight, 0)
-            nn.init.constant_(self.out_proj[-1].bias, 0)
 
         # Re-apply ICNR init for subpixel conv (self.apply(_basic_init) overwrites it)
         if self.unpatch == "subpixel":
@@ -267,7 +272,7 @@ class DiT(nn.Module):
         return (self._rope_cos_lat, self._rope_sin_lat,
                 self._rope_cos_lon, self._rope_sin_lon)
 
-    def forward(self, x_noised, cond, t):
+    def forward(self, x_noised, cond, t, c_grid):
         """
         Args:
             x_noised: [b, c, nlat, nlon] — interpolant I_t (channel-first from assemble_input)
@@ -280,7 +285,11 @@ class DiT(nn.Module):
         batch_size = x_noised.shape[0]
         nlat, nlon = self.nlat, self.nlon
 
-        x_input = torch.cat([x_noised, cond], dim=1)
+        if self.c_grid_embed is not None and c_grid is not None:
+            c_grid_emb = self.c_grid_embed(c_grid)  # [b, c_grid_embed_dim, nlat, nlon] (latent res)
+            x_input = torch.cat([x_noised, cond, c_grid_emb], dim=1)
+        else:
+            x_input = torch.cat([x_noised, cond], dim=1)
 
         # Pad spatial dims to be divisible by patch_size
         # Circular padding in longitude, polar padding in latitude
@@ -311,9 +320,6 @@ class DiT(nn.Module):
         if self.unpatch == "vanilla":
             # Unpatchify: [b, n, dim] -> [b, nlat, nlon, dim]
             x = self.unpatchify_layer(x, t_emb)
-
-            # Output projection
-            x = self.out_proj(x)  # [b, nlat, nlon, out_channels]
 
             # Convert back to channel-first: [b, h, w, c] -> [b, c, h, w]
             x = x.permute(0, 3, 1, 2)
