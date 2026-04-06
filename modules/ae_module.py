@@ -122,6 +122,7 @@ class AutoencoderModule(L.LightningModule):
                     hidden=refiner_cfg.get("dim", 64),
                 )
                 self.refiner_weight = refiner_cfg.get("weight", 0.1)
+                self.refiner_warmup_epochs = refiner_cfg.get("warmup_epochs", 0)
 
             # load encoder weights 
             self.initialize_encoder()
@@ -168,7 +169,7 @@ class AutoencoderModule(L.LightningModule):
             z = self.encode(x)
 
             y = self.scheduler.sample(z, self.decoder, grid_cond = forcing_data, scalar_cond = calendar_data)
-            if hasattr(self, 'refiner'):
+            if hasattr(self, 'refiner') and self.current_epoch >= self.refiner_warmup_epochs:
                 y = self.refiner(y)
         else:
             x = assemble_input(surface, multilevel, diagnostic)
@@ -197,7 +198,7 @@ class AutoencoderModule(L.LightningModule):
 
             has_refiner = hasattr(self, 'refiner')
 
-            if has_refiner:
+            if has_refiner and self.current_epoch >= self.refiner_warmup_epochs:
                 vel_loss, x0_hat, x0_target = self.scheduler.compute_loss(
                     z, y, self.decoder, return_x0_hat=True,
                     grid_cond=forcing_data, scalar_cond=calendar_data)
