@@ -1,8 +1,9 @@
 import torch
 from torch import nn
-from einops import rearrange
 from modules.layers.old.fa_basics import modulate_fused
 import torch.nn.functional as F
+from modules.layers.conv import SphereConv2d
+from einops import rearrange
 
 class FinalLayer(nn.Module):
     """
@@ -283,3 +284,112 @@ class PolarPad3d(nn.Module):
         padded_x[..., :self.pad_top, :] = torch.roll(padded_x[..., :self.pad_top, :], padded_x.shape[-1] // 2, dims = -1)
         padded_x[..., -self.pad_bottom:, :] = torch.roll(padded_x[..., -self.pad_bottom:, :], padded_x.shape[-1] // 2, dims = -1)
         return padded_x
+
+
+class Interpolate(nn.Module):
+    """Interpolation module."""
+
+    def __init__(self, scale_factor, mode, align_corners=False, periodic_dim=None):
+        """Init.
+
+        Args:
+            scale_factor (float): scaling
+            mode (str): interpolation mode
+            periodic_dim (int, optional): dimension index along which to apply
+                periodic boundary conditions before interpolating. If None,
+                no periodic padding is applied.
+        """
+        super(Interpolate, self).__init__()
+
+        self.interp = nn.functional.interpolate
+        self.scale_factor = scale_factor
+        self.mode = mode
+        self.align_corners = align_corners
+        self.periodic_dim = periodic_dim
+
+    def forward(self, x):
+        """Forward pass.
+
+        Args:
+            x (tensor): input
+
+        Returns:
+            tensor: interpolated data
+        """
+        if self.periodic_dim is not None:
+            dim = self.periodic_dim
+            # Pad one slice on each side along the periodic dimension
+            x = torch.cat([x.select(dim, -1).unsqueeze(dim),
+                            x,
+                            x.select(dim, 0).unsqueeze(dim)], dim=dim)
+
+        x = self.interp(
+            x,
+            scale_factor=self.scale_factor,
+            mode=self.mode,
+            align_corners=self.align_corners,
+        )
+
+        if self.periodic_dim is not None:
+            # Crop the periodically padded region, which expanded by scale_factor
+            sf = self.scale_factor
+            ndim = x.ndim
+            dim = self.periodic_dim if self.periodic_dim >= 0 else ndim + self.periodic_dim
+            # scale_factor may be a scalar or a sequence aligned to spatial dims
+            # spatial dims start at index 2, so spatial index = dim - 2
+            if isinstance(sf, (tuple, list)):
+                crop = int(sf[dim - 2])
+            else:
+                crop = int(sf)
+            slices = [slice(None)] * ndim
+            slices[dim] = slice(crop, -crop)
+            x = x[tuple(slices)]
+
+        return x
+
+class PatchInterpolate2D(nn.Module):
+    """
+    Patch Interpolation to 2D Image.
+    """
+    def __init__(self, grid_size, patch_size, in_chans, out_chans, hidden_dim = None):
+        super().__init__()
+        self.grid_x, self.grid_y = grid_size
+        self.patch_size = patch_size[0]
+        self.in_chans = in_chans
+        self.hidden_dim = hidden_dim if hidden_dim is not None else in_chans // 2
+        self.adaLN_shift_scale = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(in_chans, 2 * in_chans, bias=True)
+        )
+        nn.init.zeros_(self.adaLN_shift_scale[-1].weight)
+        nn.init.zeros_(self.adaLN_shift_scale[-1].bias)
+        self.conv = nn.Conv2d(in_chans, self.hidden_dim, kernel_size=1, stride=1, padding=0)
+        self.interp = Interpolate(scale_factor=patch_size, mode="bilinear", align_corners=True, periodic_dim=-2)
+
+        self.head = nn.Sequential(
+                SphereConv2d(self.hidden_dim, self.hidden_dim, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+                nn.GELU(),
+                nn.ZeroPad2d((1, 1, 0, 0)),
+                nn.CircularPad2d((0, 0, 1, 1)),
+                SphereConv2d(self.hidden_dim, self.hidden_dim, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+                nn.GELU(),
+                nn.Conv2d(self.hidden_dim, out_chans, kernel_size=1, stride=1, padding=0)
+            )
+
+    def forward(self, x, condition_embed):
+        # reshape x to [b, in_chans, h, w]
+        x = rearrange(x, 'b (h w) c -> b c h w', h=self.grid_x, w=self.grid_y)
+
+        shift, scale = self.adaLN_shift_scale(condition_embed).chunk(2, dim=1)
+        shift = shift[:, :, None, None]
+        scale = scale[:, :, None, None]
+        x = modulate_fused(x, shift, scale)
+
+        x = self.conv(x) # b, hidden_dim, h, w
+        x = self.interp(x) # b, hidden_dim, h*patch_size, w*patch_size
+        x = self.head(x) # b, out_chans, h*patch_size, w*patch_size
+
+        x = rearrange(x, 'b c h w -> b h w c')
+        
+        return x
+

@@ -11,7 +11,7 @@ from modules.layers.positional_encoding import (
     RotaryEmbedding,
     apply_2d_rotary_pos_emb,
 )
-from modules.layers.unpatchify import SubPixelConvICNR_2D, Unpatchify, sphere_pad
+from modules.layers.unpatchify import SubPixelConvICNR_2D, Unpatchify, sphere_pad, PatchInterpolate2D
 from modules.layers.patchify import PatchEmbed
 from modules.layers.embedding import CalendarEmbedding
 
@@ -349,7 +349,8 @@ class cDiT(nn.Module):
                  nlon=360,
                  dropout=0.0,
                  grid_in_dim = 1,
-                 cond_dim=4):
+                 cond_dim=4,
+                 unpatchify = "vanilla"):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -360,6 +361,7 @@ class cDiT(nn.Module):
         self.nlat = nlat
         self.nlon = nlon
         self.dropout = dropout
+        self.unpatchify = unpatchify
 
         self.grid_x = self.nlat // patch_size
         self.grid_y = self.nlon // patch_size
@@ -390,12 +392,19 @@ class cDiT(nn.Module):
 
         self.sa_blocks = nn.ModuleList(sa_blocks)
 
-        self.unpatchify_layer = Unpatchify(
-            grid_size=(self.grid_x, self.grid_y),
-            patch_size=(patch_size, patch_size),
-            in_dim=dim,
-            out_dim=out_channels,
-            cond_dim=dim)
+        if self.unpatchify == "interpolate":
+            self.unpatchify_layer = PatchInterpolate2D(grid_size=(self.grid_x, self.grid_y),
+                                                       patch_size=(patch_size, patch_size),
+                                                       in_chans=dim,
+                                                       out_chans=out_channels,
+                                                       hidden_dim=dim,)
+        else:
+            self.unpatchify_layer = Unpatchify(
+                grid_size=(self.grid_x, self.grid_y),
+                patch_size=(patch_size, patch_size),
+                in_dim=dim,
+                out_dim=out_channels,
+                cond_dim=dim)
 
         self.initialize_weights()
 
