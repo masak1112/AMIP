@@ -191,7 +191,7 @@ class SubPixelConvICNR_2D(nn.Module):
 
     def forward(self, x):
         x = rearrange(x, 'b (ny nx) c -> b c ny nx', ny=self.grid_x, nx=self.grid_y)
-        
+
         # x in shape [b, in_chans, h, w], where h, w are the height and width of the patchified feature map
         output = self.conv(x)
         
@@ -372,8 +372,6 @@ class PatchInterpolate2D(nn.Module):
         self.head = nn.Sequential(
                 SphereConv2d(self.hidden_dim, self.hidden_dim, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
                 nn.GELU(),
-                nn.ZeroPad2d((1, 1, 0, 0)),
-                nn.CircularPad2d((0, 0, 1, 1)),
                 SphereConv2d(self.hidden_dim, self.hidden_dim, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
                 nn.GELU(),
                 nn.Conv2d(self.hidden_dim, out_chans, kernel_size=1, stride=1, padding=0)

@@ -42,8 +42,6 @@ def process_args(args, config):
         trainconfig["checkpoint"] = args.checkpoint
     if args.description is not None:
         trainconfig["description"] = args.description
-    if args.partial_checkpoint is not None:
-        trainconfig["partial_checkpoint"] = args.partial_checkpoint
 
     return config, modelconfig, trainconfig, dataconfig
 
@@ -144,7 +142,6 @@ if __name__ == "__main__":
     parser.add_argument('--wandb_mode', default=None)
     parser.add_argument('--description', default=None)
     parser.add_argument('--checkpoint', default=None, help='Path to the checkpoint to resume training')
-    parser.add_argument('--partial_checkpoint', default=None, help='Path to checkpoint for partial weight loading (skips mismatched layers)')
     args = parser.parse_args()
 
     main(args)
