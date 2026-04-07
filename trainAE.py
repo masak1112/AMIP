@@ -113,6 +113,8 @@ def main(args):
                 print(f"  {k}")
         model.load_state_dict(filtered, strict=False)
         print(f"Partial checkpoint: loaded {len(filtered)}/{len(ckpt_state)} keys from {partial_ckpt}")
+        model.initialize_encoder() 
+        print(f"Re-initialized encoder weights after loading partial checkpoint")
         trainer.fit(model=model, datamodule=datamodule)
     elif trainconfig["checkpoint"] is not None:
         trainer.fit(model=model,
