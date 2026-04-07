@@ -379,8 +379,8 @@ class cDiT(nn.Module):
                  nlat=180,
                  nlon=360,
                  dropout=0.0,
-                 grid_in_dim = 1,
-                 cond_dim=4,
+                 #grid_in_dim = 1,
+                 #cond_dim=4,
                  unpatch = "vanilla"):
         super().__init__()
         self.in_channels = in_channels
@@ -404,8 +404,8 @@ class cDiT(nn.Module):
             hidden_size=dim,
             flatten=False)
         
-        self.embed_grid = SphereConv2d(in_channels = grid_in_dim, out_channels = cond_dim, kernel_size=(3,3))
-        self.embed_calendar = CalendarEmbedding(nlon=nlon, nlat=nlat, embed_channels=cond_dim)
+        #self.embed_grid = SphereConv2d(in_channels = grid_in_dim, out_channels = cond_dim, kernel_size=(3,3))
+        #self.embed_calendar = CalendarEmbedding(nlon=nlon, nlat=nlat, embed_channels=cond_dim)
 
         # 2D RoPE: one RotaryEmbedding per spatial axis
         # Each axis gets half the head dimension
@@ -500,7 +500,7 @@ class cDiT(nn.Module):
         return (self._rope_cos_lat, self._rope_sin_lat,
                 self._rope_cos_lon, self._rope_sin_lon)
 
-    def forward(self, x_noised, t, cond, grid_cond, scalar_cond):
+    def forward(self, x_noised, t, cond,): # grid_cond, scalar_cond):
         """
         Args:
             x_noised: [b, c, nlat, nlon] — interpolant I_t (channel-first from assemble_input)
@@ -513,11 +513,12 @@ class cDiT(nn.Module):
             [b, c, nlat, nlon] — predicted velocity (channel-first)
         """
 
-        grid_embed = self.embed_grid(grid_cond) # [b, cond_dim, nlat, nlon]
-        scalar_embed = self.embed_calendar(scalar_cond) # [b, cond_dim, nlat, nlon]
+        #grid_embed = self.embed_grid(grid_cond) # [b, cond_dim, nlat, nlon]
+        #scalar_embed = self.embed_calendar(scalar_cond) # [b, cond_dim, nlat, nlon]
         cond = F.interpolate(cond, size=(self.nlat, self.nlon), mode='bilinear', align_corners=False)  # [b, c, nlat, nlon]
 
-        x_input = torch.cat([x_noised, cond, grid_embed, scalar_embed], dim=1)  # [b, dim, nlat, nlon]
+        #x_input = torch.cat([x_noised, cond, grid_embed, scalar_embed], dim=1)  # [b, dim, nlat, nlon]
+        x_input = torch.cat([x_noised, cond], dim=1)  # [b, dim, nlat, nlon]
 
         # Convert channel-first to channel-last for PatchEmbed: [b, c, h, w] -> [b, h, w, c]
         x_nhwc = x_input.permute(0, 2, 3, 1)

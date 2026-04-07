@@ -36,7 +36,6 @@ class AutoencoderModule(L.LightningModule):
         self.n = normalizer
 
         self.diffusion = False 
-        self.return_calendar = self.config['data'].get("return_calendar", False)
 
         '''
         if self.model_name == "AE_DIT_DDC":
@@ -164,20 +163,15 @@ class AutoencoderModule(L.LightningModule):
             z = self.posterior.sample()  # stochastic for VAE training
         return z
 
-    def forward(self, surface, multilevel, diagnostic,
-                forcing_data = None, calendar_data = None):
-
+    def forward(self, surface, multilevel, diagnostic):
+        x = assemble_input(surface, multilevel, diagnostic)
+        z = self.encode(x)
         if self.diffusion:
-            x = assemble_input(surface, multilevel, diagnostic)
-            z = self.encode(x)
+            y = self.scheduler.sample(z, self.decoder)
 
-            y = self.scheduler.sample(z, self.decoder, grid_cond = forcing_data, scalar_cond = calendar_data)
             if hasattr(self, 'refiner') and self.current_epoch >= self.refiner_warmup_epochs:
                 y = self.refiner(y)
         else:
-            x = assemble_input(surface, multilevel, diagnostic)
-            z = self.encode(x)
-
             y = self.decoder(z)
 
         surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
@@ -185,13 +179,7 @@ class AutoencoderModule(L.LightningModule):
         return surface_pred, multilevel_pred, diagnostic_pred
     
     def training_step(self, batch, batch_idx):
-        
-        if self.return_calendar:
-            surface_data, multilevel_data, diagnostic_data, forcing_data, calendar_data = batch
-        else:
-            surface_data, multilevel_data, diagnostic_data = batch
-            forcing_data = None 
-            calendar_data = None
+        surface_data, multilevel_data, diagnostic_data = batch
 
         if self.diffusion:
             x = assemble_input(surface_data, multilevel_data, diagnostic_data)
@@ -202,16 +190,17 @@ class AutoencoderModule(L.LightningModule):
             has_refiner = hasattr(self, 'refiner')
 
             if has_refiner and self.current_epoch >= self.refiner_warmup_epochs:
+
                 vel_loss, x0_hat, x0_target = self.scheduler.compute_loss(
-                    z, y, self.decoder, return_x0_hat=True,
-                    grid_cond=forcing_data, scalar_cond=calendar_data)
+                    z, y, self.decoder, return_x0_hat=True)
+                
                 x0_refined = self.refiner(x0_hat)
                 refiner_loss = ((x0_refined - x0_target) ** 2).mean()
                 loss = vel_loss + self.refiner_weight * refiner_loss
                 self.log("train/vel_loss", vel_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
                 self.log("train/refiner_loss", refiner_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
             else:
-                loss = self.scheduler.compute_loss(z, y, self.decoder, grid_cond=forcing_data, scalar_cond=calendar_data)
+                loss = self.scheduler.compute_loss(z, y, self.decoder)
         else:
             surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
             pixel_loss = self.criterion(surface_pred, surface_data,
@@ -234,15 +223,10 @@ class AutoencoderModule(L.LightningModule):
 
     def validation_step(self, batch, batch_idx):
 
-        if self.return_calendar:
-            surface_data, multilevel_data, diagnostic_data, forcing_data, calendar_data = batch
-        else:
-            surface_data, multilevel_data, diagnostic_data = batch
-            forcing_data = None 
-            calendar_data = None
+        surface_data, multilevel_data, diagnostic_data = batch
 
-        surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data,
-                                                                      forcing_data, calendar_data)
+
+        surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
       
         loss_dict, pred_dict, data_dict = self.compute_loss_val(surface_pred, surface_data,
                                                 multilevel_pred, multilevel_data,
