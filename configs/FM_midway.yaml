@@ -91,7 +91,7 @@ data:
     diagnostic_input: True # specific to AE model, we need diagnostic at time t, since we are training a downscaler
     return_calendar: True
 
-    batch_size: 1
+    batch_size: 2
     num_data_workers: 8
 
 training:

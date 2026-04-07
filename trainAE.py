@@ -97,7 +97,24 @@ def main(args):
                         num_sanity_val_steps=trainconfig.get("num_sanity_val_steps", 1),
                         precision=trainconfig["precision"],)
     
-    if trainconfig["checkpoint"] is not None:
+    partial_ckpt = trainconfig.get("partial_checkpoint", None)
+    if partial_ckpt is not None:
+        # Load only matching model weights (e.g. when swapping unpatchify head)
+        ckpt = torch.load(partial_ckpt, map_location="cpu", weights_only=False)
+        ckpt_state = ckpt["state_dict"]
+        model_state = model.state_dict()
+        # Filter to keys that exist in both and have matching shapes
+        filtered = {k: v for k, v in ckpt_state.items()
+                    if k in model_state and v.shape == model_state[k].shape}
+        skipped = [k for k in ckpt_state if k not in filtered]
+        if skipped:
+            print(f"Partial checkpoint: skipped {len(skipped)} keys with shape mismatch or missing:")
+            for k in skipped:
+                print(f"  {k}")
+        model.load_state_dict(filtered, strict=False)
+        print(f"Partial checkpoint: loaded {len(filtered)}/{len(ckpt_state)} keys from {partial_ckpt}")
+        trainer.fit(model=model, datamodule=datamodule)
+    elif trainconfig["checkpoint"] is not None:
         trainer.fit(model=model,
                 datamodule=datamodule,
                 ckpt_path=trainconfig["checkpoint"],

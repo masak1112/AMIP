@@ -158,7 +158,10 @@ class AutoencoderModule(L.LightningModule):
     def encode(self, x):
         h = self.encoder(x)
         self.posterior = DiagonalGaussianDistribution(h)
-        z = self.posterior.sample()
+        if self.diffusion:
+            z = self.posterior.mode()  # deterministic for conditioning
+        else:
+            z = self.posterior.sample()  # stochastic for VAE training
         return z
 
     def forward(self, surface, multilevel, diagnostic,
