@@ -8,7 +8,7 @@ from common.utils import assemble_input
 try:
     import torch_harmonics as th
 except ImportError:
-    print("Warning: torch.distributed could not be imported. Distributed losses will not work.")
+    print("Warning: torch harmonics could not be imported.")
 
 # base on the code from graphcast
 def _check_uniform_spacing_and_get_delta(vector):
@@ -59,9 +59,11 @@ class WeightedLoss(nn.Module):
                  ndiag = 15,
                  normalize = True,
                  eps = 1e-3,
-                 channel_first=True
+                 channel_first=True,
+                 use_diagnostic=True,
                  ):
         super().__init__()
+        self.use_diagnostic = use_diagnostic
         self.loss_fn = nn.MSELoss(reduction='none')
         if latitude_weight == 'cosine':
             if with_poles:
@@ -115,15 +117,13 @@ class WeightedLoss(nn.Module):
     def forward(self,
                 surface_pred, surface_target,
                 multilevel_pred, multilevel_target,
-                diagnostic_pred, diagnostic_target
+                diagnostic_pred=None, diagnostic_target=None
                 ):
 
         if self.channel_first:
             # (b, c, nlat, nlon) -> (b, nlat, nlon, c)
             surface_pred = surface_pred.permute(0, 2, 3, 1)
             surface_target = surface_target.permute(0, 2, 3, 1)
-            diagnostic_pred = diagnostic_pred.permute(0, 2, 3, 1)
-            diagnostic_target = diagnostic_target.permute(0, 2, 3, 1)
             # (b, c, nlevel, nlat, nlon) -> (b, nlevel, nlat, nlon, c)
             multilevel_pred = multilevel_pred.permute(0, 2, 3, 4, 1)
             multilevel_target = multilevel_target.permute(0, 2, 3, 4, 1)
@@ -131,10 +131,6 @@ class WeightedLoss(nn.Module):
         surface_loss = self.loss_fn(surface_pred, surface_target) # b nlat nlon nsurface
         surface_loss = surface_loss * self.surface_variable_weight.view(1, 1, 1, -1) # b nlat nlon nsurface
         surface_loss = surface_loss.sum(dim=-1) # b nlat nlon
-
-        diag_loss = self.loss_fn(diagnostic_pred, diagnostic_target) # b nlat nlon ndiag
-        diag_loss = diag_loss * self.diag_variable_weight.view(1, 1, 1, -1) # b nlat nlon ndiag
-        diag_loss = diag_loss.sum(dim=-1) # b nlat nlon
 
         multi_level_loss = self.loss_fn(multilevel_pred, multilevel_target) # b nlevel nlat nlon nmulti
         multi_level_loss = multi_level_loss * self.level_weight.view(1, -1, 1, 1, 1) # b nlevel nlat nlon nmulti
@@ -145,10 +141,24 @@ class WeightedLoss(nn.Module):
         if self.normalize:
             surface_loss = surface_loss / (torch.norm(surface_target, p=2, keepdim=True) + self.eps)
             multi_level_loss = multi_level_loss / (torch.norm(multilevel_target, p=2, keepdim=True) + self.eps)
-            diag_loss = diag_loss / (torch.norm(diagnostic_target, p=2, keepdim=True) + self.eps)
 
-        loss = surface_loss + multi_level_loss + diag_loss # b nlat nlon
-        latitude_weight = self.latitude_weight.view(1, -1, 1) # b nlat nlon 
+        loss = surface_loss + multi_level_loss # b nlat nlon
+
+        if self.use_diagnostic and diagnostic_pred is not None and diagnostic_target is not None:
+            if self.channel_first:
+                diagnostic_pred = diagnostic_pred.permute(0, 2, 3, 1)
+                diagnostic_target = diagnostic_target.permute(0, 2, 3, 1)
+
+            diag_loss = self.loss_fn(diagnostic_pred, diagnostic_target) # b nlat nlon ndiag
+            diag_loss = diag_loss * self.diag_variable_weight.view(1, 1, 1, -1) # b nlat nlon ndiag
+            diag_loss = diag_loss.sum(dim=-1) # b nlat nlon
+
+            if self.normalize:
+                diag_loss = diag_loss / (torch.norm(diagnostic_target, p=2, keepdim=True) + self.eps)
+
+            loss = loss + diag_loss
+
+        latitude_weight = self.latitude_weight.view(1, -1, 1) # b nlat nlon
         loss = loss * latitude_weight
 
         return loss.mean()   # reduce over batch/lat/lon
@@ -373,15 +383,22 @@ class SpectralBaseLoss(nn.Module):
         vector_loss_weight=0.25,
         z500_weight=1.0,
         channel_first=True,
+        use_diagnostic=True,
+        K = -1,
     ):
         super().__init__()
         self.eps = eps
         self.absolute = absolute
         self.vector_loss_weight = vector_loss_weight
         self.channel_first = channel_first
+        self.use_diagnostic = use_diagnostic
 
-        self.sht  = th.RealSHT(*img_shape, grid=grid_type).float()
-        self.vsht = th.RealVectorSHT(*img_shape, grid=grid_type).float()
+        if K > 0:
+            self.sht = th.RealSHT(*img_shape, grid=grid_type, lmax=K, mmax=K).float()
+            self.vsht = th.RealVectorSHT(*img_shape, grid=grid_type, lmax=K, mmax=K).float()
+        else:
+            self.sht  = th.RealSHT(*img_shape, grid=grid_type).float()
+            self.vsht = th.RealVectorSHT(*img_shape, grid=grid_type).float()
 
         self.surface_uv_idx = surface_uv_idx
         self.multilevel_uv_idx = multilevel_uv_idx
@@ -412,18 +429,22 @@ class SpectralBaseLoss(nn.Module):
 
     def forward(self, surface_pred, surface_target,
                     multilevel_pred, multilevel_target,
-                    diagnostic_pred, diagnostic_target) -> torch.Tensor:
+                    diagnostic_pred=None, diagnostic_target=None) -> torch.Tensor:
 
         if self.channel_first:
             # Permute to channels-last for variable indexing
             # (b, c, nlat, nlon) -> (b, nlat, nlon, c)
             surface_pred = surface_pred.permute(0, 2, 3, 1)
             surface_target = surface_target.permute(0, 2, 3, 1)
-            diagnostic_pred = diagnostic_pred.permute(0, 2, 3, 1)
-            diagnostic_target = diagnostic_target.permute(0, 2, 3, 1)
             # (b, c, nlevel, nlat, nlon) -> (b, nlevel, nlat, nlon, c)
             multilevel_pred = multilevel_pred.permute(0, 2, 3, 4, 1)
             multilevel_target = multilevel_target.permute(0, 2, 3, 4, 1)
+
+        use_diag = self.use_diagnostic and diagnostic_pred is not None and diagnostic_target is not None
+
+        if use_diag and self.channel_first:
+            diagnostic_pred = diagnostic_pred.permute(0, 2, 3, 1)
+            diagnostic_target = diagnostic_target.permute(0, 2, 3, 1)
 
         # surface: (B, nlat, nlon, nsurface) — variables in last dim
         surface_pred_uv = surface_pred[..., self.surface_uv_idx_tensor]         # B nlat nlon 2
@@ -441,13 +462,14 @@ class SpectralBaseLoss(nn.Module):
         # Permute back to channel-first for assemble_input and SHT
         # surface scalar: (B, nlat, nlon, C_s) -> (B, C_s, nlat, nlon)
         # multilevel scalar: (B, nlevel, nlat, nlon, C_m) -> (B, C_m, nlevel, nlat, nlon)
-        # diagnostic: (B, nlat, nlon, ndiag) -> (B, ndiag, nlat, nlon)
+        diag_pred_input = diagnostic_pred.permute(0, 3, 1, 2) if use_diag else None
+        diag_target_input = diagnostic_target.permute(0, 3, 1, 2) if use_diag else None
         forecasts = assemble_input(surface_pred_scalar.permute(0, 3, 1, 2),
                                    multilevel_pred_scalar.permute(0, 4, 1, 2, 3),
-                                   diagnostic_pred.permute(0, 3, 1, 2))
+                                   diag_pred_input)
         observations = assemble_input(surface_target_scalar.permute(0, 3, 1, 2),
                                       multilevel_target_scalar.permute(0, 4, 1, 2, 3),
-                                      diagnostic_target.permute(0, 3, 1, 2))
+                                      diag_target_input)
         forecasts = self.sht(forecasts) / 4.0 / math.pi
         observations = self.sht(observations) / 4.0 / math.pi
 

@@ -41,11 +41,15 @@ def assemble_forcing(forcing, invariant):
 
     return out
 
-def disassemble_input(x, nsurface=6, ndiagnostic=15, nlevels=26):
+def disassemble_input(x, nsurface=6, ndiagnostic=15, nlevels=26, use_diagnostic=True):
     # x in b c h w
-    surface = x[:, : nsurface]
-    diagnostic = x[:, nsurface : nsurface + ndiagnostic]
-    multilevel = x[:, nsurface + ndiagnostic :]
+    if use_diagnostic:
+        surface = x[:, : nsurface]
+        diagnostic = x[:, nsurface : nsurface + ndiagnostic]
+        multilevel = x[:, nsurface + ndiagnostic :]
+    else:
+        surface = x[:, : nsurface]
+        multilevel = x[:, nsurface :]
 
     multilevel = rearrange(
         multilevel,
@@ -53,7 +57,10 @@ def disassemble_input(x, nsurface=6, ndiagnostic=15, nlevels=26):
         l=nlevels,
     )
 
-    return surface, multilevel, diagnostic
+    if use_diagnostic:
+        return surface, multilevel, diagnostic
+    else:
+        return surface, multilevel
 
 def disassemble_forcing(x, nforcing=3, ninvariant=2):
     # x in b c h w

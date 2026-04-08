@@ -68,8 +68,13 @@ def main(args):
 
     datamodule = ClimateDataModule(dataconfig=dataconfig)
 
-    model = TrainModule(config,
-                        normalizer=datamodule.train_dataset)
+    if "SFNO" in modelconfig["model_name"]:
+        from modules.sfno_module import SFNOModule
+        model = SFNOModule(config, 
+                            normalizer=datamodule.train_dataset)
+    else:
+        model = TrainModule(config,
+                            normalizer=datamodule.train_dataset)
 
     save_every = trainconfig.get("save_every", False)
 

@@ -127,7 +127,7 @@ def main(args):
     # strict=False: the TrainModule checkpoint was trained without a decoder,
     # so it has no decoder.* keys. The decoder weights are already loaded
     # from the AE checkpoint in initialize_decoder().
-    model.load_state_dict(state_dict, strict=False)
+    model.load_state_dict(state_dict)#, strict=False)
     model.eval()
 
     ensemble_size = 8
@@ -164,39 +164,24 @@ def main(args):
                 x = assemble_input(surface_t, upper_air_t, diagnostic_t) # e c h w
                 c_grid = assemble_forcing(varying_boundary_data, invariant) # e c h w
 
-                # Initialize history for decoder with use_history (full-res input at t=0)
-                if has_decoder and model.decoder.use_history:
-                    history = x.clone()
-
                 if model.latent:
-                    x = model.encoder(x)
-                    c_grid = model.encoder(c_grid)
+                    x = model.encode(x)
 
             else:
                 surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data = dataset.__getitem__(batch_idx)
                 varying_boundary_data = varying_boundary_data.unsqueeze(0).to(device).expand(ensemble_size, -1, -1, -1)
                 c_grid = assemble_forcing(varying_boundary_data, invariant) # e c h w
 
-                if model.latent:
-                    c_grid = model.encoder(c_grid)
-
-            surface_pred, multilevel_pred, diagnostic_pred = model.forward(x, c_grid) # e c h w / e c l h w
+            y = model.forward(x, c_grid) # e c h w / e c l h w
 
             if has_decoder:
-                latent_pred = assemble_input(surface_pred, multilevel_pred, diagnostic_pred)
-                if model.decoder.use_history:
-                    decoded_pred = model.decoder(latent_pred, history)
-                    history = decoded_pred.detach()
-                else:
-                    decoded_pred = model.decoder(latent_pred)
-                surface_decoded, multilevel_decoded, diagnostic_decoded = disassemble_input(decoded_pred)
-                surface_pred_denorm = model.n.surface_inv_transform(surface_decoded)
-                multilevel_pred_denorm = model.n.upper_air_inv_transform(multilevel_decoded)
-                diagnostic_pred_denorm = model.n.diagnostic_inv_transform(diagnostic_decoded)
+                surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(model.decoder(y))
             else:
-                surface_pred_denorm = model.n.surface_inv_transform(surface_pred)
-                multilevel_pred_denorm = model.n.upper_air_inv_transform(multilevel_pred)
-                diagnostic_pred_denorm = model.n.diagnostic_inv_transform(diagnostic_pred)
+                surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
+
+            surface_pred_denorm = model.n.surface_inv_transform(surface_pred)
+            multilevel_pred_denorm = model.n.upper_air_inv_transform(multilevel_pred)
+            diagnostic_pred_denorm = model.n.diagnostic_inv_transform(diagnostic_pred)
 
             # per-member running mean update
             n = batch_idx + 1
@@ -204,8 +189,7 @@ def main(args):
             climatology_multilevel += (multilevel_pred_denorm - climatology_multilevel) / n
             climatology_diagnostic += (diagnostic_pred_denorm - climatology_diagnostic) / n
 
-            # update x (each member evolves independently)
-            x = assemble_input(surface_pred, multilevel_pred, diagnostic_pred)
+            x = y
 
             if (batch_idx) % plot_every == 0:
                 print(f"Batch {batch_idx}/{len(dataset)}")
@@ -214,21 +198,13 @@ def main(args):
                 torch.save(climatology_multilevel.mean(dim=0).cpu(), path + f"climatology_multilevel_{batch_idx + 1}.pt")
                 torch.save(climatology_diagnostic.mean(dim=0).cpu(), path + f"climatology_diagnostic_{batch_idx + 1}.pt")
 
-                if has_decoder:
-                    # Targets stay at full resolution
-                    surface_t1_dev = surface_t1.unsqueeze(0).to(device)
-                    upper_air_t1_dev = upper_air_t1.unsqueeze(0).to(device)
-                    diagnostic_t1_dev = diagnostic_t1.unsqueeze(0).to(device)
-                    surface_true_denorm = model.n.surface_inv_transform(surface_t1_dev)
-                    multilevel_true_denorm = model.n.upper_air_inv_transform(upper_air_t1_dev)
-                    diagnostic_true_denorm = model.n.diagnostic_inv_transform(diagnostic_t1_dev)
-                else:
-                    target_t = assemble_input(surface_t1.unsqueeze(0).to(device), upper_air_t1.unsqueeze(0).to(device), diagnostic_t1.unsqueeze(0).to(device))
-                    target_t = model.encoder(target_t)
-                    surface_t1, upper_air_t1, diagnostic_t1 = disassemble_input(target_t)
-                    surface_true_denorm = model.n.surface_inv_transform(surface_t1)
-                    multilevel_true_denorm = model.n.upper_air_inv_transform(upper_air_t1)
-                    diagnostic_true_denorm = model.n.diagnostic_inv_transform(diagnostic_t1)
+                # Targets stay at full resolution
+                surface_t1_dev = surface_t1.unsqueeze(0).to(device)
+                upper_air_t1_dev = upper_air_t1.unsqueeze(0).to(device)
+                diagnostic_t1_dev = diagnostic_t1.unsqueeze(0).to(device)
+                surface_true_denorm = model.n.surface_inv_transform(surface_t1_dev)
+                multilevel_true_denorm = model.n.upper_air_inv_transform(upper_air_t1_dev)
+                diagnostic_true_denorm = model.n.diagnostic_inv_transform(diagnostic_t1_dev)
 
                 # use first ensemble member for plotting
                 pred_feat_dict = {}
