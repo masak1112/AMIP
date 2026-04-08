@@ -8,22 +8,21 @@ model:
     multi_level_weight: [1.0, 1.0, 1.0, 5.0, 1.0]
     spectral_loss_weight: 0.10
     SFNO:
-        model: 
-          img_shape: [180, 360]
-          embed_dim: 384
-          filter_type: linear
-          hard_thresholding_fraction: 0.5
-          use_mlp: false # do not apply MLP after S2Conv
-          normalization_layer: none
-          num_layers: 8
-          operator_type: dhconv
-          scale_factor: 1
-          separable: false
-          spectral_layers: 3
-          spectral_transform: sht
-          pos_embed: true
-          in_chans: 142 # modified
-          out_chans: 136
+        img_shape: [180, 360]
+        embed_dim: 384
+        filter_type: linear
+        hard_thresholding_fraction: 0.5
+        use_mlp: false # do not apply MLP after S2Conv
+        normalization_layer: none
+        num_layers: 8
+        operator_type: dhconv
+        scale_factor: 1
+        separable: false
+        spectral_layers: 3
+        spectral_transform: sht
+        pos_embed: true
+        in_chans: 142 # modified
+        out_chans: 136
 
 data:
     data_dir: '/project/pedramh/AMIP/h5'
