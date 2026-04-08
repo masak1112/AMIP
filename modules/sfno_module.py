@@ -111,8 +111,12 @@ class SFNOModule(L.LightningModule):
         # visualize the prediction for first batch and on one gpu
         if batch_idx == 0:
             if not self.ddp or self.global_rank == 0:
-                self.plot_predictions(pred_feat_dict, target_feat_dict)
+                self.save_predictions(pred_feat_dict, target_feat_dict)
     
+    def save_predictions(self, pred_feat_dict, target_feat_dict):
+        torch.save(pred_feat_dict, f'{self.log_dir}predictions_epoch_{self.current_epoch}.pt')
+        torch.save(target_feat_dict, f'{self.log_dir}targets_epoch_{self.current_epoch}.pt')
+
     @torch.no_grad()
     def predict(self, batch):
 
