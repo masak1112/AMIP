@@ -62,7 +62,7 @@ data:
     val_num_inferences: 100 # only use 100 snapshots for validation
     diagnostic_input: False # specific to SI models, we need a source distribution for diagnostics
 
-    batch_size: 8
+    batch_size: 2
     num_data_workers: 8 
 
 training:
