@@ -7,8 +7,8 @@
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:4
 #SBATCH --cpus-per-task=8 
-#SBATCH -o FM_%x_%j.out
-#SBATCH -e FM_%x_%j.err
+#SBATCH -o SFNO_%x_%j.out
+#SBATCH -e SFNO_%x_%j.err
 
 ml python
 conda activate /project/pedramh/ayz/envs/torch2
@@ -20,4 +20,4 @@ export NCCL_IB_DISABLE=1
 
 config_file=configs/SFNO.yaml
 
-srun python trainAE.py --config=$config_file
+srun python train.py --config=$config_file
