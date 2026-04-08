@@ -13,7 +13,7 @@ model:
         filter_type: linear
         hard_thresholding_fraction: 0.5
         normalization_layer: none
-        num_layers: 12
+        num_layers: 16
         operator_type: dhconv
         scale_factor: 1
         spectral_transform: sht
