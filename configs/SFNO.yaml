@@ -9,7 +9,7 @@ model:
     spectral_loss_weight: 0.005
     SFNO:
         img_shape: [180, 360]
-        embed_dim: 768
+        embed_dim: 1024
         filter_type: linear
         hard_thresholding_fraction: 0.5
         normalization_layer: none
