@@ -46,7 +46,7 @@ def process_args(args, config):
     return config, modelconfig, trainconfig, dataconfig
 
 def main(args):
-    config=get_yaml(args.config)
+    config=get_yaml("configs/Pixel_iMF.yaml")
     config, modelconfig, trainconfig, dataconfig = process_args(args, config)
 
     seed = trainconfig["seed"]
