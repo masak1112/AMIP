@@ -8,9 +8,9 @@ model:
         window_size: [6, 10]
         shift_size: [3, 5]
         patch_size: [2, 2]
-        depth: 20
+        depth: 16
         head_depth: 8
-        dim: 1280
+        dim: 1024
         heads: 16
     params:
         img_size: [180, 360]
