@@ -3,31 +3,22 @@ model:
     lr: 5.0e-5
     SI_DiT:
         model:
-            in_channels: 308 # 2*176 + 2 + 3
-            out_channels: 151 # 5 + 15 + 26*6 = 145
+            in_channels: 308 # 2*151 + 2 + 4
+            out_channels: 151 # 6 + 15 + 26*5 = 151
             dim: 1280
             num_heads: 16
             num_blocks: 20
-            patch_size: 2
+            patch_size: 3
             scalar_dim: 1
-            nlat: 45
-            nlon: 90
-            unpatch: subpixel
+            c_grid_downsample: 0
         scheduler:
-            num_refinement_steps: 5
+            num_refinement_steps: 20
             num_train_steps: 21
             integrator: em
             sigma_coef: 0.5
-        #decoder:
-        #    out_channels: 249  # 6 + 26*9 + 9 = 249
-        #    hidden_channels: 512
-        #    z_channels: 249
-        #    upsample_type: dc
-        #    padding_mode: circular
-        #    num_out_blocks: 3
-        #    num_res_blocks: 3
-        #decoder_checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/AE_History_HFS_decoder_history2_hfs_42_2026-02-20T08-36-49/last.ckpt
-
+            beta_fn: t^2
+            train_sampler: logit_normal
+       
 data:
     data_dir: '/project/pedramh/AMIP/h5'
     upper_air_variables: ["temperature",
@@ -80,11 +71,11 @@ data:
     horizontal_resolution: [180, 360]
     predict_delta: False
     epsilon_factor: 0
-    val_num_inferences: 100 # only use 100 snapshots for validation
+    val_num_inferences: 80 
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
     batch_size: 2
-    num_data_workers: 4 
+    num_data_workers: 8
 
 training:
     seed: 42
@@ -102,7 +93,6 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: null
-    #checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT__42_2026-03-17T15-05-45/last.ckpt
-    #checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_Latent_DiT__42_2026-03-20T11-47-38/last.ckpt
     accumulate_grad_batches: 1
     optimizer: adam
+    description: DiT

@@ -175,7 +175,7 @@ class DiT(nn.Module):
         self.with_poles = False
 
         # c_grid downsampling: (c_grid_dim, 180, 360) -> (c_grid_embed_dim, 45, 90)
-        if c_grid_dim > 0:
+        if c_grid_downsample > 0:
             self.c_grid_embed = nn.Conv2d(c_grid_dim, c_grid_embed_dim,
                                           kernel_size=c_grid_downsample,
                                           stride=c_grid_downsample)
@@ -318,6 +318,8 @@ class DiT(nn.Module):
         if self.c_grid_embed is not None and c_grid is not None:
             c_grid_emb = self.c_grid_embed(c_grid)  # [b, c_grid_embed_dim, nlat, nlon] (latent res)
             x_input = torch.cat([x_noised, cond, c_grid_emb], dim=1)
+        elif c_grid is not None:
+            x_input = torch.cat([x_noised, cond, c_grid], dim=1)
         else:
             x_input = torch.cat([x_noised, cond], dim=1)
 

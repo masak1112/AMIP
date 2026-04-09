@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from einops import rearrange
 from torch_harmonics import InverseRealSHT
-import torch.nn as nn
+from modules.diffusion.stochastic_interpolant import sample_logit_normal
 
 class SphereNoiseGenerator(nn.Module):
     def __init__(self, l_max):
@@ -83,7 +83,8 @@ class DriftScheduler(nn.Module):
                  beta_fn="t",
                  antithetic_sampling=False,
                  sigma_sample=None,
-                 l_max=None
+                 l_max=None,
+                 train_sampler='discrete'
                  ):
         super(DriftScheduler, self).__init__()
 
@@ -96,6 +97,7 @@ class DriftScheduler(nn.Module):
         self.beta_fn = beta_fn
         self.antithetic_sampling = antithetic_sampling
         self.sigma_sample = sigma_sample if sigma_sample is not None else sigma_coef
+        self.train_sampler = train_sampler
 
         if l_max is not None:
             self.generator = SphereNoiseGenerator(l_max=l_max)
@@ -103,7 +105,7 @@ class DriftScheduler(nn.Module):
             self.generator = None
 
         print(f'Scheduler initialized with {self.num_train_timesteps} training steps and {self.num_refinement_steps} refinement steps.')
-        print(f"sigma_coef: {self.sigma_coef}, integrator: {integrator}, beta_fn: {self.beta_fn}, antithetic_sampling: {self.antithetic_sampling}")
+        print(f"sigma_coef: {self.sigma_coef}, integrator: {integrator}, beta_fn: {self.beta_fn}, antithetic_sampling: {self.antithetic_sampling}, train_sampler: {self.train_sampler}")
 
     def wide(self, t, ndim=2):
         if ndim == 2:
@@ -164,8 +166,13 @@ class DriftScheduler(nn.Module):
         device = x.device
 
         noise = self.get_noise(x)
-        # sample timestep, no need to train on t=1
-        t = torch.randint(0, self.num_train_timesteps - 1, device=device, size=(x.shape[0],)).float() / (self.num_train_timesteps - 1)
+        # sample timestep
+        if self.train_sampler == 'logit_normal':
+            t = sample_logit_normal(x.shape[0], device=device)
+        elif self.train_sampler == 'uniform':
+            t = torch.rand(x.shape[0], device=device)
+        else:  # discrete
+            t = torch.randint(0, self.num_train_timesteps - 1, device=device, size=(x.shape[0],)).float() / (self.num_train_timesteps - 1)
 
         sigma_t = self.sigma(t)          # shape (b, 1, 1, 1)
         sigma_dot_t = self.sigma_dot(t)  # shape (b, 1, 1, 1)
