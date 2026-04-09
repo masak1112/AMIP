@@ -159,6 +159,7 @@ class SiT(nn.Module):
         input_size=[180, 360],
         patch_size=[2, 2],
         in_channels=4,
+        out_channels= 3,
         hidden_size=1152,
         depth=28,
         num_heads=16,
@@ -166,7 +167,7 @@ class SiT(nn.Module):
     ):
         super().__init__()
         self.in_channels = in_channels
-        self.out_channels = in_channels
+        self.out_channels = out_channels
         self.patch_size = patch_size
         self.num_heads = num_heads
             # Define block_kwargs from args

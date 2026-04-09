@@ -5,6 +5,7 @@ model:
         input_size: [180, 360]
         patch_size: [4, 4]
         in_channels: 308
+        out_channels: 151
         hidden_size: 1024
         depth: 16
         num_heads: 16
