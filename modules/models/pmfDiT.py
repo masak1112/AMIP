@@ -244,7 +244,6 @@ class BottleneckPatchEmbedder(nn.Module):
 
     def forward(self, x):
         B, C, H, W = x.shape  # (2, 32, 32, 4)
-        assert H == W, f"{x.shape}"
         x = self.proj2(self.proj1(x))  # (B, H/p, W/p, hidden_c)
         x = x.permute(0, 2, 3, 1).reshape(B, -1, x.shape[1])  # NCHW -> NLC
         return x
@@ -511,7 +510,6 @@ class pmfDiT(nn.Module):
         c = self.out_channels
         p = self.x_embedder.patch_size[0]
         h = w = int(x.shape[1] ** 0.5)
-        assert h * w == x.shape[1]
 
         x = x.reshape((x.shape[0], h, w, p, p, c))
         x = torch.einsum("nhwpqc->nchpwq", x)
