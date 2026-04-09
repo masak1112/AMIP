@@ -7,7 +7,7 @@ model:
         in_channels: 308
         out_channels: 151
         hidden_size: 1024
-        depth: : 16
+        depth: 16
         num_heads: 16
         aux_head_depth: 4
         num_time_tokens: 4
