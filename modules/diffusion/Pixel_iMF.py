@@ -72,7 +72,7 @@ class pixelMeanFlow(nn.Module):
     #                       Solver                        #
     #######################################################
 
-    def u_fn(self, x, t, h, cond, jvp=True, return_u = True, return_v = True):
+    def u_fn(self, x, t, h, cond, jvp=True):
         """
         Compute the predicted u and v components from the model.
 
@@ -91,9 +91,7 @@ class pixelMeanFlow(nn.Module):
             t.reshape(bz),
             h.reshape(bz),
             cond,
-            jvp=jvp,
-            return_u=return_u,
-            return_v=return_v,
+            jvp=jvp
         )
 
     def sample_one_step(self, z_t, i, t_steps, cond):
@@ -183,7 +181,7 @@ class pixelMeanFlow(nn.Module):
         # Get model's predicted v at current time (used as jvp tangent)
         t_flat = t.reshape(bz)
         h_zero = torch.zeros(bz, dtype=self.dtype, device=device)
-        v_c = self.u_fn(z_t, t_flat, h_zero, cond, jvp=False, return_u = False)[1]
+        v_c = self.u_fn(z_t, t_flat, h_zero, cond, jvp=False)[1]
 
         # Compute u and du/dt via forward-mode autodiff (jvp)
         def u_fn_primary(z_t_in, t_in, r_in):
@@ -204,7 +202,7 @@ class pixelMeanFlow(nn.Module):
         # Get v from a separate forward pass
         t_flat = t.reshape(bz)
         r_flat = r.reshape(bz)
-        _, v = self.u_fn(z_t, t_flat, t_flat - r_flat, cond, jvp=False, return_u=False)
+        _, v = self.u_fn(z_t, t_flat, t_flat - r_flat, cond, jvp=False)
 
         # Our compound function V = u + (t - r) * du/dt
         V = u + (t - r) * du_dt.detach()
