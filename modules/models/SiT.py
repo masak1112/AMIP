@@ -165,13 +165,17 @@ class SiT(nn.Module):
         depth=28,
         num_heads=16,
         mlp_ratio=4.0,
-        **block_kwargs # fused_attn
     ):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = in_channels
         self.patch_size = patch_size
         self.num_heads = num_heads
+            # Define block_kwargs from args
+        block_kwargs = {
+            "fused_attn": False,
+            "qk_norm": False,
+        }
 
         self.x_embedder = PatchEmbed(
             input_size, patch_size, in_channels, hidden_size, bias=True
