@@ -9,7 +9,7 @@ model:
         hidden_size: 1024
         depth: 16
         num_heads: 16
-        aux_head_depth: 4
+        aux_head_depth: 8
         num_time_tokens: 4
     params:
         img_size: [180, 360]
@@ -72,7 +72,7 @@ data:
     val_num_inferences: 100 
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
-    batch_size: 1
+    batch_size: 2
     num_data_workers: 8
 
 training:
