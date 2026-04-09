@@ -55,8 +55,8 @@ class TrainModule(L.LightningModule):
             self.latent = True
         elif self.model_name == "Pixel_iMF":
             #from modules.diffusion.Pixel_iMF import pixelMeanFlow
-            from modules.diffusion.iMF import iMeanFlow
-            self.model = iMeanFlow(modelconfig = self.modelconfig['model'],
+            from modules.diffusion.MF import MeanFlow
+            self.model = MeanFlow(modelconfig = self.modelconfig['model'],
                                        **self.modelconfig["params"])
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
