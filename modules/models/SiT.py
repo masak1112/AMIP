@@ -160,7 +160,6 @@ class SiT(nn.Module):
         patch_size=[2, 2],
         in_channels=4,
         hidden_size=1152,
-        decoder_hidden_size=768,
         depth=28,
         num_heads=16,
         mlp_ratio=4.0,
@@ -189,7 +188,7 @@ class SiT(nn.Module):
             SiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio, **block_kwargs) for _ in range(depth)
         ])
 
-        self.final_layer = FinalLayer(decoder_hidden_size, patch_size, self.out_channels)
+        self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
 
         self.initialize_weights()
 
