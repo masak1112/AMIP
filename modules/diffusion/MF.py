@@ -172,4 +172,4 @@ class MeanFlow(nn.Module):
         else:
             loss = loss_mid
         loss_mean_ref = torch.mean((error**2))
-        return loss, loss_mean_ref
+        return loss.mean(), loss_mean_ref
