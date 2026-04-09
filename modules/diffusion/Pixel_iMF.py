@@ -16,7 +16,8 @@ Both are modifications to allow stability.
 import torch
 import torch.nn as nn
 
-from modules.models.SwinV2 import SwinV2
+#from modules.models.SwinV2 import SwinV2
+from modules.models.pmfDiT import pmfDiT
 from common.loss import SpectralScalarLoss
 
 class pixelMeanFlow(nn.Module):
@@ -63,7 +64,7 @@ class pixelMeanFlow(nn.Module):
         if self.spectral_weight > 0:
             self.spectral_criterion = SpectralScalarLoss(img_shape = img_size)
 
-        self.net = SwinV2(**modelconfig)
+        self.net = pmfDiT(**modelconfig)
 
         # noise scaling
         self.noise_scale = 1.0
@@ -72,7 +73,7 @@ class pixelMeanFlow(nn.Module):
     #                       Solver                        #
     #######################################################
 
-    def u_fn(self, x, t, h, cond, jvp=True, return_u = True, return_v = True):
+    def u_fn(self, x, t, h, cond): #, jvp=True, return_u = True, return_v = True):
         """
         Compute the predicted u and v components from the model.
 
@@ -91,9 +92,9 @@ class pixelMeanFlow(nn.Module):
             t.reshape(bz),
             h.reshape(bz),
             cond,
-            jvp=jvp,
-            return_u=return_u,
-            return_v=return_v,
+            #jvp=jvp,
+            #return_u=return_u,
+            #return_v=return_v,
         )
 
     def sample_one_step(self, z_t, i, t_steps, cond):
@@ -183,7 +184,7 @@ class pixelMeanFlow(nn.Module):
         # Get model's predicted v at current time (used as jvp tangent)
         t_flat = t.reshape(bz)
         h_zero = torch.zeros(bz, dtype=self.dtype, device=device)
-        v_c = self.u_fn(z_t, t_flat, h_zero, cond, jvp=False, return_u = False)[1]
+        v_c = self.u_fn(z_t, t_flat, h_zero, cond)[1]
 
         # Compute u and du/dt via forward-mode autodiff (jvp)
         def u_fn_primary(z_t_in, t_in, r_in):
@@ -204,7 +205,7 @@ class pixelMeanFlow(nn.Module):
         # Get v from a separate forward pass
         t_flat = t.reshape(bz)
         r_flat = r.reshape(bz)
-        _, v = self.u_fn(z_t, t_flat, t_flat - r_flat, cond, jvp=False, return_u=False)
+        _, v = self.u_fn(z_t, t_flat, t_flat - r_flat, cond)
 
         # Our compound function V = u + (t - r) * du/dt
         V = u + (t - r) * du_dt.detach()
@@ -268,7 +269,7 @@ class pixelMeanFlow(nn.Module):
             t_b = t.expand(bsz)
             r_b = r.expand(bsz)
 
-            u = self.u_fn(z_t, t_b, t_b - r_b, cond, jvp=False)[0]
+            u = self.u_fn(z_t, t_b, t_b - r_b, cond)[0]
             z_t = z_t - (t_b - r_b)[:, None, None, None] * u
 
         return z_t
