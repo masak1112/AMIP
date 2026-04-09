@@ -152,7 +152,6 @@ class MeanFlow(nn.Module):
                         
         #u = self.model(z_t, r, t, y)
         
-        # No labels or no CFG applicable samples, use standard JVP
         primals = (z_t, r, t)
         tangents = (v_t, torch.zeros_like(r), torch.ones_like(t))
         

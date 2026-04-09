@@ -8,7 +8,6 @@
 
 import torch
 import torch.nn as nn
-import numpy as np
 import math
 from timm.models.vision_transformer import Attention, Mlp
 
@@ -207,7 +206,7 @@ class SiT(nn.Module):
         pos_embed = get_2d_sincos_pos_embed(
             self.pos_embed.shape[-1], self.x_embedder.grid_size
             )
-        self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
+        self.pos_embed.data.copy_(pos_embed.float().unsqueeze(0))
 
         # Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
         w = self.x_embedder.proj.weight.data
@@ -285,15 +284,15 @@ def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=
         grid_h_size, grid_w_size = grid_size
     else:
         grid_h_size = grid_w_size = grid_size
-    grid_h = np.arange(grid_h_size, dtype=np.float32)
-    grid_w = np.arange(grid_w_size, dtype=np.float32)
-    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
-    grid = np.stack(grid, axis=0)
+    grid_h = torch.arange(grid_h_size, dtype=torch.float32)
+    grid_w = torch.arange(grid_w_size, dtype=torch.float32)
+    grid_w, grid_h = torch.meshgrid(grid_w, grid_h, indexing='xy')  # here w goes first
+    grid = torch.stack([grid_w, grid_h], dim=0)
 
     grid = grid.reshape([2, 1, grid_h_size, grid_w_size])
     pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
     if cls_token and extra_tokens > 0:
-        pos_embed = np.concatenate([np.zeros([extra_tokens, embed_dim]), pos_embed], axis=0)
+        pos_embed = torch.cat([torch.zeros([extra_tokens, embed_dim]), pos_embed], dim=0)
     return pos_embed
 
 
@@ -304,7 +303,7 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
     emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
     emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
 
-    emb = np.concatenate([emb_h, emb_w], axis=1) # (H*W, D)
+    emb = torch.cat([emb_h, emb_w], dim=1) # (H*W, D)
     return emb
 
 
@@ -315,15 +314,15 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     out: (M, D)
     """
     assert embed_dim % 2 == 0
-    omega = np.arange(embed_dim // 2, dtype=np.float64)
+    omega = torch.arange(embed_dim // 2, dtype=torch.float64)
     omega /= embed_dim / 2.
     omega = 1. / 10000**omega  # (D/2,)
 
-    pos = pos.reshape(-1)  # (M,)
-    out = np.einsum('m,d->md', pos, omega)  # (M, D/2), outer product
+    pos = pos.reshape(-1).to(torch.float64)  # (M,)
+    out = torch.einsum('m,d->md', pos, omega)  # (M, D/2), outer product
 
-    emb_sin = np.sin(out) # (M, D/2)
-    emb_cos = np.cos(out) # (M, D/2)
+    emb_sin = torch.sin(out) # (M, D/2)
+    emb_cos = torch.cos(out) # (M, D/2)
 
-    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
+    emb = torch.cat([emb_sin, emb_cos], dim=1)  # (M, D)
     return emb
