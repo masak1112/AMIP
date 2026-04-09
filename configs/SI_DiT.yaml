@@ -8,7 +8,7 @@ model:
             dim: 1280
             num_heads: 16
             num_blocks: 20
-            patch_size: 3
+            patch_size: 2
             scalar_dim: 1
             c_grid_downsample: 0
         scheduler:
