@@ -3,18 +3,17 @@ model:
     lr: 5.0e-5
     model: 
         input_size: [180, 360]
-        patch_size: [6, 6]
+        patch_size: [4, 4]
         in_channels: 308
         out_channels: 151
         hidden_size: 1024
         depth: 16
         num_heads: 16
-        aux_head_depth: 8
-        num_time_tokens: 4
+        aux_head_depth: 4
+        num_time_tokens: 16
     params:
         img_size: [180, 360]
         img_channels: 151
-        spectral_weight: 0.01
         num_steps: 2
       
 data:

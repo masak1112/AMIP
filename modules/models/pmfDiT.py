@@ -558,19 +558,14 @@ class pmfDiT(nn.Module):
         Args:
             x: Input images
             t, h: time steps
-            w: CFG scale
-            t_min, t_max: CFG interval
-            y: Class labels
 
         Returns:
             u: Average velocity field
             v: Instantaneous velocity field
         """
-        x_in = torch.cat((x, cond), dim=1) # b c h w
+        x = torch.cat((x, cond), dim=1) # b c h w'
 
-        # We don't explicitly condition on time t, only on h = t - r
-        # following https://arxiv.org/abs/2502.13129
-        seq = self._build_sequence(x_in, h)
+        seq = self._build_sequence(x, h)
 
         for block in self.shared_blocks:
             seq = block(seq, self.rope_freqs)
@@ -588,12 +583,7 @@ class pmfDiT(nn.Module):
         u = self.unpatchify(self.u_final_layer(u_tokens))
         v = self.unpatchify(self.v_final_layer(v_tokens))
 
-        t = t.reshape(x.shape[0], 1, 1, 1)
-        u = (x - u) / torch.clamp(t, min=0.05)
-        v = (x - v) / torch.clamp(t, min=0.05)
-
         return u, v
-
 
 #################################################################################
 #                           Rotary Position Helpers                             #
