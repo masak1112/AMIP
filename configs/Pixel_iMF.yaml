@@ -9,7 +9,7 @@ model:
         shift_size: [1, 2]
         patch_size: [2, 2]
         depth: 16
-        head_depth: 8
+        head_depth: 4
         dim: 1024
         heads: 16
     params:
