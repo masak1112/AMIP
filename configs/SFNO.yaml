@@ -1,12 +1,12 @@
 model:
     model_name: SFNO
-    lr: 1.0e-4
+    lr: 5.0e-5
     weight_decay: 0.01
     K: 90
     level_weight: cosine
     surface_weight: null
     multi_level_weight: [1.0, 1.0, 1.0, 5.0, 1.0]
-    spectral_loss_weight: 0.05
+    spectral_loss_weight: 0.001
     SFNO:
         img_shape: [180, 360]
         embed_dim: 1024
