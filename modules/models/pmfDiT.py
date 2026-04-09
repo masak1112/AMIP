@@ -469,7 +469,7 @@ class pmfDiT(nn.Module):
         )
         self.prefix_tokens =self.num_time_tokens
         self.head_dim = self.hidden_size // self.num_heads
-        self.register_buffer("rope_freqs", precompute_rope_freqs(self.head_dim, self.x_embedder.num_patches))
+        self.register_buffer("rope_freqs", precompute_rope_freqs(self.head_dim, self.x_embedder.grid_size))
         self.pos_embed = nn.Parameter(
             nn.init.normal_(torch.empty(1, total_tokens, self.hidden_size), std=0.02)
         )
@@ -602,14 +602,16 @@ class pmfDiT(nn.Module):
 #################################################################################
 
 
-def precompute_rope_freqs(dim: int, seq_len: int, theta: float = 10000.0):
+def precompute_rope_freqs(dim: int, grid_size: tuple, theta: float = 10000.0):
     dim = dim // 2 # for 2d rotary embeddings
-    T = int(seq_len ** 0.5)
+    H, W = grid_size
+    seq_len = H * W
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2, dtype=torch.float32) / dim))
-    positions = torch.arange(T, dtype=torch.float32)
-    freqs_h = torch.einsum('i,j->ij', positions, freqs)
-    freqs_w = torch.einsum('i,j->ij', positions, freqs)
-    freqs = torch.concatenate([torch.tile(freqs_h[:, None, :], (1, T, 1)), torch.tile(freqs_w[None, :, :], (T, 1, 1))], axis=-1)  # (T, T, 2D)
+    positions_h = torch.arange(H, dtype=torch.float32)
+    positions_w = torch.arange(W, dtype=torch.float32)
+    freqs_h = torch.einsum('i,j->ij', positions_h, freqs)
+    freqs_w = torch.einsum('i,j->ij', positions_w, freqs)
+    freqs = torch.concatenate([torch.tile(freqs_h[:, None, :], (1, W, 1)), torch.tile(freqs_w[None, :, :], (H, 1, 1))], axis=-1)  # (H, W, 2D)
     real = torch.cos(freqs).reshape(seq_len, dim)
     imag = torch.sin(freqs).reshape(seq_len, dim)
     return torch.complex(real, imag)
