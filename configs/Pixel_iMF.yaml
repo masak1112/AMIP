@@ -7,7 +7,7 @@ model:
         out_channels: 151 # 6 + 15 + 26*5 = 151
         window_size: [2, 4]
         shift_size: [1, 2]
-        patch_size: [2, 2]
+        patch_size: [3, 3]
         depth: 16
         head_depth: 4
         dim: 1024
