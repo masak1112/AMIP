@@ -6,7 +6,6 @@ model:
         patch_size: [4, 4]
         in_channels: 308
         hidden_size: 1024
-        decoder_hidden_size: 768
         depth: 16
         num_heads: 16
     params:
