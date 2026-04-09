@@ -235,8 +235,8 @@ class pixelMeanFlow(nn.Module):
 
         dict_losses = {
             "loss": loss,
-            "loss_u": loss_u,
-            "loss_v": loss_v,
+            "loss_u": ((V - v_g) ** 2).mean(),
+            "loss_v": ((v - v_g) ** 2).mean(),
             "loss_spectral": loss_spectral,
         }
 
