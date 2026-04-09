@@ -379,7 +379,7 @@ class FinalLayer(nn.Module):
             bias_init="zeros",
         )
 
-    def __call__(self, x):
+    def forward(self, x):
         return self.linear(self.norm(x))
 
 
@@ -508,12 +508,12 @@ class pmfDiT(nn.Module):
 
     def unpatchify(self, x):
         c = self.out_channels
-        p = self.x_embedder.patch_size[0]
-        h = w = int(x.shape[1] ** 0.5)
+        p_h, p_w = self.x_embedder.patch_size
+        h, w = self.x_embedder.grid_size
 
-        x = x.reshape((x.shape[0], h, w, p, p, c))
+        x = x.reshape((x.shape[0], h, w, p_h, p_w, c))
         x = torch.einsum("nhwpqc->nchpwq", x)
-        images = x.reshape((x.shape[0], c, h * p, w * p))
+        images = x.reshape((x.shape[0], c, h * p_h, w * p_w))
         return images
 
     def _build_sequence(self, x, h):
