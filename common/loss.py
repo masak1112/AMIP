@@ -550,8 +550,65 @@ class SpectralBaseLoss(nn.Module):
             return scalar_loss + self.vector_loss_weight * vector_loss + self.z500_weight * z500_loss
 
         return scalar_loss + self.vector_loss_weight * vector_loss
+    
 
 
+class SpectralScalarLoss(nn.Module):
+    """
+    Geometric base loss class used by all geometric losses
+    """
+
+    def __init__(
+        self,
+        img_shape=(180, 360),
+        grid_type='equiangular',
+        absolute=False,
+    ):
+        super().__init__()
+        self.absolute = absolute
+
+        self.sht  = th.RealSHT(*img_shape, grid=grid_type).float()
+        self.vsht = th.RealVectorSHT(*img_shape, grid=grid_type).float()
+
+        # Spectral weights for scalar SHT: uniform in l, double-weight m>0
+        lmax, mmax = self.sht.lmax, self.sht.mmax
+        l_w = torch.ones(lmax)
+        m_w = 2 * torch.ones(mmax)
+        m_w[0] = 1.0
+        l_w, m_w = torch.meshgrid(l_w, m_w, indexing='ij')
+        self.register_buffer('lm_weights', l_w * m_w, persistent=False)
+
+        # Spectral weights for vector SHT (same convention)
+        lmax_v, mmax_v = self.vsht.lmax, self.vsht.mmax
+        l_w_v = torch.ones(lmax_v)
+        m_w_v = 2 * torch.ones(mmax_v)
+        m_w_v[0] = 1.0
+        l_w_v, m_w_v = torch.meshgrid(l_w_v, m_w_v, indexing='ij')
+        self.register_buffer('lm_weights_v', l_w_v * m_w_v, persistent=False)
+
+    def forward(self, x_pred, x_true) -> torch.Tensor:
+
+        forecasts = self.sht(x_pred) / 4.0 / math.pi
+        observations = self.sht(x_true) / 4.0 / math.pi
+
+        if self.absolute:
+            forecasts = torch.abs(forecasts)
+            observations = torch.abs(observations)
+        else:
+            forecasts = torch.view_as_real(forecasts)
+            observations = torch.view_as_real(observations)
+            # (B, C, lmax, mmax, 2) -> (B, C, 2, lmax, mmax) -> (B, 2C, lmax, mmax)
+            forecasts = torch.movedim(forecasts, 4, 2).flatten(1, 2)
+            observations = torch.movedim(observations, 4, 2).flatten(1, 2)
+
+        B, C, H, W = forecasts.shape
+        spectral_weights_split = self.lm_weights.reshape(1, 1, H * W)
+
+        diff = torch.abs(observations - forecasts).reshape(B, C, H * W)
+        scalar_loss = torch.sum(diff * spectral_weights_split, dim=-1).mean()
+
+        return scalar_loss 
+    
 
 def rankdata(x: torch.Tensor, dim: int) -> torch.Tensor:
     """

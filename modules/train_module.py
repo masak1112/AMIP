@@ -53,6 +53,10 @@ class TrainModule(L.LightningModule):
             self.model = DiT(**self.modelconfig['SI_Latent_DiT']["model"])
             self.scheduler = DriftScheduler(**self.modelconfig["SI_Latent_DiT"]['scheduler'])
             self.latent = True
+        elif self.model_name == "Pixel_iMF":
+            from modules.diffusion.Pixel_iMF import pixelMeanFlow
+            self.model = pixelMeanFlow(modelconfig = self.modelconfig['model'],
+                                       **self.modelconfig["params"])
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
@@ -106,7 +110,11 @@ class TrainModule(L.LightningModule):
 
     def forward(self, x, c_grid):
         # x is latent state, c_grid is grid-scale conditioning (original resolution)
-        y = self.scheduler.sample(self.model, x, c_grid)
+        if self.model_name == "Pixel_iMF":
+            x = torch.cat([x, c_grid], dim=1) # concatenate conditioning to input for Pixel_iMF
+            y = self.model.generate(x)
+        else:
+            y = self.scheduler.sample(self.model, x, c_grid)
         return y
     
     def training_step(self, batch, batch_idx):
@@ -124,7 +132,14 @@ class TrainModule(L.LightningModule):
                 x = self.encode(x)
                 y = self.encode(y)
 
-        loss = self.scheduler.compute_loss(self.model, x, c_grid, y)   
+        if self.model_name == "Pixel_iMF":
+            x = torch.cat([x, c_grid], dim=1) # concatenate conditioning to input for Pixel_iMF
+            loss, loss_dict = self.model.forward(y, x)
+            self.log("train/loss_u", loss_dict["loss_u"], on_step=True, on_epoch=True, sync_dist=self.ddp)
+            self.log("train/loss_v", loss_dict["loss_v"], on_step=True, on_epoch=True, sync_dist=self.ddp)
+            self.log("train/loss_spectral", loss_dict["loss_spectral"], on_step=True, on_epoch=True, sync_dist=self.ddp)
+        else:
+            loss = self.scheduler.compute_loss(self.model, x, c_grid, y)   
 
         self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
 
