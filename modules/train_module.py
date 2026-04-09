@@ -135,14 +135,15 @@ class TrainModule(L.LightningModule):
 
         if self.model_name == "Pixel_iMF":
             x = torch.cat([x, c_grid], dim=1) # concatenate conditioning to input for Pixel_iMF
-            loss, loss_dict = self.model.forward(y, x)
-            self.log("train/loss_u", loss_dict["loss_u"], on_step=True, on_epoch=True, sync_dist=self.ddp)
-            self.log("train/loss_v", loss_dict["loss_v"], on_step=True, on_epoch=True, sync_dist=self.ddp)
-            self.log("train/loss_spectral", loss_dict["loss_spectral"], on_step=True, on_epoch=True, sync_dist=self.ddp)
+            loss, loss_ref = self.model.forward(y, x)
+            self.log("train/loss", loss_ref, on_step=True, on_epoch=True, sync_dist=self.ddp)
+            #loss, loss_dict = self.model.forward(y, x)
+            #self.log("train/loss_u", loss_dict["loss_u"], on_step=True, on_epoch=True, sync_dist=self.ddp)
+            #self.log("train/loss_v", loss_dict["loss_v"], on_step=True, on_epoch=True, sync_dist=self.ddp)
+            #self.log("train/loss_spectral", loss_dict["loss_spectral"], on_step=True, on_epoch=True, sync_dist=self.ddp)
         else:
             loss = self.scheduler.compute_loss(self.model, x, c_grid, y)   
-
-        self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
+            self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
 
         return loss 
 
