@@ -387,6 +387,8 @@ class SwinV2(nn.Module):
         h: torch.Tensor,
         cond: torch.Tensor,
         jvp: bool = True, # defaults to true. Set to True for training, False for inference to save memory.
+        return_u = True, 
+        return_v = True,
     ):  
         x = torch.cat([x, cond], dim = 1) 
 
@@ -403,13 +405,16 @@ class SwinV2(nn.Module):
 
         x = self.transformer(x, t, jvp)  # b, n, d
         
-        u = self.u_transformer(x, t, jvp)  # b, n, d
-        u = self.u_head(u)  # b, c, h, w
+        if return_u:
+            u = self.u_transformer(x, t, jvp)  # b, n, d
+            u = self.u_head(u)  # b, c, h, w
+        else:
+            u = None 
 
-        if jvp:
+        if return_v:
             v = self.v_transformer(x, t, jvp)
             v = self.v_head(v)
         else:
-            v = None  # instantenous velocity not used in inference.
+            v = None
 
         return u, v
