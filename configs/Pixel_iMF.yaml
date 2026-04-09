@@ -70,10 +70,10 @@ data:
     horizontal_resolution: [180, 360]
     predict_delta: False
     epsilon_factor: 0
-    val_num_inferences: 80 
+    val_num_inferences: 100 
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
-    batch_size: 2
+    batch_size: 1
     num_data_workers: 8
 
 training:
@@ -92,6 +92,6 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: null
-    accumulate_grad_batches: 1
+    accumulate_grad_batches: 2
     optimizer: adam
     description: Pixel_iMF
