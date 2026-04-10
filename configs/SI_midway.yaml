@@ -80,12 +80,12 @@ training:
     devices: 4
     accelerator: gpu
     strategy: ddp
-    precision: 32-true
+    precision: bf16-mixed
     check_val_every_n_epoch: 1
     log_every_n_steps: 10
     max_epochs: 50
     ema_decay: 0.99
-    num_sanity_val_steps: 1
+    num_sanity_val_steps: 0
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
