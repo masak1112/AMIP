@@ -38,17 +38,25 @@ class DynamicInterpolant(nn.Module):
                  sigma_coef=1.0,
                  train_sampler='uniform',
                  l_max = 180,
-                 spectral_weight = 0.0
+                 spectral_weight = 0.0,
+                 noise = "gaussian"
                  ):
         super(DynamicInterpolant, self).__init__()
 
         self.num_steps = num_steps
         self.sigma_coef = sigma_coef
-        self.train_sampler = train_sampler
+        self.train_sampler = train_sampler 
 
-        self.generator = SphereNoiseGenerator(l_max=l_max)
+        if noise == "spherical":
+            self.generator = SphereNoiseGenerator(l_max=l_max)
+        else:
+            self.generator = None
 
         self.spectral_weight = spectral_weight
+
+        if self.spectral_weight > 0: # apply spectral regularization to model outputs
+            from common.loss import SpectralScalarLoss
+            self.spectral_criterion = SpectralScalarLoss()
 
         print(f"sigma_coef: {self.sigma_coef}, train_sampler: {self.train_sampler}")
 
@@ -56,7 +64,10 @@ class DynamicInterpolant(nn.Module):
         return t[:, None, None, None]
     
     def get_noise(self, x):
-        return self.generator(x.shape[0], x.shape[1], device=x.device)
+        if self.generator is None:
+            return torch.randn_like(x, device=x.device)
+        else:
+            return self.generator(x.shape[0], x.shape[1], device=x.device)
 
     def compute_loss(self, model, x, c_grid, y):
         # x contains current prognostic state
@@ -79,6 +90,10 @@ class DynamicInterpolant(nn.Module):
         pred_y = model(X_t, x, t.squeeze(dim=[1, 2, 3]), c_grid)
 
         loss = ((pred_y - y) ** 2).sum(dim=[1, 2, 3]).mean() 
+
+        if self.spectral_weight > 0:
+            spectral_loss = self.spectral_criterion(pred_y, y)
+            loss = loss + self.spectral_weight * spectral_loss
 
         return loss
 
