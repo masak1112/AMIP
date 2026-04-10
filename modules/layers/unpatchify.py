@@ -320,7 +320,5 @@ class PatchInterpolate2D(nn.Module):
         x = self.interp(x) # b, hidden_dim, h*patch_size, w*patch_size
         x = self.head(x) # b, out_chans, h*patch_size, w*patch_size
 
-        x = rearrange(x, 'b c h w -> b h w c')
-
         return x
 

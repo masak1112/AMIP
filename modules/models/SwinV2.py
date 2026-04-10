@@ -1,15 +1,13 @@
 import math
-from typing import Optional, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-from einops.layers.torch import Rearrange
+from modules.layers.unpatchify import PatchInterpolate2D
 
 # ----------------------------------------------------------------------------
 # Utility Functions
-
 
 def window_partition(x: torch.Tensor, window_size: tuple[int, int]):
     """(B, H, W, C) -> (num_windows*B, window_size, window_size, C)"""
@@ -99,9 +97,69 @@ def timestep_embedding(t: torch.Tensor, dim: int, max_period: int = 10_000):
     return embedding
 
 
+def build_2d_rope_table(
+    height: int, width: int, head_dim: int
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Precompute 2D RoPE cos/sin tables for a (height x width) spatial grid.
+
+    Splits head_dim in half: first half encodes row position, second half
+    encodes column position.  Returns cos and sin tensors of shape
+    (height*width, half_dim) where half_dim = head_dim // 2.
+    """
+    half_dim = head_dim // 2
+    row_dim = (half_dim + 1) // 2  # ceil division — extra dim goes to rows
+    col_dim = half_dim - row_dim
+
+    row_freqs = 1.0 / (
+        10000.0 ** (torch.arange(0, row_dim).float() / max(row_dim, 1))
+    )
+    col_freqs = 1.0 / (
+        10000.0 ** (torch.arange(0, col_dim).float() / max(col_dim, 1))
+    )
+
+    rows = torch.arange(height).float()
+    cols = torch.arange(width).float()
+
+    # (H, row_dim) and (W, col_dim) outer products
+    row_phases = torch.outer(rows, row_freqs)
+    col_phases = torch.outer(cols, col_freqs)
+
+    # broadcast to (H, W, row_dim) and (H, W, col_dim), then concat
+    row_phases = row_phases[:, None, :].expand(-1, width, -1)
+    col_phases = col_phases[None, :, :].expand(height, -1, -1)
+
+    phases = torch.cat([row_phases, col_phases], dim=-1)  # (H, W, half_dim)
+    phases = phases.reshape(height * width, half_dim)
+
+    return phases.cos(), phases.sin()  # each (N, half_dim)
+
+
+def apply_rope_2d(
+    x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
+) -> torch.Tensor:
+    """Apply 2D rotary embeddings to x.
+
+    Args:
+        x:   (B, heads, N, head_dim)
+        cos: (N, half_dim)   — from build_2d_rope_table
+        sin: (N, half_dim)
+    """
+    d2 = cos.shape[-1]  # half_dim = head_dim // 2
+    x1 = x[..., :d2]
+    x2 = x[..., d2 : 2 * d2]
+    x_pass = x[..., 2 * d2 :]  # dims that bypass RoPE (0 or 1 leftover)
+
+    cos = cos[None, None]  # (1, 1, N, half_dim)
+    sin = sin[None, None]
+
+    rotated = torch.cat([x1 * cos - x2 * sin, x1 * sin + x2 * cos], dim=-1)
+    if x_pass.shape[-1] > 0:
+        rotated = torch.cat([rotated, x_pass], dim=-1)
+    return rotated
+
+
 # ----------------------------------------------------------------------------
 # Swin Modules
-
 
 class LatentEmbedding(nn.Module):
     def __init__(self, dim):
@@ -111,6 +169,72 @@ class LatentEmbedding(nn.Module):
 
     def forward(self, emb):
         return F.silu(self.l2(F.silu(self.l1(emb))))
+
+
+class LogCPB(nn.Module):
+    """Log-spaced Continuous Position Bias (SwinV2).
+
+    A small MLP maps log-normalized relative (row, col) offsets to per-head
+    bias values.  Only the *unique* relative coordinates are stored and fed
+    through the MLP; an index buffer expands them to the full (N, N) matrix.
+    """
+
+    def __init__(self, height: int, width: int, num_heads: int, mlp_dim: int = 512):
+        super().__init__()
+        self.num_heads = num_heads
+
+        self.mlp = nn.Sequential(
+            nn.Linear(2, mlp_dim, bias=True),
+            nn.ReLU(inplace=True),
+            nn.Linear(mlp_dim, num_heads, bias=False),
+        )
+
+        # --- unique relative coordinate table ---
+        rel_h = torch.arange(-(height - 1), height).float()  # (2H-1,)
+        rel_w = torch.arange(-(width - 1), width).float()    # (2W-1,)
+        rel_grid = torch.stack(
+            torch.meshgrid(rel_h, rel_w, indexing="ij")
+        )  # (2, 2H-1, 2W-1)
+        rel_table = rel_grid.permute(1, 2, 0).contiguous()  # (2H-1, 2W-1, 2)
+
+        # SwinV2 log-space transform: normalize to [-8, 8] then sign*log2(|x|+1)/log2(8)
+        if height > 1:
+            rel_table[:, :, 0] /= height - 1
+        if width > 1:
+            rel_table[:, :, 1] /= width - 1
+        rel_table *= 8.0
+        rel_table = (
+            torch.sign(rel_table)
+            * torch.log2(torch.abs(rel_table) + 1.0)
+            / math.log2(8)
+        )
+
+        self.register_buffer(
+            "relative_coords_table", rel_table.reshape(-1, 2)
+        )  # ((2H-1)*(2W-1), 2)
+
+        # --- pairwise index into the table ---
+        coords_h = torch.arange(height)
+        coords_w = torch.arange(width)
+        coords = torch.stack(
+            torch.meshgrid(coords_h, coords_w, indexing="ij")
+        )  # (2, H, W)
+        coords_flat = coords.reshape(2, -1)  # (2, N)
+
+        rel = coords_flat[:, :, None] - coords_flat[:, None, :]  # (2, N, N)
+        rel[0] += height - 1  # shift to non-negative
+        rel[1] += width - 1
+        rel_index = rel[0] * (2 * width - 1) + rel[1]  # (N, N)
+        self.register_buffer("relative_position_index", rel_index.long())
+
+    def forward(self) -> torch.Tensor:
+        """Returns position bias of shape (1, num_heads, N, N)."""
+        bias_table = self.mlp(self.relative_coords_table)  # (T, num_heads)
+        N = self.relative_position_index.shape[0]
+        bias = bias_table[self.relative_position_index.view(-1)].view(
+            N, N, self.num_heads
+        )
+        return bias.permute(2, 0, 1).unsqueeze(0)  # (1, heads, N, N)
 
 
 class ModulatedNorm(nn.Module):
@@ -142,11 +266,10 @@ class FeedForward(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(self, dim, heads, head_dim, flash=True):
+    def __init__(self, dim, heads, head_dim):
         super().__init__()
         inner_dim = head_dim * heads
         self.heads = heads
-        self.flash = flash
         self.norm = ModulatedNorm(dim)
 
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
@@ -154,10 +277,16 @@ class Attention(nn.Module):
 
         self.scale = nn.Parameter(torch.log(10 * torch.ones(1, heads, 1, 1)))
 
-    def forward(self, x, t, mask=None, jvp: bool = False):
+    def forward(self, x, t, mask=None, rope=None, pos_bias=None):
         qkv = self.to_qkv(x)
         qkv = rearrange(qkv, "b n (h d) -> b h n d", h=self.heads)
         q, k, v = qkv.chunk(3, dim=-1)
+
+        # Apply 2D RoPE before QK normalization
+        if rope is not None:
+            cos, sin = rope
+            q = apply_rope_2d(q, cos, sin)
+            k = apply_rope_2d(k, cos, sin)
 
         q = (
             F.normalize(q, dim=-1)
@@ -165,14 +294,16 @@ class Attention(nn.Module):
         )
         k = F.normalize(k, dim=-1)
 
-        if self.flash and not jvp:
-            x = F.scaled_dot_product_attention(q, k, v, attn_mask=mask, scale=1.0)
-        else:
-            attn = q @ k.transpose(-2, -1)
-            if mask is not None:
-                attn = attn + mask
-            attn = attn.softmax(dim=-1)
-            x = attn @ v
+        # Combine attention mask and position bias
+        attn_bias = None
+        if mask is not None and pos_bias is not None:
+            attn_bias = mask + pos_bias
+        elif mask is not None:
+            attn_bias = mask
+        elif pos_bias is not None:
+            attn_bias = pos_bias
+
+        x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_bias, scale=1.0)
 
         x = rearrange(x, "b h n d -> b n (h d)")
         x = self.wo(x)
@@ -189,13 +320,14 @@ class SwinTransformer(nn.Module):
         window_size,
         grid_size,
         shift_size,
-        flash,
+        global_every: int = 3,
     ):
         super().__init__()
 
         self.window_size = window_size
         self.grid_size = grid_size
         self.shift_size = shift_size
+        self.depth = depth
 
         assert grid_size[0] % window_size[0] == 0 and grid_size[1] % window_size[1] == 0, (
             f"grid_size {grid_size} must be divisible by window_size {window_size}"
@@ -204,11 +336,18 @@ class SwinTransformer(nn.Module):
         head_dim = dim // heads
         mlp_dim = int(8 / 3.0 * dim)
 
-        self.layers = nn.Sequential(
-            *[
+        # Which layers use global (full-grid) attention
+        self.is_global = [
+            (global_every > 0 and (i + 1) % global_every == 0)
+            for i in range(depth)
+        ]
+
+        # Attention + FF layers
+        self.layers = nn.ModuleList(
+            [
                 nn.ModuleList(
                     [
-                        Attention(dim, heads, head_dim, flash),
+                        Attention(dim, heads, head_dim),
                         FeedForward(dim, mlp_dim),
                     ]
                 )
@@ -216,6 +355,30 @@ class SwinTransformer(nn.Module):
             ]
         )
 
+        # Per-layer log-CPB (window-sized or grid-sized depending on layer type)
+        self.cpb_layers = nn.ModuleList(
+            [
+                LogCPB(grid_size[0], grid_size[1], heads)
+                if self.is_global[i]
+                else LogCPB(window_size[0], window_size[1], heads)
+                for i in range(depth)
+            ]
+        )
+
+        # 2D RoPE tables (precomputed, shared across layers of same type)
+        win_cos, win_sin = build_2d_rope_table(
+            window_size[0], window_size[1], head_dim
+        )
+        self.register_buffer("win_rope_cos", win_cos)
+        self.register_buffer("win_rope_sin", win_sin)
+
+        grid_cos, grid_sin = build_2d_rope_table(
+            grid_size[0], grid_size[1], head_dim
+        )
+        self.register_buffer("grid_rope_cos", grid_cos)
+        self.register_buffer("grid_rope_sin", grid_sin)
+
+        # Shift-window attention mask (only used by windowed layers)
         attn_mask = get_shift_window_mask(grid_size, window_size, shift_size)
         if attn_mask is not None:
             self.register_buffer("attn_mask", attn_mask)
@@ -223,54 +386,62 @@ class SwinTransformer(nn.Module):
             self.attn_mask = None
 
     def forward(
-        self, x: torch.Tensor, t: torch.Tensor, jvp: bool = False
+        self, x: torch.Tensor, t: torch.Tensor
     ) -> torch.Tensor:
         sh, sw = self.shift_size
         do_shift: bool = any(self.shift_size)
 
-        # expand t to match the number of windows
+        # t expanded for windowed layers (one copy per window)
         repeat_factor = (self.grid_size[0] // self.window_size[0]) * (
             self.grid_size[1] // self.window_size[1]
         )
-        t_expanded = t.repeat_interleave(repeat_factor, dim=0)  # num_windows * b, d
+        t_expanded = t.repeat_interleave(repeat_factor, dim=0)
 
-        for i, (attn, ff) in enumerate(self.layers):  # type:ignore  ??
+        for i, (attn, ff) in enumerate(self.layers):
             xp = x
+            pos_bias = self.cpb_layers[i]()
 
-            x = x.view(-1, self.grid_size[0], self.grid_size[1], x.shape[-1])
-            B, h, w, d = x.shape
+            if self.is_global[i]:
+                # ---- global attention (full grid) ----
+                x = attn(
+                    x, t, mask=None,
+                    rope=(self.grid_rope_cos, self.grid_rope_sin),
+                    pos_bias=pos_bias,
+                )
+            else:
+                # ---- windowed attention ----
+                x = x.view(-1, self.grid_size[0], self.grid_size[1], x.shape[-1])
+                B, h, w, d = x.shape
 
-            use_shift = do_shift and i % 2 != 0
+                use_shift = do_shift and i % 2 != 0
 
-            # cyclic shift
-            if use_shift:
-                x = torch.roll(x, shifts=(-sh, -sw), dims=(1, 2))
+                if use_shift:
+                    x = torch.roll(x, shifts=(-sh, -sw), dims=(1, 2))
 
-            # partition windows
-            x = window_partition(x, self.window_size)
-            x = x.view(-1, self.window_size[0] * self.window_size[1], d)
+                x = window_partition(x, self.window_size)
+                x = x.view(-1, self.window_size[0] * self.window_size[1], d)
 
-            # attention mask for shifted layers (latitude boundaries only)
-            mask = None
-            if use_shift and self.attn_mask is not None:
-                mask = self.attn_mask.repeat(B, 1, 1, 1)
+                mask = None
+                if use_shift and self.attn_mask is not None:
+                    mask = self.attn_mask.repeat(B, 1, 1, 1)
 
-            x = attn(x, t_expanded, mask=mask, jvp=jvp)  # num_windows * b, n, d
+                x = attn(
+                    x, t_expanded, mask=mask,
+                    rope=(self.win_rope_cos, self.win_rope_sin),
+                    pos_bias=pos_bias,
+                )
 
-            # merge windows
-            x = x.view(-1, self.window_size[0], self.window_size[1], d)
-            x = window_reverse(x, self.window_size, (h, w))
+                x = x.view(-1, self.window_size[0], self.window_size[1], d)
+                x = window_reverse(x, self.window_size, (h, w))
 
-            # reverse cyclic shift
-            if use_shift:
-                x = torch.roll(x, shifts=(sh, sw), dims=(1, 2))
-            x = x.view(-1, h * w, d)
+                if use_shift:
+                    x = torch.roll(x, shifts=(sh, sw), dims=(1, 2))
+                x = x.view(-1, h * w, d)
 
             x = xp + x
             x = x + ff(x, t)
 
         return x
-
 
 class PatchEmbedding(nn.Module):
     def __init__(self, in_channels, patch_size, dim):
@@ -287,24 +458,6 @@ class PatchEmbedding(nn.Module):
         )
         return self.emb(x)
 
-
-class OutputHead(nn.Module):
-    def __init__(self, dim, out_channels, patch_size, grid_size):
-        super().__init__()
-        p1, p2 = patch_size
-        gh, gw = grid_size
-
-        self.head = nn.Sequential(
-            nn.Linear(dim, out_channels * p1 * p2, bias=False),  # b, n, c*p1*p2
-            Rearrange(
-                "b (h w) (c p1 p2) -> b c (h p1) (w p2)", p1=p1, p2=p2, h=gh, w=gw
-            ),
-        )
-
-    def forward(self, x):
-        return self.head(x)
-
-
 # ----------------------------------------------------------------------------
 # Swin Transformer Class
 
@@ -319,10 +472,9 @@ class SwinV2(nn.Module):
         shift_size,
         patch_size,
         depth: int = 6,
-        head_depth: int = 2,
         dim: int = 512,
         heads: int = 12,
-        flash: bool = True,
+        global_every: int = 3,
     ):
         super().__init__()
 
@@ -333,7 +485,6 @@ class SwinV2(nn.Module):
         self.pos_embed = nn.Parameter(torch.randn(1, gh * gw, dim) * 0.02)
         self.patch_embed = PatchEmbedding(in_channels, patch_size, dim)
         self.t_embed = LatentEmbedding(dim)
-        self.h_embed = LatentEmbedding(dim)
 
         self.transformer = SwinTransformer(
             depth,
@@ -342,79 +493,53 @@ class SwinV2(nn.Module):
             window_size,
             grid_size,
             shift_size,
-            flash=flash,
+            global_every=global_every,  
         )
 
-        self.u_transformer = SwinTransformer(
-            head_depth,
-            dim,
-            heads,
-            window_size,
-            grid_size,
-            shift_size,
-            flash=flash,
-        )
-
-        self.v_transformer = SwinTransformer(
-            head_depth,
-            dim,
-            heads,
-            window_size,
-            grid_size,
-            shift_size,
-            flash=flash,
-        )
-
-        self.u_head = OutputHead(dim, out_channels, patch_size, grid_size)
-        self.v_head = OutputHead(dim, out_channels, patch_size, grid_size)
+        self.out_layer = PatchInterpolate2D(grid_size, patch_size,
+                                            dim, out_channels)
 
         self._init_weights()
 
     def _init_weights(self):
-        for name, m in self.named_modules():
-            if isinstance(m, nn.Linear):
-                if "modulation" in name or "head" in name:  # start with layer norm
-                    nn.init.zeros_(m.weight)
-                else:
-                    nn.init.trunc_normal_(m.weight, std=0.02)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
+        def _basic_init(module):
+            if isinstance(module, (nn.Linear, nn.Conv2d)):
+                torch.nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+        self.apply(_basic_init)
+
+        # Zero-init AdaLN modulation layers so residual blocks start as identity
+        for module in self.modules():
+            if isinstance(module, ModulatedNorm):
+                nn.init.constant_(module.modulation.weight, 0)
+                nn.init.constant_(module.modulation.bias, 0)
+
+        # at the end of _init_weights, after the ModulatedNorm loop:                                                                                                                                                                                                                    
+        if isinstance(self.out_layer, PatchInterpolate2D):
+            nn.init.constant_(self.out_layer.adaLN_shift_scale[-1].weight, 0)                                                                                                                                                                                                           
+            nn.init.constant_(self.out_layer.adaLN_shift_scale[-1].bias, 0)
 
     def forward(
         self,
         x: torch.Tensor,
-        t: torch.Tensor,
-        h: torch.Tensor,
         cond: torch.Tensor,
-        jvp: bool = True, # defaults to true. Set to True for training, False for inference to save memory.
-        return_u = True, 
-        return_v = True,
+        t: torch.Tensor,
+        c_grid: torch.Tensor,
     ):  
-        x = torch.cat([x, cond], dim = 1) 
+        
+        x = torch.cat([x, cond, c_grid], dim = 1)  # concat conditioning to noised state
 
         x = self.patch_embed(x)  # b, n, d
-        x = x + self.pos_embed  # new: nersc swinv2
+        x = x + self.pos_embed  
 
         if t.dim() == 0 or (t.dim() == 1 and t.size(0) == 1):
             t = t.repeat(x.size(0))
 
         t = self.t_embed(timestep_embedding(t, x.size(2)))  # b, d
-        h = self.h_embed(timestep_embedding(h, x.size(2)))
 
-        t = t + h 
-
-        x = self.transformer(x, t, jvp)  # b, n, d
+        x = self.transformer(x, t)  # b, n, d
         
-        if return_u:
-            u = self.u_transformer(x, t, jvp)  # b, n, d
-            u = self.u_head(u)  # b, c, h, w
-        else:
-            u = None 
+        x = self.out_layer(x, t)
 
-        if return_v:
-            v = self.v_transformer(x, t, jvp)
-            v = self.v_head(v)
-        else:
-            v = None
-
-        return u, v
+        return x # b c h w

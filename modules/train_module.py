@@ -53,11 +53,17 @@ class TrainModule(L.LightningModule):
             self.model = DiT(**self.modelconfig['SI_Latent_DiT']["model"])
             self.scheduler = DriftScheduler(**self.modelconfig["SI_Latent_DiT"]['scheduler'])
             self.latent = True
-        elif self.model_name == "Pixel_iMF":
+        #elif self.model_name == "Pixel_iMF":
             #from modules.diffusion.Pixel_iMF import pixelMeanFlow
-            from modules.diffusion.MF import MeanFlow
-            self.model = MeanFlow(modelconfig = self.modelconfig['model'],
-                                       **self.modelconfig["params"])
+       #     from modules.diffusion.MF import MeanFlow
+       #     self.model = MeanFlow(modelconfig = self.modelconfig['model'],
+       #                                **self.modelconfig["params"])
+        elif self.model_name == "SI_X":
+            from modules.models.SwinV2 import SwinV2
+            from modules.diffusion.x_interpolant import DynamicInterpolant
+
+            self.model = SwinV2(**self.modelconfig['SI_X']["model"])
+            self.scheduler = DynamicInterpolant(**self.modelconfig['SI_X']['scheduler'])
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
