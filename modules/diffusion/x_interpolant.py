@@ -39,7 +39,7 @@ class DynamicInterpolant(nn.Module):
                  train_sampler='uniform',
                  l_max = 180,
                  spectral_weight = 0.01,
-                 noise = "gaussian"
+                 noise = "spherical"
                  ):
         super(DynamicInterpolant, self).__init__()
 
