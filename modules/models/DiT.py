@@ -254,6 +254,11 @@ class DiT(nn.Module):
             nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
             nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
 
+        # at the end of _init_weights, after the ModulatedNorm loop:                                                                                                                                                                                                                    
+        if isinstance(self.unpatchify_layer, PatchInterpolate2D):
+            nn.init.constant_(self.unpatchify_layer.adaLN_shift_scale[-1].weight, 0)                                                                                                                                                                                                           
+            nn.init.constant_(self.unpatchify_layer.adaLN_shift_scale[-1].bias, 0)
+
     @torch.no_grad()
     def get_grid(self, nlat, nlon, device):
         if self.with_poles:
