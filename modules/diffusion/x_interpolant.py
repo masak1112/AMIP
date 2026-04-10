@@ -104,7 +104,7 @@ class DynamicInterpolant(nn.Module):
 
             dW = torch.sqrt(dt) * noise
 
-            y = y + drift * dt + self.sigma_coef * (1-self.wide(t_current)) * dW
+            y = y + drift * dt + self.sigma_coef * (1-self.wide(t_current.expand(y.shape[0]))) * dW
 
             W_t = W_t + dW
 
