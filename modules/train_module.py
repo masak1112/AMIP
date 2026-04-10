@@ -59,10 +59,10 @@ class TrainModule(L.LightningModule):
        #     self.model = MeanFlow(modelconfig = self.modelconfig['model'],
        #                                **self.modelconfig["params"])
         elif self.model_name == "SI_X":
-            from modules.models.SwinV2 import SwinV2
+            from modules.models.DiT import DiT
             from modules.diffusion.x_interpolant import DynamicInterpolant
 
-            self.model = SwinV2(**self.modelconfig['SI_X']["model"])
+            self.model = DiT(**self.modelconfig['SI_X']["model"])
             self.scheduler = DynamicInterpolant(**self.modelconfig['SI_X']['scheduler'])
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")

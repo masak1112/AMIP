@@ -37,7 +37,8 @@ class DynamicInterpolant(nn.Module):
                  num_steps,  # this corresponds to physical time steps
                  sigma_coef=1.0,
                  train_sampler='uniform',
-                 l_max = 180
+                 l_max = 180,
+                 spectral_weight = 0.0
                  ):
         super(DynamicInterpolant, self).__init__()
 
@@ -46,6 +47,8 @@ class DynamicInterpolant(nn.Module):
         self.train_sampler = train_sampler
 
         self.generator = SphereNoiseGenerator(l_max=l_max)
+
+        self.spectral_weight = spectral_weight
 
         print(f"sigma_coef: {self.sigma_coef}, train_sampler: {self.train_sampler}")
 
