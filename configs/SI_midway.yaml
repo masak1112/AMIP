@@ -92,8 +92,7 @@ training:
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: null
-    partial_checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_SI_X_42_2026-04-10T13-26-40/last.ckpt
+    checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_SI_X_42_2026-04-10T13-26-40/last.ckpt
     description: SI_X
     accumulate_grad_batches: 2
     optimizer: adam
