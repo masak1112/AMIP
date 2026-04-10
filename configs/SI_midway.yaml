@@ -9,7 +9,7 @@ model:
             window_size: [6, 10]
             shift_size: [3, 5]
             patch_size: [2, 2]
-            depth: 16
+            depth: 20
             dim: 1024
             heads: 16
             global_every: 4
@@ -89,7 +89,7 @@ training:
     ema_decay: 0.99
     num_sanity_val_steps: 1
     log_dir: /project/pedramh/ayz/AMIP_logs/
-    project: amip
+    project: amip_forecast
     wandb_mode: online
     checkpoint: null
     description: SI_X

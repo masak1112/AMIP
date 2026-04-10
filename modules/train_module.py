@@ -233,14 +233,14 @@ class TrainModule(L.LightningModule):
 
                 # decode for metrics
                 decoded_pred = self.decoder(y_latent)
-                surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(decoded_pred)
+                surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(decoded_pred, nlevels=self.nlevels)
 
                 # update latent state for next autoregressive step
                 x_latent = y_latent
             else:
                 x = assemble_input(surface_t, upper_air_t, diagnostic_t) # b c h w
                 y = self.forward(x, c_grid)
-                surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(y)
+                surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(y, nlevels=self.nlevels)
 
                 # update inputs for next autoregressive step
                 surface_t = surface_pred_decoded
@@ -277,11 +277,14 @@ class TrainModule(L.LightningModule):
                                                                                  with_time=False)
                 if t in t_plot and multilevel_feat_name in plot_keys:
                     if multilevel_feat_name == 'geopotential':
-                        l_plot = -10
-                    elif multilevel_feat_name == 'u_component_of_wind':
-                        l_plot = -13
-                    elif multilevel_feat_name == 'temperature' or multilevel_feat_name == 'specific_total_water':
+                        #l_plot = -10
                         l_plot = -6
+                    elif multilevel_feat_name == 'u_component_of_wind':
+                        #l_plot = -13
+                        l_plot = -9
+                    elif multilevel_feat_name == 'temperature' or multilevel_feat_name == 'specific_total_water':
+                        #l_plot = -6
+                        l_plot = -3
 
                     pred_feat_dict[multilevel_feat_name][:, i_plot] = multilevel_pred_denorm[:, c, l_plot]
                     target_feat_dict[multilevel_feat_name][:, i_plot] = multilevel_true_denorm[:, c, l_plot]
@@ -361,10 +364,15 @@ class TrainModule(L.LightningModule):
         # calculate the mean loss across batch, shape b t for each key, b t l for multilevel keys
         t2m_loss = loss_dict['2m_temperature'].mean(0) # surface temp, mean across batch dim
         pr_6h_loss = loss_dict['PRATEsfc_24h'].mean(0) # 6-hour accumulated PRATEsfc
-        z500_loss = loss_dict['geopotential'][..., -10].mean(0) # geopotential at level=10
-        u250_loss = loss_dict['u_component_of_wind'][..., -13].mean(0) # u wind at level=13
-        t850_loss = loss_dict['temperature'][..., -6].mean(0) # temp at level=6
-        q850_loss = loss_dict['specific_total_water'][..., -6].mean(0) 
+        #z500_loss = loss_dict['geopotential'][..., -10].mean(0) # geopotential at level=10
+        #u250_loss = loss_dict['u_component_of_wind'][..., -13].mean(0) # u wind at level=13
+        #t850_loss = loss_dict['temperature'][..., -6].mean(0) # temp at level=6
+        #q850_loss = loss_dict['specific_total_water'][..., -6].mean(0) 
+
+        z500_loss = loss_dict['geopotential'][..., -6].mean(0) # geopotential at level=10
+        u250_loss = loss_dict['u_component_of_wind'][..., -9].mean(0) # u wind at level=13
+        t850_loss = loss_dict['temperature'][..., -3].mean(0) # temp at level=6
+        q850_loss = loss_dict['specific_total_water'][..., -3].mean(0) 
         
         self.log('val/t2m_1', t2m_loss[0].item(), on_step=False, on_epoch=True, sync_dist=self.ddp) # 6 hours
         self.log('val/t2m_3', t2m_loss[2].item(), on_step=False, on_epoch=True, sync_dist=self.ddp) # 1 day

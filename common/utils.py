@@ -41,7 +41,7 @@ def assemble_forcing(forcing, invariant):
 
     return out
 
-def disassemble_input(x, nsurface=6, ndiagnostic=15, nlevels=26, use_diagnostic=True):
+def disassemble_input(x, nsurface=6, ndiagnostic=15, nlevels=13, use_diagnostic=True):
     # x in b c h w
     if use_diagnostic:
         surface = x[:, : nsurface]
