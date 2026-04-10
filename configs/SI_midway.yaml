@@ -14,7 +14,7 @@ model:
         scheduler:
             num_steps: 10
             sigma_coef: 1.0
-            train_sampler: uniform
+            train_sampler: power
             l_max: 180
             spectral_weight: 100000
             noise : spherical
@@ -91,7 +91,7 @@ training:
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: null
+    checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_SI_X_42_2026-04-10T12-47-08/last.ckpt
     description: SI_X
     accumulate_grad_batches: 2
     optimizer: adam

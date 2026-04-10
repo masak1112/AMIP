@@ -5,6 +5,10 @@ from einops import rearrange
 from torch_harmonics import InverseRealSHT
 from modules.diffusion.stochastic_interpolant import sample_logit_normal
 
+def power_sampler(batch_size, p=2.0, device = "cpu"):
+    t = torch.rand(batch_size, device=device)
+    return t ** p
+
 class SphereNoiseGenerator(nn.Module):
     def __init__(self, l_max):
         super(SphereNoiseGenerator, self).__init__()
@@ -80,6 +84,8 @@ class DynamicInterpolant(nn.Module):
         # sample timestep
         if self.train_sampler == 'logit_normal':
             t = sample_logit_normal(x.shape[0], device=device)
+        elif self.train_sampler == 'power':
+            t = power_sampler(x.shape[0], p=2.0, device=device)
         elif self.train_sampler == 'uniform':
             t = torch.rand(x.shape[0], device=device)
 
