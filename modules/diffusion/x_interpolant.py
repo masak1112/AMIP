@@ -60,7 +60,7 @@ class DynamicInterpolant(nn.Module):
 
         if self.spectral_weight > 0: # apply spectral regularization to model outputs
             from common.loss import SpectralScalarLoss
-            self.spectral_criterion = SpectralScalarLoss()
+            self.spectral_criterion = SpectralScalarLoss(img_shape=(l_max, l_max*2))
 
         print(f"sigma_coef: {self.sigma_coef}, train_sampler: {self.train_sampler}")
 
