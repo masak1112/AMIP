@@ -21,7 +21,7 @@ model:
             sigma_coef: 1.0
             train_sampler: power
             l_max: 45
-            spectral_weight: 100000
+            spectral_weight: 2000
             noise : spherical
 
 data:
@@ -79,7 +79,7 @@ data:
     val_num_inferences: 50
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
-    batch_size: 4
+    batch_size: 5
     num_data_workers: 8
 
 training:
