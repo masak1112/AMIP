@@ -98,10 +98,13 @@ class DynamicInterpolant(nn.Module):
         loss = ((pred_y - y) ** 2).sum(dim=[1, 2, 3]).mean() 
 
         if self.spectral_weight > 0:
-            spectral_loss = self.spectral_criterion(pred_y, y)
-            loss = loss + self.spectral_weight * spectral_loss
+            spectral_loss = self.spectral_weight * self.spectral_criterion(pred_y, y)
+        else:
+            spectral_loss = 0
 
-        return loss
+        loss = loss + spectral_loss
+
+        return loss, spectral_loss
 
     def sample(self, model, x, c_grid, num_steps=None):
         # x contains current prognostic state (latent space)

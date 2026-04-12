@@ -156,8 +156,9 @@ class TrainModule(L.LightningModule):
             #self.log("train/loss_v", loss_dict["loss_v"], on_step=True, on_epoch=True, sync_dist=self.ddp)
             #self.log("train/loss_spectral", loss_dict["loss_spectral"], on_step=True, on_epoch=True, sync_dist=self.ddp)
         else:
-            loss = self.scheduler.compute_loss(self.model, x, c_grid, y)   
+            loss, spectral_loss = self.scheduler.compute_loss(self.model, x, c_grid, y)   
             self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
+            self.log("train/spectral_loss", spectral_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
 
         return loss 
 

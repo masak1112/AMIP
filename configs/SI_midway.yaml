@@ -5,14 +5,14 @@ model:
         model:
             in_channels: 172 # 86*2 
             out_channels: 86 # 13*5 + 6 + 15 
-            dim: 1024
+            dim: 1280
             num_heads: 16
             num_blocks: 24
             patch_size: 1
             scalar_dim: 1
             c_grid_downsample: 4
             c_grid_dim: 6
-            c_grid_embed_dim: 6
+            c_grid_embed_dim: 64
             unpatch: vanilla
             nlat: 45
             nlon: 90
@@ -79,7 +79,7 @@ data:
     val_num_inferences: 50
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
-    batch_size: 8
+    batch_size: 4
     num_data_workers: 8
 
 training:
