@@ -79,7 +79,7 @@ data:
     val_num_inferences: 50
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
-    batch_size: 5
+    batch_size: 6
     num_data_workers: 8
 
 training:
