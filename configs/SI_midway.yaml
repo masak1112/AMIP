@@ -98,5 +98,5 @@ training:
     wandb_mode: online
     checkpoint: null
     description: SI_X
-    accumulate_grad_batches: 0
+    accumulate_grad_batches: 1
     optimizer: adam
