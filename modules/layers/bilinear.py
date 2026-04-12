@@ -33,7 +33,7 @@ class BilinearEncoder():
             z = assemble_input(z_surface, z_multilevel, z_diagnostic)
             return z
         else:
-            return self.forward(surface, multilevel, diagnostic)
+            return z_surface, z_multilevel, z_diagnostic
     
     def forward(self, surface, multilevel, diagnostic=None) -> torch.Tensor:
         # surface in shape b c nlat nlon

@@ -3,7 +3,7 @@ model:
     lr: 5.0e-5
     SI_X:
         model:
-            in_channels: 178 # 86*2 + 8
+            in_channels: 172 # 86*2 
             out_channels: 86 # 13*5 + 6 + 15 
             dim: 1024
             num_heads: 16
@@ -11,11 +11,11 @@ model:
             patch_size: 1
             scalar_dim: 1
             c_grid_downsample: 4
-            c_grid_dim: 4
-            c_grid_embed_dim: 4
+            c_grid_dim: 6
+            c_grid_embed_dim: 6
             unpatch: vanilla
-            nlat: 90
-            nlon: 45
+            nlat: 45
+            nlon: 90
         scheduler:
             num_steps: 20
             sigma_coef: 1.0
