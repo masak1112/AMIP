@@ -147,13 +147,15 @@ class SubPixelConvICNR_2D(nn.Module):
                       upscale_factor=patch_size[0])
         self.conv.weight.data.copy_(weight)   # initialize conv.weight
 
-    def forward(self, x):
+    def forward(self, x, t):
         x = rearrange(x, 'b (ny nx) c -> b c ny nx', ny=self.grid_x, nx=self.grid_y)
 
         # x in shape [b, in_chans, h, w], where h, w are the height and width of the patchified feature map
         output = self.conv(x)
         
         output = self.pixelshuffle(output)
+
+        x = rearrange(output, 'b c h w -> b h w c') # [b, nlat, nlon, out_chans]
 
         return output
 

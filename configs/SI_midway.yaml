@@ -8,15 +8,19 @@ model:
             dim: 1024
             num_heads: 16
             num_blocks: 24
-            patch_size: 2
+            patch_size: 1
             scalar_dim: 1
-            c_grid_downsample: 0
+            c_grid_downsample: 4
+            c_grid_dim: 4
+            c_grid_embed_dim: 4
             unpatch: vanilla
+            nlat: 90
+            nlon: 45
         scheduler:
-            num_steps: 10
+            num_steps: 20
             sigma_coef: 1.0
             train_sampler: power
-            l_max: 180
+            l_max: 45
             spectral_weight: 100000
             noise : spherical
 
@@ -75,7 +79,7 @@ data:
     val_num_inferences: 50
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
-    batch_size: 2
+    batch_size: 8
     num_data_workers: 8
 
 training:
@@ -92,7 +96,7 @@ training:
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_SI_X_42_2026-04-10T13-26-40/last.ckpt
+    checkpoint: null
     description: SI_X
-    accumulate_grad_batches: 2
+    accumulate_grad_batches: 0
     optimizer: adam

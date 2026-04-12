@@ -40,6 +40,7 @@ class TrainModule(L.LightningModule):
         self.invariant_input = self.constant_boundary_data.unsqueeze(0) # 1 c nlat nlon
 
         self.latent=False 
+        self.downsample = None 
 
         if self.model_name == "SI_DiT":
             from modules.models.DiT import DiT
@@ -61,9 +62,11 @@ class TrainModule(L.LightningModule):
         elif self.model_name == "SI_X":
             from modules.models.DiT import DiT
             from modules.diffusion.x_interpolant import DynamicInterpolant
+            from modules.layers.bilinear import BilinearEncoder
 
             self.model = DiT(**self.modelconfig['SI_X']["model"])
             self.scheduler = DynamicInterpolant(**self.modelconfig['SI_X']['scheduler'])
+            self.downsample = BilinearEncoder()
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
@@ -129,6 +132,11 @@ class TrainModule(L.LightningModule):
         surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data = batch
         device = surface_t.device
 
+        if self.downsample is not None:
+            with torch.no_grad():
+                surface_t, upper_air_t, diagnostic_t = self.downsample(surface_t, upper_air_t, diagnostic_t)
+                surface_t1, upper_air_t1, diagnostic_t1 = self.downsample(surface_t1, upper_air_t1, diagnostic_t1) 
+
         x = assemble_input(surface_t, upper_air_t, diagnostic_t) # b c h w
         invariant = self.invariant_input.expand(surface_t.shape[0], -1, -1, -1).to(device) # b c nlat nlon
         c_grid = assemble_forcing(varying_boundary_data, invariant) # b c h w
@@ -188,6 +196,10 @@ class TrainModule(L.LightningModule):
         nlon = self.nlon
         device = surface_t.device
 
+        if self.downsample is not None:
+            nlat = nlat // 4 
+            nlon = nlon // 4
+
         invariant = self.invariant_input.expand(b, -1, -1, -1).to(device) # b c nlat nlon
 
         # optimizes memory usage by calculating losses on the fly. Only plot certain timesteps, levels, variables of interest.
@@ -222,6 +234,9 @@ class TrainModule(L.LightningModule):
         if self.latent:
             x_latent = self.encode(assemble_input(surface_t, upper_air_t, diagnostic_t))
 
+        if self.downsample is not None:
+            surface_t, upper_air_t, diagnostic_t = self.downsample(surface_t, upper_air_t, diagnostic_t)
+
         for t in range(nt):
             # assemble forcings
             forcing_input = varying_boundary_data[:, t] # b c h w
@@ -250,6 +265,9 @@ class TrainModule(L.LightningModule):
             surface_target_t = targets_surface[:, t] # b c nlat nlon
             multilevel_target_t = targets_upper_air[:, t] # b c nlevel nlat nlon
             diagnostic_target_t = targets_diagnostic[:, t] # b c nlat nlon
+
+            if self.downsample:
+                surface_target_t, multilevel_target_t, diagnostic_target_t = self.downsample(surface_target_t, multilevel_target_t, diagnostic_target_t)
 
             surface_pred_denorm = self.n.surface_inv_transform(surface_pred_decoded)
             surface_true_denorm = self.n.surface_inv_transform(surface_target_t)

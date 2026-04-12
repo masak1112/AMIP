@@ -141,7 +141,7 @@ class DiT(nn.Module):
                  nlat=180,
                  nlon=360,
                  dropout=0.0,
-                 unpatch="vanilla",
+                 unpatch="subpixel",
                  scalar_dim=1,
                  c_grid_dim=0,
                  c_grid_embed_dim=4,
