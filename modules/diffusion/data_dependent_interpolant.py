@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 class DataDependentInterpolant(nn.Module):
     """
     Stochastic interpolant with data-dependent couplings (Albergo et al. 2310.03725).

@@ -1,40 +1,6 @@
 import torch
 import torch.nn as nn
-
-from einops import rearrange
-from torch_harmonics import InverseRealSHT
-from modules.diffusion.stochastic_interpolant import sample_logit_normal
-
-def power_sampler(batch_size, p=2.0, device = "cpu"):
-    t = torch.rand(batch_size, device=device)
-    return t ** p
-
-class SphereNoiseGenerator(nn.Module):
-    def __init__(self, l_max):
-        super(SphereNoiseGenerator, self).__init__()
-        self.l_max = l_max
-        self.isht = InverseRealSHT(l_max, l_max*2, grid="equiangular")
-
-    def forward(self, b, c, device, dtype=torch.complex64, l_max=None):
-        # sample coefficient in the frequency domain
-        # b: batch size, l_max: maximum degree
-        # return: [b, l_max, l_max + 1] # coefficient for real harmonics
-        if l_max is None:
-            l_max = self.l_max
-            coeffs = torch.randn(b*c, l_max, l_max + 1, device=device, dtype=dtype)
-        else:
-            assert l_max <= self.l_max
-            coeffs = torch.randn(b*c, self.l_max, self.l_max + 1, device=device, dtype=dtype)
-            # fill with zeros
-            coeffs[:, l_max:, :] = 0
-
-        noise = self.isht(coeffs)
-        noise = rearrange(noise, '(b c) h w -> b c h w ', b=b, c=c)
-        noise_means = torch.mean(noise, dim=(2, 3), keepdim=True)
-        noise_stds = torch.std(noise, dim=(2, 3), keepdim=True)
-        noise = (noise - noise_means) / noise_stds
-
-        return noise
+from modules.diffusion.utils import sample_logit_normal, power_sampler
 
 class DynamicInterpolant(nn.Module):
     def __init__(self,
@@ -52,13 +18,14 @@ class DynamicInterpolant(nn.Module):
         self.train_sampler = train_sampler 
 
         if noise == "spherical":
+            from modules.diffusion.utils import SphereNoiseGenerator
             self.generator = SphereNoiseGenerator(l_max=l_max)
         else:
             self.generator = None
 
         self.spectral_weight = spectral_weight
 
-        if self.spectral_weight > 0: # apply spectral regularization to model outputs
+        if self.spectral_weight > 0: # apply  spectral regularization to model outputs
             from common.loss import SpectralScalarLoss
             self.spectral_criterion = SpectralScalarLoss(img_shape=(l_max, l_max*2))
 

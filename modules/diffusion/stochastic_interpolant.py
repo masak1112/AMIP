@@ -1,47 +1,6 @@
 import torch
 import torch.nn as nn
-
-def sample_logit_normal(shape, m=0.0, s=1.0, device='cpu', dtype=torch.float32):
-    """
-    Samples from a logit-normal distribution.
-    
-    Args:
-        shape (tuple or int): The shape of the desired output tensor (e.g., batch size).
-        m (float or torch.Tensor): Location parameter (mean of the underlying normal distribution).
-                                   Negative biases towards data (p0), positive towards noise (p1).
-        s (float or torch.Tensor): Scale parameter (standard deviation of the normal distribution).
-        device (str or torch.device): Device to place the tensor on.
-        dtype (torch.dtype): Data type of the tensor.
-        
-    Returns:
-        torch.Tensor: Timestep samples 't' in the range (0, 1).
-    """
-    # 1. Sample u ~ N(m, s)
-    # torch.randn generates samples from N(0, 1)
-    u = torch.randn(shape, device=device, dtype=dtype)
-    u = u * s + m
-    
-    # 2. Map it through the standard logistic function (sigmoid)
-    # sigmoid(u) = 1 / (1 + exp(-u))
-    t = torch.sigmoid(u)
-    return t
-
-def sample_power_law(n_steps, rho, device = 'cpu'):
-    """
-    Sample timesteps according to a power-law distribution.
-    
-    Args:
-        n_steps (int): Number of timesteps to sample.
-        rho (float): Power-law exponent. Higher values concentrate samples near 0.
-    
-    Returns:
-        torch.Tensor: Timesteps sampled from the power-law distribution, in the range (0, 1).
-    """
-    n = torch.arange(0, n_steps, device=device, dtype=torch.float32)
-    t = (1 -n / (n_steps-1)) ** rho
-    
-    # returns n_steps values from 1 to 0, with more concentration near 0 for higher rho
-    return t
+from modules.diffusion.utils import sample_logit_normal, sample_power_law
 
 class SI_Scheduler(nn.Module):
     def __init__(self,

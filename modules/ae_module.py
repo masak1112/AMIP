@@ -4,7 +4,6 @@ import torch
 from common.loss import latitude_weighted_rmse
 from common.utils import assemble_input, disassemble_input
 from common.plotting import plot_reconstruction, plot_spectrum
-from modules.layers.distributions import DiagonalGaussianDistribution
 
 class AutoencoderModule(L.LightningModule):
     def __init__(self,
@@ -34,8 +33,6 @@ class AutoencoderModule(L.LightningModule):
         self.log_dir = config['training']['log_dir']
 
         self.n = normalizer
-
-        self.diffusion = False 
 
         '''
         if self.model_name == "AE_DIT_DDC":
@@ -67,7 +64,6 @@ class AutoencoderModule(L.LightningModule):
             self.spectral_loss_weight = self.modelconfig["spectral_loss_weight"] # 0.05
             self.spectral_criterion = SpectralBaseLoss(img_shape=(180, 360),
                                                     z500_weight= self.modelconfig["spectral_z_weight"])
-        '''
 
         if self.model_name == "VAE_CNN":
             from modules.models.AE import Encoder, Decoder
@@ -125,6 +121,17 @@ class AutoencoderModule(L.LightningModule):
 
             # load encoder weights 
             self.initialize_encoder()
+        
+        '''
+
+        if self.model_name == "x_DDC":
+            from modules.models.DiT import DiT
+            from modules.layers.bilinear import BilinearEncoder, BilinearDecoder
+            from modules.diffusion.x_DDC import DataDependentInterpolant
+            self.downsample = BilinearEncoder(**self.modelconfig["x_DDC"]["encoder"])
+            self.upsample = BilinearDecoder(**self.modelconfig["x_DDC"]["encoder"])
+            self.decoder = DiT(**self.modelconfig["x_DDC"]["decoder"])
+            self.scheduler = DataDependentInterpolant(**self.modelconfig["x_DDC"]["scheduler"])
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
@@ -134,7 +141,8 @@ class AutoencoderModule(L.LightningModule):
             self.ddp = False
 
         self.save_hyperparameters()
-
+    
+    '''    
     def initialize_encoder(self):
         encoder_checkpoint = self.modelconfig[self.model_name].get("encoder_checkpoint", None)
         if encoder_checkpoint is None:
@@ -154,53 +162,46 @@ class AutoencoderModule(L.LightningModule):
             param.requires_grad = False
         print(f"Loaded pretrained encoder from {encoder_checkpoint}")
 
-    def encode(self, x):
-        h = self.encoder(x)
-        self.posterior = DiagonalGaussianDistribution(h)
-        if self.diffusion:
-            z = self.posterior.mode()  # deterministic for conditioning
-        else:
-            z = self.posterior.sample()  # stochastic for VAE training
+    # def encode(self, x):
+    #     h = self.encoder(x)
+    #     self.posterior = DiagonalGaussianDistribution(h)
+    #     if self.diffusion:
+    #         z = self.posterior.mode()  # deterministic for conditioning
+    #     else:
+    #         z = self.posterior.sample()  # stochastic for VAE training
+    #     return z
+    '''
+    
+    def encode(self, surface, multilevel, diagnostic):
+
+        with torch.no_grad():
+            surface_z, multilevel_z, diagnostic_z = self.upsample(*self.downsample(surface, multilevel, diagnostic))
+            z = assemble_input(surface_z, multilevel_z, diagnostic_z)
+
         return z
 
     def forward(self, surface, multilevel, diagnostic):
-        x = assemble_input(surface, multilevel, diagnostic)
-        z = self.encode(x)
-        if self.diffusion:
-            y = self.scheduler.sample(z, self.decoder)
+        
+        z = self.encode(surface, multilevel, diagnostic)
+        y = self.scheduler.sample(self.decoder, z)
 
-            if hasattr(self, 'refiner') and self.current_epoch >= self.refiner_warmup_epochs:
-                y = self.refiner(y)
-        else:
-            y = self.decoder(z)
-
-        surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
+        surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y, nlevels=self.nlevels)
 
         return surface_pred, multilevel_pred, diagnostic_pred
     
     def training_step(self, batch, batch_idx):
         surface_data, multilevel_data, diagnostic_data = batch
 
-        if self.diffusion:
-            x = assemble_input(surface_data, multilevel_data, diagnostic_data)
-            z = self.encode(x)
+        z = self.encode(surface_data, multilevel_data, diagnostic_data)
 
-            y = assemble_input(surface_data, multilevel_data, diagnostic_data)
+        y = assemble_input(surface_data, multilevel_data, diagnostic_data)
 
-            has_refiner = hasattr(self, 'refiner')
+        loss, spectral_loss = self.scheduler.compute_loss(self.decoder, z, y)
 
-            if has_refiner and self.current_epoch >= self.refiner_warmup_epochs:
+        self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
+        self.log("train/spectral_loss", spectral_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
 
-                vel_loss, x0_hat, x0_target = self.scheduler.compute_loss(
-                    z, y, self.decoder, return_x0_hat=True)
-                
-                x0_refined = self.refiner(x0_hat)
-                refiner_loss = ((x0_refined - x0_target) ** 2).mean()
-                loss = vel_loss + self.refiner_weight * refiner_loss
-                self.log("train/vel_loss", vel_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
-                self.log("train/refiner_loss", refiner_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
-            else:
-                loss = self.scheduler.compute_loss(z, y, self.decoder)
+        '''
         else:
             surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
             pixel_loss = self.criterion(surface_pred, surface_data,
@@ -218,13 +219,13 @@ class AutoencoderModule(L.LightningModule):
             loss = pixel_loss + self.spectral_loss_weight * spectral_loss + self.kl_weight * kl_loss
 
         self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
+        '''
 
         return loss
 
     def validation_step(self, batch, batch_idx):
 
         surface_data, multilevel_data, diagnostic_data = batch
-
 
         surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
       
@@ -287,14 +288,23 @@ class AutoencoderModule(L.LightningModule):
         pr_6h_pred = pred_feat_dict['PRATEsfc_24h'][0].cpu()
         pr_6h_target = target_feat_dict['PRATEsfc_24h'][0].cpu()
 
-        z500_pred = pred_feat_dict['geopotential'][0, -10, ...].cpu() # b l h w -> h w
-        z500_target = target_feat_dict['geopotential'][0, -10, ...].cpu()
-        u250_pred = pred_feat_dict['u_component_of_wind'][0, -13, ...].cpu()
-        u250_target = target_feat_dict['u_component_of_wind'][0, -13, ...].cpu()
-        t850_pred = pred_feat_dict['temperature'][0, -6, ...].cpu()
-        t850_target = target_feat_dict['temperature'][0, -6, ...].cpu()
-        q850_pred = pred_feat_dict['specific_total_water'][0, -6, ...].cpu()
-        q850_target = target_feat_dict['specific_total_water'][0, -6, ...].cpu()
+        # z500_pred = pred_feat_dict['geopotential'][0, -10, ...].cpu() # b l h w -> h w
+        # z500_target = target_feat_dict['geopotential'][0, -10, ...].cpu()
+        # u250_pred = pred_feat_dict['u_component_of_wind'][0, -13, ...].cpu()
+        # u250_target = target_feat_dict['u_component_of_wind'][0, -13, ...].cpu()
+        # t850_pred = pred_feat_dict['temperature'][0, -6, ...].cpu()
+        # t850_target = target_feat_dict['temperature'][0, -6, ...].cpu()
+        # q850_pred = pred_feat_dict['specific_total_water'][0, -6, ...].cpu()
+        # q850_target = target_feat_dict['specific_total_water'][0, -6, ...].cpu()
+
+        z500_pred = pred_feat_dict['geopotential'][0, -6, ...].cpu() # b l h w -> h w
+        z500_target = target_feat_dict['geopotential'][0, -6, ...].cpu()
+        u250_pred = pred_feat_dict['u_component_of_wind'][0, -9, ...].cpu()
+        u250_target = target_feat_dict['u_component_of_wind'][0, -9, ...].cpu()
+        t850_pred = pred_feat_dict['temperature'][0, -3, ...].cpu()
+        t850_target = target_feat_dict['temperature'][0, -3, ...].cpu()
+        q850_pred = pred_feat_dict['specific_total_water'][0, -3, ...].cpu()
+        q850_target = target_feat_dict['specific_total_water'][0, -3, ...].cpu()
 
         plot_reconstruction(t2m_pred, # h w
                     t2m_target,
@@ -346,10 +356,15 @@ class AutoencoderModule(L.LightningModule):
         # calculate the mean loss across batch, shape b for each key, b l for multilevel keys
         t2m_loss = loss_dict['2m_temperature'].mean(0) # surface temp, mean across batch dim
         pr_6h_loss = loss_dict['PRATEsfc_24h'].mean(0) # 6-hour accumulated PRATEsfc
-        z500_loss = loss_dict['geopotential'][..., -10].mean(0) # geopotential at level=10
-        u250_loss = loss_dict['u_component_of_wind'][..., -13].mean(0) # u wind at level=13
-        t850_loss = loss_dict['temperature'][..., -6].mean(0) # temp at level=6
-        q850_loss = loss_dict['specific_total_water'][..., -6].mean(0) # specific humidity at level=6
+        # z500_loss = loss_dict['geopotential'][..., -10].mean(0) # geopotential at level=10
+        # u250_loss = loss_dict['u_component_of_wind'][..., -13].mean(0) # u wind at level=13
+        # t850_loss = loss_dict['temperature'][..., -6].mean(0) # temp at level=6
+        # q850_loss = loss_dict['specific_total_water'][..., -6].mean(0) # specific humidity at level=6
+
+        z500_loss = loss_dict['geopotential'][..., -6].mean(0) # geopotential at level=10
+        u250_loss = loss_dict['u_component_of_wind'][..., -9].mean(0) # u wind at level=13
+        t850_loss = loss_dict['temperature'][..., -3].mean(0) # temp at level=6
+        q850_loss = loss_dict['specific_total_water'][..., -3].mean(0) # specific humidity at level=6
         
         self.log('val/t2m', t2m_loss.item(), on_step=False, on_epoch=True, sync_dist=self.ddp) 
         self.log('val/pr_6h', pr_6h_loss.item(), on_step=False, on_epoch=True, sync_dist=self.ddp)
@@ -360,8 +375,8 @@ class AutoencoderModule(L.LightningModule):
     
     def configure_optimizers(self):
 
-        optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.9)
+        optimizer = torch.optim.Adam(self.decoder.parameters(), lr=self.lr)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
 
         return [optimizer], [scheduler]
     

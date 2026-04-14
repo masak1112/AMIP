@@ -1,36 +1,6 @@
 import torch
 import torch.nn as nn
-
-from einops import rearrange
-from torch_harmonics import InverseRealSHT
-from modules.diffusion.stochastic_interpolant import sample_logit_normal
-
-class SphereNoiseGenerator(nn.Module):
-    def __init__(self, l_max):
-        super(SphereNoiseGenerator, self).__init__()
-        self.l_max = l_max
-        self.isht = InverseRealSHT(l_max, l_max*2, grid="equiangular")
-
-    def forward(self, b, c, device, dtype=torch.complex64, l_max=None):
-        # sample coefficient in the frequency domain
-        # b: batch size, l_max: maximum degree
-        # return: [b, l_max, l_max + 1] # coefficient for real harmonics
-        if l_max is None:
-            l_max = self.l_max
-            coeffs = torch.randn(b*c, l_max, l_max + 1, device=device, dtype=dtype)
-        else:
-            assert l_max <= self.l_max
-            coeffs = torch.randn(b*c, self.l_max, self.l_max + 1, device=device, dtype=dtype)
-            # fill with zeros
-            coeffs[:, l_max:, :] = 0
-
-        noise = self.isht(coeffs)
-        noise = rearrange(noise, '(b c) h w -> b c h w ', b=b, c=c)
-        noise_means = torch.mean(noise, dim=(1, 2), keepdim=True)
-        noise_stds = torch.std(noise, dim=(1, 2), keepdim=True)
-        noise = (noise - noise_means) / noise_stds
-
-        return noise
+from modules.diffusion.utils import SphereNoiseGenerator, sample_logit_normal
 
 class Integrator:
     def __init__(self,

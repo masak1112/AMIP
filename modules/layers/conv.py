@@ -171,7 +171,11 @@ class SphereConv2d(nn.Conv2d):
         return torch.cat([top_slice, mid_slice, bottom_slice], dim=2)
 
 class ResnetBlock(nn.Module):
-    def __init__(self, in_channels, out_channels=None, conv_shortcut=False):
+    def __init__(self, 
+                 in_channels, 
+                 out_channels=None, 
+                 conv_shortcut=False,
+                 dropout = 0.0):
         super().__init__()
         self.in_channels = in_channels
         out_channels = in_channels if out_channels is None else out_channels
@@ -183,6 +187,8 @@ class ResnetBlock(nn.Module):
 
         self.norm2 = Normalize(out_channels)
         self.conv2 = SphereConv2d(out_channels, out_channels, kernel_size=(3, 3), padding = (1, 1))
+
+        self.dropout = dropout 
 
         if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
@@ -198,6 +204,12 @@ class ResnetBlock(nn.Module):
 
         h = self.norm2(h)
         h = nonlinearity(h)
+
+        # apply dropout 
+
+        if self.dropout > 0.0:
+            h = F.dropout(h, p=self.dropout) # always on
+
         h = self.conv2(h)
 
         if self.in_channels != self.out_channels:

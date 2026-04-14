@@ -141,7 +141,7 @@ class DiT(nn.Module):
                  nlat=180,
                  nlon=360,
                  dropout=0.0,
-                 unpatch="subpixel",
+                 unpatch="vanilla",
                  scalar_dim=1,
                  c_grid_dim=0,
                  c_grid_embed_dim=4,
@@ -307,7 +307,7 @@ class DiT(nn.Module):
         return (self._rope_cos_lat, self._rope_sin_lat,
                 self._rope_cos_lon, self._rope_sin_lon)
 
-    def forward(self, x_noised, cond, t, c_grid):
+    def forward(self, x_noised, cond, t, c_grid = None):
         """
         Args:
             x_noised: [b, c, nlat, nlon] — interpolant I_t (channel-first from assemble_input)
