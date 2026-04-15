@@ -23,13 +23,15 @@ class DataDependentInterpolant(nn.Module):
                  train_sampler='power',
                  l_max = 180,
                  spectral_weight = 0.01,
-                 noise = "spherical"):
+                 noise = "spherical",
+                 tau = 1.3):
         
         super().__init__()
 
         self.num_steps = num_steps
         self.sigma_coef = sigma_coef
         self.train_sampler = train_sampler 
+        self.tau = tau 
 
         if noise == "spherical":
             from modules.diffusion.utils import SphereNoiseGenerator
@@ -129,7 +131,7 @@ class DataDependentInterpolant(nn.Module):
         zeta = self.get_noise(x_lowres)
         y = x_lowres + self.sigma_coef * zeta
 
-        timesteps, ratio = self.get_log_uniform_t(n_t = num_steps - 1, device = x_lowres.device)
+        timesteps, ratio = get_log_uniform_t(n_t = num_steps - 1, scale = self.tau, device = x_lowres.device)
         
         ratio_batch = ratio.expand(x_lowres.shape[0], 1, 1, 1)
 

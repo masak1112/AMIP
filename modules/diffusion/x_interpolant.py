@@ -11,7 +11,7 @@ class DynamicInterpolant(nn.Module):
                  spectral_weight = 0.01,
                  noise = "spherical",
                  model_last = False,
-                 loss_form = "v"
+                 loss_form = "x"
                  ):
         super(DynamicInterpolant, self).__init__()
 
@@ -68,7 +68,7 @@ class DynamicInterpolant(nn.Module):
 
         if self.loss_form == 'x':
             loss = ((pred_y - y) ** 2).sum(dim=[1, 2, 3]).mean() 
-        elif self.loss_form == 'v':
+        elif self.loss_form == 'v': # this is trivial, since additive terms cancel before gradient computation
             # construct target
             target = (y - x) - self.sigma_coef * W_t
             pred = (pred_y - x) - self.sigma_coef * W_t

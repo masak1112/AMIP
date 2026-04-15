@@ -12,6 +12,8 @@ class FlowMatching(nn.Module):
                  noise = "spherical",
                  model_last = False,
                  noise_scale_path = None,
+                 loss_form = "x",
+                 tau = 1.1
                  ):
         super(FlowMatching, self).__init__()
 
@@ -19,6 +21,8 @@ class FlowMatching(nn.Module):
         self.sigma_coef = sigma_coef
         self.train_sampler = train_sampler 
         self.model_last = model_last
+        self.loss_form = loss_form
+        self.tau = tau
 
         if noise == "spherical":
             from modules.diffusion.utils import SphereNoiseGenerator
@@ -73,9 +77,14 @@ class FlowMatching(nn.Module):
 
         X_t = (1-t) * noise + t * y 
 
-        pred_y = model(X_t, x, t.squeeze(dim=[1, 2, 3]), c_grid)
+        pred_y = model(X_t, x, t.squeeze(dim=[2, 3]), c_grid)
 
-        loss = ((pred_y - y) ** 2).sum(dim=[1, 2, 3]).mean() 
+        if self.loss_form == 'x':
+            loss = ((pred_y - y) ** 2).sum(dim=[1, 2, 3]).mean() 
+        elif self.loss_form == 'v': # same as x loss, but scaled by 1-t
+            target = (y - X_t) / (1 - t + 5e-2)
+            pred = (pred_y - X_t) / (1 - t + 5e-2)
+            loss = ((pred - target) ** 2).sum(dim=[1, 2, 3]).mean()
 
         if self.spectral_weight > 0:
             spectral_loss = self.spectral_weight * self.spectral_criterion(pred_y, y)
@@ -85,42 +94,61 @@ class FlowMatching(nn.Module):
         loss = loss + spectral_loss
 
         return loss, spectral_loss
-
+    
+    @torch.no_grad()
     def sample(self, model, x, c_grid, num_steps=None):
-        # x contains current prognostic state (latent space)
-        # c_grid contains current forcing state (original resolution)
+        """
+        Forward Euler ODE integration. Reparameterized for stability and x-prediction
+
+        Draw x_0 ~ N(0, I)
+        define ratio r
+        define dt_k = (1-r) / (1-t_k)
+        this simplifies the Euler update to:
+            x_{t+1} = r*x_t + (1-r)x_1
+
+        originally:
+            v_hat = (\hat x_1 - x_t) / (1 - t)
+            x_{t+1} = x_t + (1-r) / (1-t_k) * v_hat => x_t + (1-r)(x_1 - x_t) => r * x_t + (1-r)x_1
+
+        Args:
+            x_lowres: [b, c, h, w] — m(x1), upsampled low-res conditioning
+            model: predictor
+            num_steps: number of integration steps N 
+
+        Returns:
+            [b, c, h, w] predicted high-res output
+        """
 
         if num_steps is None:
             num_steps = self.num_steps
 
-        timesteps = torch.linspace(0, 1, num_steps + 1, device=x.device)
-
-        # start y at source distribution, which is Gaussian noise
+        # Starting point: X_0 = eps
         y = self.get_noise(x)
 
-        # apply scaling if noise_scales is provided
         if self.noise_scales is not None:
             y = y * self.noise_scales
 
+        timesteps, ratio = get_log_uniform_t(n_t = num_steps - 1, scale=self.tau,  device = x.device)
+        
+        ratio_batch = ratio.expand(x.shape[0], 1, 1, 1)
+
         if self.model_last:
-            num_steps_drift = num_steps - 1
+            num_steps_euler = num_steps - 1
         else:
-            num_steps_drift = num_steps
+            num_steps_euler = num_steps
 
-        for i in range(num_steps_drift):
-            t_current = timesteps[i]
-            t_next = timesteps[i + 1]
-            dt = t_next - t_current  
+        for k in range(num_steps_euler):
+            t_k = timesteps[k]
+            t_batch = torch.full((x.shape[0], 1), t_k, device=x.device, dtype=x.dtype)
 
-            y_pred = model(y, x, t_current.expand(x.shape[0]), c_grid)
+            x1_pred = model(y, x, t_batch, c_grid)
 
-            drift = (y_pred - x) 
+            y = ratio_batch * y + (1-ratio_batch) * x1_pred
 
-            y = y + drift * dt
-
-        # take last step without drift/noise
+        # take last step w/o implied velocity and Euler step
         if self.model_last:
-            y = model(y, x, timesteps[-2].expand(x.shape[0]), c_grid)
+            t_batch = torch.full((x.shape[0], 1), timesteps[-1], device=x.device, dtype=x.dtype)
+            y = model(y, x, t_batch, c_grid)
 
         return y
 

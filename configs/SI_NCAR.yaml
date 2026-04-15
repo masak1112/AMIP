@@ -97,8 +97,8 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_x/latent/last.ckpt
-    description: SI_X_drift_last
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_x/latent_pixel/last.ckpt
+    description: SI_X_no_spectral
     accumulate_grad_batches: 1
     optimizer: adam
     plot_val: True
