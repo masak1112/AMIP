@@ -98,6 +98,6 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_SI_X_42_2026-04-14T19-23-54/last.ckpt
-    description: SI_X
+    description: no_spectral
     accumulate_grad_batches: 1
     optimizer: adam
