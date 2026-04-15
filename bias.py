@@ -128,7 +128,7 @@ def main(args):
     model.load_state_dict(state_dict)
     model.eval()
 
-    ensemble_size = 8
+    ensemble_size = 1
     invariant = model.invariant_input.to(device) # 1 c nlat nlon
     invariant = invariant.expand(ensemble_size, -1, -1, -1) # e c nlat nlon
     
@@ -192,6 +192,10 @@ def main(args):
                 surface_t1_dev = surface_t1.unsqueeze(0).to(device)
                 upper_air_t1_dev = upper_air_t1.unsqueeze(0).to(device)
                 diagnostic_t1_dev = diagnostic_t1.unsqueeze(0).to(device)
+
+                if model.downsample is not None:
+                    surface_t1_dev, upper_air_t1_dev, diagnostic_t1_dev = model.downsample(surface_t1_dev, upper_air_t1_dev, diagnostic_t1_dev)
+
                 surface_true_denorm = model.n.surface_inv_transform(surface_t1_dev)
                 multilevel_true_denorm = model.n.upper_air_inv_transform(upper_air_t1_dev)
                 diagnostic_true_denorm = model.n.diagnostic_inv_transform(diagnostic_t1_dev)

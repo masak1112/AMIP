@@ -9,13 +9,15 @@ class DynamicInterpolant(nn.Module):
                  train_sampler='uniform',
                  l_max = 180,
                  spectral_weight = 0.01,
-                 noise = "spherical"
+                 noise = "spherical",
+                 model_last = False
                  ):
         super(DynamicInterpolant, self).__init__()
 
         self.num_steps = num_steps
         self.sigma_coef = sigma_coef
         self.train_sampler = train_sampler 
+        self.model_last = model_last
 
         if noise == "spherical":
             from modules.diffusion.utils import SphereNoiseGenerator
@@ -86,7 +88,12 @@ class DynamicInterpolant(nn.Module):
         y = x.clone()
         W_t = torch.zeros_like(x)
 
-        for i in range(num_steps - 1):
+        if self.model_last:
+            num_steps_drift = num_steps - 1
+        else:
+            num_steps_drift = num_steps
+
+        for i in range(num_steps_drift):
             t_current = timesteps[i]
             t_next = timesteps[i + 1]
             dt = t_next - t_current  
@@ -103,7 +110,8 @@ class DynamicInterpolant(nn.Module):
             W_t = W_t + dW
 
         # take last step without drift/noise
-        y = model(y, x, timesteps[-2].expand(x.shape[0]), c_grid)
+        if self.model_last:
+            y = model(y, x, timesteps[-2].expand(x.shape[0]), c_grid)
 
         return y
 
