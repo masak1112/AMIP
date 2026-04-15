@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 
 #from modules.models.SwinV2 import SwinV2
-from modules.models.pmfDiT import pmfDiT
+from modules.models.old.pmfDiT import pmfDiT
 from common.loss import SpectralScalarLoss
 
 class pixelMeanFlow(nn.Module):

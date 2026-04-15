@@ -4,7 +4,6 @@ import torch
 from common.loss import latitude_weighted_rmse
 from common.plotting import plot_result, plot_spectrum
 from common.utils import assemble_forcing, disassemble_input, assemble_input
-from modules.layers.distributions import DiagonalGaussianDistribution
 
 class TrainModule(L.LightningModule):
     def __init__(self,
@@ -27,6 +26,7 @@ class TrainModule(L.LightningModule):
         self.horizontal_resolution = self.dataconfig['horizontal_resolution']
         self.nlat, self.nlon = self.horizontal_resolution
         self.nlevels = len(self.dataconfig['levels'])
+        self.plot_val = config['training'].get('plot_val', False)
 
         self.modelconfig = config['model']
         self.model_name = self.modelconfig["model_name"]
@@ -39,7 +39,6 @@ class TrainModule(L.LightningModule):
         # invariant_input will be expanded to match batch size dynamically
         self.invariant_input = self.constant_boundary_data.unsqueeze(0) # 1 c nlat nlon
 
-        self.latent=False 
         self.downsample = None 
 
         if self.model_name == "SI_DiT":
@@ -47,18 +46,6 @@ class TrainModule(L.LightningModule):
             from modules.diffusion.dynamic_interpolant import DriftScheduler
             self.model = DiT(**self.modelconfig['SI_DiT']["model"])
             self.scheduler = DriftScheduler(**self.modelconfig["SI_DiT"]['scheduler'])
-        elif self.model_name == "SI_Latent_DiT":
-            from modules.models.DiT import DiT
-            from modules.diffusion.dynamic_interpolant import DriftScheduler
-
-            self.model = DiT(**self.modelconfig['SI_Latent_DiT']["model"])
-            self.scheduler = DriftScheduler(**self.modelconfig["SI_Latent_DiT"]['scheduler'])
-            self.latent = True
-        #elif self.model_name == "Pixel_iMF":
-            #from modules.diffusion.Pixel_iMF import pixelMeanFlow
-       #     from modules.diffusion.MF import MeanFlow
-       #     self.model = MeanFlow(modelconfig = self.modelconfig['model'],
-       #                                **self.modelconfig["params"])
         elif self.model_name == "SI_X":
             from modules.models.DiT import DiT
             from modules.diffusion.x_interpolant import DynamicInterpolant
@@ -70,15 +57,6 @@ class TrainModule(L.LightningModule):
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 
-        if self.latent:
-            from modules.models.AE import Encoder, Decoder
-
-            self.encoder = Encoder(**self.modelconfig['SI_Latent_DiT']["encoder"])
-            self.decoder = Decoder(**self.modelconfig['SI_Latent_DiT']["decoder"])
-            self.initialize_vae()
-            # Allow loading from checkpoints trained without the VAE
-            self.strict_loading = False
-
         if config['training']['strategy'] == 'ddp' or config['training']['strategy'] == 'ddp_find_unused_parameters_true':
             self.ddp = True
         else:
@@ -86,6 +64,7 @@ class TrainModule(L.LightningModule):
 
         self.save_hyperparameters()
 
+    '''
     def initialize_vae(self):
         vae_checkpoint = self.modelconfig['SI_Latent_DiT'].get("vae_checkpoint", None)
         if vae_checkpoint is None:
@@ -117,36 +96,11 @@ class TrainModule(L.LightningModule):
         posterior = DiagonalGaussianDistribution(h, deterministic=deterministic)
         z = posterior.sample()
         return z
-
-    def forward(self, x, c_grid):
-        # x is latent state, c_grid is grid-scale conditioning (original resolution)
+    # x is latent state, c_grid is grid-scale conditioning (original resolution)
         if self.model_name == "Pixel_iMF":
             x = torch.cat([x, c_grid], dim=1) # concatenate conditioning to input for Pixel_iMF
             y = self.model.generate(x)
         else:
-            y = self.scheduler.sample(self.model, x, c_grid)
-        return y
-    
-    def training_step(self, batch, batch_idx):
-
-        surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data = batch
-        device = surface_t.device
-
-        if self.downsample is not None:
-            with torch.no_grad():
-                surface_t, upper_air_t, diagnostic_t = self.downsample(surface_t, upper_air_t, diagnostic_t)
-                surface_t1, upper_air_t1, diagnostic_t1 = self.downsample(surface_t1, upper_air_t1, diagnostic_t1) 
-
-        x = assemble_input(surface_t, upper_air_t, diagnostic_t) # b c h w
-        invariant = self.invariant_input.expand(surface_t.shape[0], -1, -1, -1).to(device) # b c nlat nlon
-        c_grid = assemble_forcing(varying_boundary_data, invariant) # b c h w
-        y = assemble_input(surface_t1, upper_air_t1, diagnostic_t1) # b c h w
-
-        if self.latent:
-            with torch.no_grad():
-                x = self.encode(x)
-                y = self.encode(y)
-
         if self.model_name == "Pixel_iMF":
             x = torch.cat([x, c_grid], dim=1) # concatenate conditioning to input for Pixel_iMF
             loss, loss_ref = self.model.forward(y, x)
@@ -156,9 +110,33 @@ class TrainModule(L.LightningModule):
             #self.log("train/loss_v", loss_dict["loss_v"], on_step=True, on_epoch=True, sync_dist=self.ddp)
             #self.log("train/loss_spectral", loss_dict["loss_spectral"], on_step=True, on_epoch=True, sync_dist=self.ddp)
         else:
-            loss, spectral_loss = self.scheduler.compute_loss(self.model, x, c_grid, y)   
-            self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
-            self.log("train/spectral_loss", spectral_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
+    '''
+
+    def preprocess(self, surface_t, upper_air_t, diagnostic_t):
+        if self.downsample is not None:
+            with torch.no_grad():
+                surface_t, upper_air_t, diagnostic_t = self.downsample(surface_t, upper_air_t, diagnostic_t)
+
+        return assemble_input(surface_t, upper_air_t, diagnostic_t) # b c h w
+
+    def forward(self, x, c_grid):
+        y = self.scheduler.sample(self.model, x, c_grid)
+        return y
+    
+    def training_step(self, batch, batch_idx):
+
+        surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data = batch
+        device = surface_t.device
+
+        x = self.preprocess(surface_t, upper_air_t, diagnostic_t)
+        y = self.preprocess(surface_t1, upper_air_t1, diagnostic_t1)
+
+        invariant = self.invariant_input.expand(surface_t.shape[0], -1, -1, -1).to(device) # b c nlat nlon
+        c_grid = assemble_forcing(varying_boundary_data, invariant) # b c h w
+
+        loss, spectral_loss = self.scheduler.compute_loss(self.model, x, c_grid, y)   
+        self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
+        self.log("train/spectral_loss", spectral_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
 
         return loss 
 
@@ -173,6 +151,8 @@ class TrainModule(L.LightningModule):
 
         if batch_idx == 0:
             if not self.ddp or self.global_rank == 0:
+                if self.plot_val:
+                    self.plot_predictions(pred_feat_dict, target_feat_dict)
                 self.save_predictions(pred_feat_dict, target_feat_dict)
     
     def save_predictions(self, pred_feat_dict, target_feat_dict):
@@ -198,8 +178,8 @@ class TrainModule(L.LightningModule):
         device = surface_t.device
 
         if self.downsample is not None:
-            nlat = nlat // 4 
-            nlon = nlon // 4
+            nlat = nlat // self.downsample.downsample_factor
+            nlon = nlon // self.downsample.downsample_factor
 
         invariant = self.invariant_input.expand(b, -1, -1, -1).to(device) # b c nlat nlon
 
@@ -231,37 +211,18 @@ class TrainModule(L.LightningModule):
                 pred_feat_dict[diagnostic_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=device) # b t h w
                 target_feat_dict[diagnostic_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=device) # b t h w
 
-        # Encode initial state to latent space for autoregressive rollout
-        if self.latent:
-            x_latent = self.encode(assemble_input(surface_t, upper_air_t, diagnostic_t))
-
-        if self.downsample is not None:
-            surface_t, upper_air_t, diagnostic_t = self.downsample(surface_t, upper_air_t, diagnostic_t)
+        x = self.preprocess(surface_t, upper_air_t, diagnostic_t) # b c h w
 
         for t in range(nt):
             # assemble forcings
             forcing_input = varying_boundary_data[:, t] # b c h w
             c_grid = assemble_forcing(forcing_input, invariant) # b c h w
 
-            if self.latent:
-                # predict in latent space
-                y_latent = self.forward(x_latent, c_grid)
+            y = self.forward(x, c_grid)
+            surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(y, nlevels=self.nlevels)
 
-                # decode for metrics
-                decoded_pred = self.decoder(y_latent)
-                surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(decoded_pred, nlevels=self.nlevels)
-
-                # update latent state for next autoregressive step
-                x_latent = y_latent
-            else:
-                x = assemble_input(surface_t, upper_air_t, diagnostic_t) # b c h w
-                y = self.forward(x, c_grid)
-                surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(y, nlevels=self.nlevels)
-
-                # update inputs for next autoregressive step
-                surface_t = surface_pred_decoded
-                upper_air_t = multilevel_pred_decoded
-                diagnostic_t = diagnostic_pred_decoded
+            # update state
+            x = y
 
             surface_target_t = targets_surface[:, t] # b c nlat nlon
             multilevel_target_t = targets_upper_air[:, t] # b c nlevel nlat nlon

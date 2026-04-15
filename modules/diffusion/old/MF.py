@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from torch.func import jvp
-from modules.models.SiT import SiT
+from modules.models.old.SiT import SiT
 
 class MeanFlow(nn.Module):
     def __init__(

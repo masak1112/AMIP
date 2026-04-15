@@ -4,7 +4,7 @@ import torch
 import os 
 
 # Custom imports
-from common.utils import get_yaml, save_yaml, assemble_forcing, assemble_input, disassemble_input
+from common.utils import get_yaml, save_yaml, assemble_forcing, disassemble_input
 from common.plotting import plot_reconstruction, plot_spectrum
 from modules.train_module import TrainModule
 from data.amip_new import GetDataset
@@ -118,27 +118,23 @@ def main(args):
     dataset = GetDataset(dataconfig,
                          year_start=1996,
                          year_end=2001)
+    
     device_index = torch.cuda.current_device()
     device = f"cuda:{device_index}"
 
     model = TrainModule(config,
                         normalizer=dataset).to(device)
     state_dict = torch.load(checkpoint, map_location=device, weights_only=False)['state_dict']
-    # strict=False: the TrainModule checkpoint was trained without a decoder,
-    # so it has no decoder.* keys. The decoder weights are already loaded
-    # from the AE checkpoint in initialize_decoder().
-    model.load_state_dict(state_dict)#, strict=False)
+    model.load_state_dict(state_dict)
     model.eval()
 
     ensemble_size = 8
     invariant = model.invariant_input.to(device) # 1 c nlat nlon
     invariant = invariant.expand(ensemble_size, -1, -1, -1) # e c nlat nlon
-
-    has_decoder = model.latent and model.decoder is not None
-    if has_decoder:
-        clim_nlat, clim_nlon = model.nlat, model.nlon  # full resolution
-    elif model.latent:
-        clim_nlat, clim_nlon = 45, 90  # latent resolution
+    
+    if model.downsample is not None:
+        downsample_factor = model.downsample.downsample_factor
+        clim_nlat, clim_nlon = model.nlat // downsample_factor, model.nlon // downsample_factor
     else:
         clim_nlat, clim_nlon = model.nlat, model.nlon
 
@@ -161,11 +157,8 @@ def main(args):
 
                 varying_boundary_data = varying_boundary_data.unsqueeze(0).to(device).expand(ensemble_size, -1, -1, -1)
 
-                x = assemble_input(surface_t, upper_air_t, diagnostic_t) # e c h w
+                x = model.preprocess(surface_t, upper_air_t, diagnostic_t) # e c h w / e c l h w / e c h w
                 c_grid = assemble_forcing(varying_boundary_data, invariant) # e c h w
-
-                if model.latent:
-                    x = model.encode(x)
 
             else:
                 surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data = dataset.__getitem__(batch_idx)
@@ -174,10 +167,7 @@ def main(args):
 
             y = model.forward(x, c_grid) # e c h w / e c l h w
 
-            if has_decoder:
-                surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(model.decoder(y))
-            else:
-                surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
+            surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
 
             surface_pred_denorm = model.n.surface_inv_transform(surface_pred)
             multilevel_pred_denorm = model.n.upper_air_inv_transform(multilevel_pred)

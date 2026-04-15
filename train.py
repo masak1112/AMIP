@@ -8,6 +8,7 @@ import os
 # Custom imports
 from common.utils import get_yaml, save_yaml
 from modules.train_module import TrainModule
+from modules.ae_module import AutoencoderModule
 from data.datamodule import ClimateDataModule
 
 # Lightning imports
@@ -24,6 +25,23 @@ class EMAWeightAveraging(WeightAveraging):
     def should_update(self, step_idx=None, epoch_idx=None):
         # always update
         return True
+    
+def load_partial_weights(model, partial_ckpt):
+    # Load only matching model weights (e.g. when swapping unpatchify head)
+    ckpt = torch.load(partial_ckpt, map_location="cpu", weights_only=False)
+    ckpt_state = ckpt["state_dict"]
+    model_state = model.state_dict()
+    # Filter to keys that exist in both and have matching shapes
+    filtered = {k: v for k, v in ckpt_state.items()
+                if k in model_state and v.shape == model_state[k].shape}
+    skipped = [k for k in ckpt_state if k not in filtered]
+    if skipped:
+        print(f"Partial checkpoint: skipped {len(skipped)} keys with shape mismatch or missing:")
+        for k in skipped:
+            print(f"  {k}")
+    model.load_state_dict(filtered, strict=False)
+    print(f"Partial checkpoint: loaded {len(filtered)}/{len(ckpt_state)} keys from {partial_ckpt}")
+    return model
 
 def process_args(args, config):
     modelconfig = config['model']
@@ -67,12 +85,13 @@ def main(args):
     print(f"Logging to: {path}")
     save_yaml(config, path + "config.yml")
 
+    autoencoder = dataconfig.get("autoencoder", False)
+
     datamodule = ClimateDataModule(dataconfig=dataconfig)
 
-    if "SFNO" in modelconfig["model_name"]:
-        from modules.sfno_module import SFNOModule
-        model = SFNOModule(config, 
-                            normalizer=datamodule.train_dataset)
+    if autoencoder:
+        model = AutoencoderModule(config,
+                                  normalizer=datamodule.train_dataset)
     else:
         model = TrainModule(config,
                             normalizer=datamodule.train_dataset)
@@ -114,21 +133,9 @@ def main(args):
                         precision=trainconfig["precision"],)
     
     partial_ckpt = trainconfig.get("partial_checkpoint", None)
+
     if partial_ckpt is not None:
-        # Load only matching model weights (e.g. when swapping unpatchify head)
-        ckpt = torch.load(partial_ckpt, map_location="cpu", weights_only=False)
-        ckpt_state = ckpt["state_dict"]
-        model_state = model.state_dict()
-        # Filter to keys that exist in both and have matching shapes
-        filtered = {k: v for k, v in ckpt_state.items()
-                    if k in model_state and v.shape == model_state[k].shape}
-        skipped = [k for k in ckpt_state if k not in filtered]
-        if skipped:
-            print(f"Partial checkpoint: skipped {len(skipped)} keys with shape mismatch or missing:")
-            for k in skipped:
-                print(f"  {k}")
-        model.load_state_dict(filtered, strict=False)
-        print(f"Partial checkpoint: loaded {len(filtered)}/{len(ckpt_state)} keys from {partial_ckpt}")
+        model = load_partial_weights(model, partial_ckpt)
         trainer.fit(model=model, datamodule=datamodule)
     elif trainconfig["checkpoint"] is not None:
         trainer.fit(model=model,

@@ -6,7 +6,7 @@ Uses conditioning input instead of class labels.
 
 import torch
 import torch.nn as nn
-from modules.models.pmfDiT import pmfDiT
+from modules.models.old.pmfDiT import pmfDiT
 
 class iMeanFlow(nn.Module):
     """improved MeanFlow (without CFG)"""
