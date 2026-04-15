@@ -23,7 +23,7 @@ model:
             sigma_coef: 1.0
             train_sampler: power
             l_max: 180
-            spectral_weight: 2000
+            spectral_weight: 10000
             noise : spherical
 
 data:
@@ -78,7 +78,7 @@ data:
     val_num_inferences: 50 # use entire val set
     diagnostic_input: True # specific to AE model, we need diagnostic at time t, since we are training a downscaler
 
-    batch_size: 4
+    batch_size: 6
     num_data_workers: 8
 
 training:
