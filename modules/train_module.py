@@ -54,6 +54,14 @@ class TrainModule(L.LightningModule):
             self.model = DiT(**self.modelconfig['SI_X']["model"])
             self.scheduler = DynamicInterpolant(**self.modelconfig['SI_X']['scheduler'])
             self.downsample = BilinearEncoder()
+        elif self.model_name == "FM":
+            from modules.models.DiT import DiT
+            from modules.diffusion.flow_matching import FlowMatching
+            from modules.layers.bilinear import BilinearEncoder
+
+            self.model = DiT(**self.modelconfig['FM']["model"])
+            self.scheduler = FlowMatching(**self.modelconfig['FM']['scheduler'])
+            self.downsample = BilinearEncoder()
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
 

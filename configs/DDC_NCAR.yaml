@@ -1,32 +1,33 @@
 model:
-    model_name: FM
+    model_name: x_DDC
     lr: 5.0e-5
-    FM:
-        model:
+    x_DDC:
+        encoder:
+            downsample_factor: 4
+        decoder:
             in_channels: 172 # 86*2 
             out_channels: 86 # 13*5 + 6 + 15 
-            dim: 1280
+            dim: 1536
             num_heads: 16
-            num_blocks: 24
-            patch_size: 1
+            num_blocks: 20
+            patch_size: 4
             scalar_dim: 1
-            c_grid_downsample: 4
-            c_grid_dim: 6
-            c_grid_embed_dim: 64
+            c_grid_downsample: 0
+            c_grid_dim: 0
+            c_grid_embed_dim: 0
             unpatch: vanilla
-            nlat: 45
-            nlon: 90
+            nlat: 180
+            nlon: 360
         scheduler:
-            num_steps: 20
+            num_steps: 10
             sigma_coef: 1.0
-            train_sampler: logit_normal
-            l_max: 45
+            train_sampler: power
+            l_max: 180
             spectral_weight: 0.0
+            model_last: True 
             noise : spherical
-            model_last: False
-            loss_form: x
-            tau: 1.1
-            noise_scale_path: /home/anthonyz/amip/sigma_c_lowres.pt
+            tau: 1.3
+            noise_scale_path: /glade/u/home/ayz/amip/sigma_c_highres.pt
 
 data:
     data_dir: '/project/pedramh/AMIP/h5'
@@ -56,12 +57,8 @@ data:
                        "mn2t_24h", 
                        "mx2t_24h", 
                        "mxtpr_24h"]
-    constant_boundary_variables: ["geopotential_at_surface", 
-                                    "land_sea_mask"]
-    varying_boundary_variables: ["DSWRFtoa", 
-                                "global_mean_co2",
-                                "sea_surface_temperature", # has nans
-                                "sea_ice_cover"] # has nans
+    constant_boundary_variables: []
+    varying_boundary_variables: [] 
     mask_fill: {'sea_surface_temperature': 270.,
                 'sea_ice_cover': 0.}
     train_year_start: 1979
@@ -70,20 +67,21 @@ data:
     val_year_end: 2013
     mean_path: "/home/anthonyz/amip/normalize_mean.nc"
     std_path: "/home/anthonyz/amip/normalize_std.nc"
-    forecast_lead_times: [1, 3, 5, 10]
+    forecast_lead_times: [1] 
+    autoencoder: True
 
     calendar: 'standard'
     data_timedelta_hours: 6
     timedelta_hours: 24
     has_year_zero: False
-    levels: [50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000]    
+    levels: [50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000]   
     horizontal_resolution: [180, 360]
     predict_delta: False
     epsilon_factor: 0
-    val_num_inferences: 50
-    diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
+    val_num_inferences: 50 # use entire val set
+    diagnostic_input: True # specific to AE model, we need diagnostic at time t, since we are training a downscaler
 
-    batch_size: 6
+    batch_size: 4
     num_data_workers: 8
 
 training:
@@ -101,6 +99,6 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: null
-    description: FM
+    description: x_DDC
     accumulate_grad_batches: 1
     optimizer: adam
