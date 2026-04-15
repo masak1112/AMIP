@@ -74,7 +74,7 @@ class DataDependentInterpolant(nn.Module):
         if self.train_sampler == 'logit_normal':
             t = sample_logit_normal(x0.shape[0], device=device)
         elif self.train_sampler == 'power':
-            t = power_sampler(x0.shape[0], p=2.0, device=device)
+            t = power_sampler(x0.shape[0], p=1.5, device=device)
         elif self.train_sampler == 'uniform':
             t = torch.rand(x0.shape[0], device=device)
 
