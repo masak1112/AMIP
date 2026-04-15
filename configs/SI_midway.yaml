@@ -24,6 +24,7 @@ model:
             spectral_weight: 0.0
             noise : spherical
             model_last: True
+            loss_form: v
 
 data:
     data_dir: '/project/pedramh/AMIP/h5'
@@ -98,6 +99,6 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_SI_X_42_2026-04-14T19-23-54/last.ckpt
-    description: no_spectral
+    description: no_spectral_vloss
     accumulate_grad_batches: 1
     optimizer: adam

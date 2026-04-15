@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from modules.diffusion.utils import sample_logit_normal, power_sampler
+from modules.diffusion.utils import sample_logit_normal, power_sampler, get_log_uniform_t
 
 class DataDependentInterpolant(nn.Module):
     """
@@ -97,24 +97,6 @@ class DataDependentInterpolant(nn.Module):
 
         return loss, spectral_loss
     
-
-    def get_log_uniform_t(self, t_final = 0.999, scale=1.3, n_t = 10, device = "cpu"):
-        t_s = []
-        t_0 = 0.0
-
-        t_s.append(t_0)
-
-        r = scale * (1-t_final)**(1/n_t)
-
-        assert r < 1.0, "scale is too large for given t_final and n_t, resulting in r >= 1.0"
-
-        for _ in range(n_t):
-            delta_t = (1-r) * (1-t_0)
-            t_s.append(t_0 + delta_t)
-            t_0 = t_0 + delta_t
-
-        return torch.tensor(t_s, device = device), torch.tensor(r, device = device)
-
     @torch.no_grad()
     def sample(self, model, x_lowres, num_steps=None):
         """

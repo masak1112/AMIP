@@ -3,6 +3,24 @@ from einops import rearrange
 from torch_harmonics import InverseRealSHT
 import torch.nn as nn
 
+def get_log_uniform_t(t_final = 0.999, scale=1.3, n_t = 10, device = "cpu"):
+    t_s = []
+    t_0 = 0.0
+
+    t_s.append(t_0)
+
+    r = scale * (1-t_final)**(1/n_t)
+
+    assert r < 1.0, "scale is too large for given t_final and n_t, resulting in r >= 1.0"
+
+    for _ in range(n_t):
+        delta_t = (1-r) * (1-t_0)
+        t_s.append(t_0 + delta_t)
+        t_0 = t_0 + delta_t
+
+    return torch.tensor(t_s, device = device), torch.tensor(r, device = device)
+
+
 def sample_logit_normal(shape, m=0.0, s=1.0, device='cpu', dtype=torch.float32):
     """
     Samples from a logit-normal distribution.

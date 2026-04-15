@@ -1,25 +1,24 @@
 import torch
 import torch.nn as nn
-from modules.diffusion.utils import sample_logit_normal, power_sampler
+from modules.diffusion.utils import sample_logit_normal, power_sampler, get_log_uniform_t
 
-class DynamicInterpolant(nn.Module):
+class FlowMatching(nn.Module):
     def __init__(self,
                  num_steps,  # this corresponds to physical time steps
                  sigma_coef=1.0,
-                 train_sampler='uniform',
+                 train_sampler='logit_normal',
                  l_max = 180,
-                 spectral_weight = 0.01,
+                 spectral_weight = 0.00,
                  noise = "spherical",
                  model_last = False,
-                 loss_form = "v"
+                 noise_scale_path = None,
                  ):
-        super(DynamicInterpolant, self).__init__()
+        super(FlowMatching, self).__init__()
 
         self.num_steps = num_steps
         self.sigma_coef = sigma_coef
         self.train_sampler = train_sampler 
         self.model_last = model_last
-        self.loss_form = loss_form
 
         if noise == "spherical":
             from modules.diffusion.utils import SphereNoiseGenerator
@@ -32,6 +31,12 @@ class DynamicInterpolant(nn.Module):
         if self.spectral_weight > 0: # apply  spectral regularization to model outputs
             from common.loss import SpectralScalarLoss
             self.spectral_criterion = SpectralScalarLoss(img_shape=(l_max, l_max*2))
+
+        if noise_scale_path is not None:
+            noise_scales = torch.load(noise_scale_path) # 1 c 1 1 
+            self.register_buffer("noise_scales", noise_scales)
+        else:
+            self.noise_scales = None
 
         print(f"sigma_coef: {self.sigma_coef}, train_sampler: {self.train_sampler}")
 
@@ -52,6 +57,10 @@ class DynamicInterpolant(nn.Module):
         device = x.device
 
         noise = self.get_noise(x)
+
+        if self.noise_scales is not None:
+            noise = noise * self.noise_scales 
+
         # sample timestep
         if self.train_sampler == 'logit_normal':
             t = sample_logit_normal(x.shape[0], device=device)
@@ -61,18 +70,12 @@ class DynamicInterpolant(nn.Module):
             t = torch.rand(x.shape[0], device=device)
 
         t = self.wide(t) 
-        W_t = torch.sqrt(t) * noise
-        X_t = (1-t) * x + t * y + (1-t) * self.sigma_coef * W_t
+
+        X_t = (1-t) * noise + t * y 
 
         pred_y = model(X_t, x, t.squeeze(dim=[1, 2, 3]), c_grid)
 
-        if self.loss_form == 'x':
-            loss = ((pred_y - y) ** 2).sum(dim=[1, 2, 3]).mean() 
-        elif self.loss_form == 'v':
-            # construct target
-            target = (y - x) - self.sigma_coef * W_t
-            pred = (pred_y - x) - self.sigma_coef * W_t
-            loss = ((pred - target) ** 2).sum(dim=[1, 2, 3]).mean()
+        loss = ((pred_y - y) ** 2).sum(dim=[1, 2, 3]).mean() 
 
         if self.spectral_weight > 0:
             spectral_loss = self.spectral_weight * self.spectral_criterion(pred_y, y)
@@ -92,9 +95,12 @@ class DynamicInterpolant(nn.Module):
 
         timesteps = torch.linspace(0, 1, num_steps + 1, device=x.device)
 
-        # start y at source distribution, which is current state
-        y = x.clone()
-        W_t = torch.zeros_like(x)
+        # start y at source distribution, which is Gaussian noise
+        y = self.get_noise(x)
+
+        # apply scaling if noise_scales is provided
+        if self.noise_scales is not None:
+            y = y * self.noise_scales
 
         if self.model_last:
             num_steps_drift = num_steps - 1
@@ -108,14 +114,9 @@ class DynamicInterpolant(nn.Module):
 
             y_pred = model(y, x, t_current.expand(x.shape[0]), c_grid)
 
-            drift = (y_pred - x) - self.sigma_coef * W_t # associated drift from y_pred
-            noise = self.get_noise(x) # noise term
+            drift = (y_pred - x) 
 
-            dW = torch.sqrt(dt) * noise
-
-            y = y + drift * dt + self.sigma_coef * (1-self.wide(t_current.expand(y.shape[0]))) * dW
-
-            W_t = W_t + dW
+            y = y + drift * dt
 
         # take last step without drift/noise
         if self.model_last:
