@@ -1,7 +1,7 @@
 model:
-    model_name: SI_X
+    model_name: FM
     lr: 5.0e-5
-    SI_X:
+    FM:
         model:
             in_channels: 172 # 86*2 
             out_channels: 86 # 13*5 + 6 + 15 
@@ -17,14 +17,17 @@ model:
             nlat: 45
             nlon: 90
         scheduler:
-            num_steps: 10
+            num_steps: 20
             sigma_coef: 1.0
-            train_sampler: power
+            train_sampler: logit_normal
             l_max: 45
             spectral_weight: 0.0
             noise : spherical
             model_last: False
-            
+            loss_form: x
+            tau: 1.1
+            noise_scale_path: /glade/u/home/ayz/amip/sigma_c_lowres.pt
+
 data:
     data_dir: '/glade/derecho/scratch/awikner/ERA5/h5'
     upper_air_variables: ["temperature",
@@ -97,8 +100,7 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_x/latent_pixel/last.ckpt
-    description: SI_X_new_return_model_last_fix
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/FM_new/last.ckpt
+    description: FM_model_last
     accumulate_grad_batches: 1
     optimizer: adam
-    plot_val: True

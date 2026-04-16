@@ -11,7 +11,8 @@ class DynamicInterpolant(nn.Module):
                  spectral_weight = 0.01,
                  noise = "spherical",
                  model_last = False,
-                 loss_form = "x"
+                 loss_form = "x",
+                 noise_scale_path = None
                  ):
         super(DynamicInterpolant, self).__init__()
 
@@ -33,6 +34,12 @@ class DynamicInterpolant(nn.Module):
             from common.loss import SpectralScalarLoss
             self.spectral_criterion = SpectralScalarLoss(img_shape=(l_max, l_max*2))
 
+        if noise_scale_path is not None:
+            noise_scales = torch.load(noise_scale_path)
+            self.register_buffer("noise_scales", noise_scales)
+        else:
+            self.noise_scales = None
+
         print(f"sigma_coef: {self.sigma_coef}, train_sampler: {self.train_sampler}")
 
     def wide(self, t):
@@ -52,6 +59,10 @@ class DynamicInterpolant(nn.Module):
         device = x.device
 
         noise = self.get_noise(x)
+
+        if self.noise_scales is not None:
+            noise = noise * self.noise_scales
+
         # sample timestep
         if self.train_sampler == 'logit_normal':
             t = sample_logit_normal(x.shape[0], device=device)
@@ -83,7 +94,7 @@ class DynamicInterpolant(nn.Module):
 
         return loss, spectral_loss
 
-    def sample(self, model, x, c_grid, num_steps=None):
+    def sample(self, model, x, c_grid, num_steps=None, return_model_last=False):
         # x contains current prognostic state (latent space)
         # c_grid contains current forcing state (original resolution)
 
@@ -111,11 +122,18 @@ class DynamicInterpolant(nn.Module):
             drift = (y_pred - x) - self.sigma_coef * W_t # associated drift from y_pred
             noise = self.get_noise(x) # noise term
 
+            if self.noise_scales is not None:
+                noise = noise * self.noise_scales
+
             dW = torch.sqrt(dt) * noise
 
             y = y + drift * dt + self.sigma_coef * (1-self.wide(t_current.expand(y.shape[0]))) * dW
 
             W_t = W_t + dW
+
+        if return_model_last:
+            assert self.model_last is False 
+            return y, y_pred
 
         # take last step without drift/noise
         if self.model_last:

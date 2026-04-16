@@ -9,6 +9,6 @@
 module load conda
 conda activate torch
 
-CONFIG=configs/SI_NCAR.yaml
+CONFIG=configs/FM_NCAR.yaml
 
 python val.py --config=$CONFIG

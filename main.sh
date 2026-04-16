@@ -1,6 +1,6 @@
 #!/bin/bash -l
-#PBS -N SI_Latent_DiT
-#PBS -l select=1:ncpus=64:ngpus=4:mem=256G
+#PBS -N xDDC
+#PBS -l select=1:ncpus=32:ngpus=4:mem=256G
 #PBS -q main
 #PBS -l walltime=12:00:00
 #PBS -A UCHI0014
@@ -13,6 +13,6 @@ export NCCL_SHM_DISABLE=0
 module load conda
 conda activate torch
 
-CONFIG=configs/SI_Latent_DiT_VAE.yaml
+CONFIG=configs/DDC_NCAR.yaml
 
 python train.py --config=$CONFIG

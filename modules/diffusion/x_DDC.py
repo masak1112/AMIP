@@ -22,9 +22,11 @@ class DataDependentInterpolant(nn.Module):
                  sigma_coef=1.0,
                  train_sampler='power',
                  l_max = 180,
-                 spectral_weight = 0.01,
+                 spectral_weight = 0.0,
                  noise = "spherical",
-                 tau = 1.3):
+                 tau = 1.3,
+                 model_last = False,
+                 noise_scale_path = None):
         
         super().__init__()
 
@@ -32,6 +34,8 @@ class DataDependentInterpolant(nn.Module):
         self.sigma_coef = sigma_coef
         self.train_sampler = train_sampler 
         self.tau = tau 
+        self.model_last = model_last
+        self.noise_scale_path = noise_scale_path
 
         if noise == "spherical":
             from modules.diffusion.utils import SphereNoiseGenerator
@@ -44,6 +48,12 @@ class DataDependentInterpolant(nn.Module):
         if self.spectral_weight > 0: # apply spectral regularization to model outputs
             from common.loss import SpectralScalarLoss
             self.spectral_criterion = SpectralScalarLoss(img_shape=(l_max, l_max*2))
+
+        if noise_scale_path is not None:
+            noise_scales = torch.load(noise_scale_path)
+            self.register_buffer("noise_scales", noise_scales)
+        else:
+            self.noise_scales = None
 
         print(f"sigma_coef: {self.sigma_coef}, train_sampler: {self.train_sampler}")
     
@@ -68,6 +78,10 @@ class DataDependentInterpolant(nn.Module):
 
         # Data-dependent coupling: x0 = m(x1) + sigma * zeta
         zeta = self.get_noise(x_lowres)
+
+        if self.noise_scales is not None:
+            zeta = zeta * self.noise_scales
+
         x0 = x_lowres + self.sigma_coef * zeta
 
         x1 = x_highres
@@ -129,13 +143,22 @@ class DataDependentInterpolant(nn.Module):
 
         # Starting point: X_0 = m(x1) + sigma * zeta
         zeta = self.get_noise(x_lowres)
+
+        if self.noise_scales is not None:
+            zeta = zeta * self.noise_scales
+
         y = x_lowres + self.sigma_coef * zeta
 
         timesteps, ratio = get_log_uniform_t(n_t = num_steps - 1, scale = self.tau, device = x_lowres.device)
         
         ratio_batch = ratio.expand(x_lowres.shape[0], 1, 1, 1)
 
-        for k in range(num_steps - 1):
+        if self.model_last:
+            num_steps_euler = num_steps - 1
+        else:
+            num_steps_euler = num_steps
+
+        for k in range(num_steps_euler):
             t_k = timesteps[k]
             t_batch = torch.full((x_lowres.shape[0], 1), t_k, device=x_lowres.device, dtype=x_lowres.dtype)
 
@@ -144,9 +167,10 @@ class DataDependentInterpolant(nn.Module):
             y = ratio_batch * y + (1-ratio_batch) * x1_pred
 
         # take last step w/o implied velocity and Euler step
-        t_batch = torch.full((x_lowres.shape[0], 1), timesteps[-1], device=x_lowres.device, dtype=x_lowres.dtype)
-        y = model(y, x_lowres, t_batch)
-
+        if self.model_last:
+            t_batch = torch.full((x_lowres.shape[0], 1), timesteps[-1], device=x_lowres.device, dtype=x_lowres.dtype)
+            y = model(y, x_lowres, t_batch)
+            
         return y
 
     def forward(self, model, x, num_steps=None):

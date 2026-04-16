@@ -125,12 +125,13 @@ class AutoencoderModule(L.LightningModule):
         '''
 
         if self.model_name == "x_DDC":
-            from modules.models.DiT import DiT
+            #from modules.models.DiT import DiT
+            from modules.models.Unet import UNet
             from modules.layers.bilinear import BilinearEncoder, BilinearDecoder
             from modules.diffusion.x_DDC import DataDependentInterpolant
             self.downsample = BilinearEncoder(**self.modelconfig["x_DDC"]["encoder"])
             self.upsample = BilinearDecoder(**self.modelconfig["x_DDC"]["encoder"])
-            self.decoder = DiT(**self.modelconfig["x_DDC"]["decoder"])
+            self.decoder = UNet(**self.modelconfig["x_DDC"]["decoder"])
             self.scheduler = DataDependentInterpolant(**self.modelconfig["x_DDC"]["scheduler"])
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")

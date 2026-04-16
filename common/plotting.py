@@ -190,6 +190,72 @@ def plot_spectrum(pred, target, path=None, num_t = 4):
     else:
         plt.show()
 
+def plot_spectrum_by_latitude(pred, target, latitudes=None, filename=None):
+    # pred and target in shape (nlat, nlon)
+    nlat, nlon = pred.shape
+
+    if latitudes is None:
+        latitudes = [-85, -60, -30, 0, 30, 60, 85]
+
+    # Reconstruct latitude grid (same as zonal_averaged_power_spectrum)
+    lat_end = (nlat - 1) * (360 / nlon) / 2
+    latitude_grid = np.linspace(-lat_end, lat_end, nlat)
+
+    # Map requested latitudes to nearest grid indices
+    lat_indices = []
+    actual_lats = []
+    for lat in latitudes:
+        idx = np.argmin(np.abs(latitude_grid - lat))
+        lat_indices.append(idx)
+        actual_lats.append(latitude_grid[idx])
+
+    # Wavenumber axis
+    k_x = torch.fft.fftfreq(nlon, d=1/nlon)[:nlon//2]
+
+    # Subplot layout
+    n = len(latitudes)
+    ncols = min(n, 4)
+    nrows = int(np.ceil(n / ncols))
+    fig, axs = plt.subplots(nrows, ncols, figsize=(6 * ncols, 5 * nrows))
+    axs = np.atleast_2d(axs)
+
+    for i, (idx, actual_lat) in enumerate(zip(lat_indices, actual_lats)):
+        row_idx = i // ncols
+        col_idx = i % ncols
+        ax = axs[row_idx, col_idx]
+
+        # Per-row spectral computation
+        fft_pred = torch.fft.rfft(pred[idx, :], norm='forward')
+        fft_target = torch.fft.rfft(target[idx, :], norm='forward')
+
+        power_pred = torch.abs(fft_pred) ** 2
+        power_target = torch.abs(fft_target) ** 2
+
+        power_pred = power_pred[:nlon//2]
+        power_target = power_target[:nlon//2]
+        power_pred[1:] *= 2
+        power_target[1:] *= 2
+
+        ax.plot(k_x.numpy(), power_pred.numpy(), label='Predicted', color='blue')
+        ax.plot(k_x.numpy(), power_target.numpy(), label='Target', color='orange')
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel('Zonal wavenumber')
+        ax.set_ylabel('Power Spectrum')
+        ax.set_title(f'Lat = {actual_lat:.1f}\u00b0')
+        ax.legend()
+
+    # Hide unused subplots
+    for i in range(n, nrows * ncols):
+        axs[i // ncols, i % ncols].set_visible(False)
+
+    plt.tight_layout()
+    if filename is not None:
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
+
 def zonal_averaged_power_spectrum(field,
                                   nlon=360,
                                   nlat=180):

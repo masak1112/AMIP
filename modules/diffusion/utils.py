@@ -2,6 +2,7 @@ import torch
 from einops import rearrange
 from torch_harmonics import InverseRealSHT
 import torch.nn as nn
+import torch.fft
 
 def get_log_uniform_t(t_final = 0.999, scale=1.3, n_t = 10, device = "cpu"):
     t_s = []
@@ -93,3 +94,65 @@ class SphereNoiseGenerator(nn.Module):
         noise = (noise - noise_means) / noise_stds
 
         return noise
+
+def compute_channel_variances(data: torch.Tensor, sigma_base: float = 1.0, gamma: float = 1.0) -> torch.Tensor:
+    """
+    Computes channel-specific noise variances based on the spectral 
+    complexity (high-frequency energy) of each channel.
+    
+    Args:
+        data: A PyTorch tensor of shape (C, X, Y) containing real-valued spatial fields.
+        sigma_base: The baseline noise standard deviation (default: 1.0).
+        gamma: Hyperparameter controlling how aggressively to scale based on complexity.
+        
+    Returns:
+        sigma_c: A 1D tensor of shape (C,) with the target variance scale for each channel.
+    """
+    # Ensure data is at least 3D (C, X, Y)
+    if data.dim() != 3:
+        raise ValueError(f"Expected data to be 3D (C, X, Y), but got shape {data.shape}")
+        
+    C, X, Y = data.shape
+    device = data.device
+    
+    # 1. Compute the 2D Fast Fourier Transform
+    # We use fft2 for spatial data. 
+    fft_data = torch.fft.fft2(data)
+    
+    # Shift the zero-frequency component to the center of the spectrum
+    fft_shifted = torch.fft.fftshift(fft_data, dim=(-2, -1))
+    
+    # 2. Compute Power Spectral Density (PSD)
+    # The power is the squared magnitude of the complex Fourier coefficients
+    psd = torch.abs(fft_shifted)**2
+    
+    # 3. Create a 2D grid of radial wavenumbers (spatial frequencies)
+    # Get the normalized frequencies for both spatial dimensions
+    freq_x = torch.fft.fftshift(torch.fft.fftfreq(X))
+    freq_y = torch.fft.fftshift(torch.fft.fftfreq(Y))
+    
+    # Create a 2D meshgrid of these frequencies
+    grid_x, grid_y = torch.meshgrid(freq_x, freq_y, indexing='ij')
+    
+    # Calculate the radial wavenumber (Euclidean distance from the zero-frequency center)
+    k = torch.sqrt(grid_x**2 + grid_y**2).to(device)
+    
+    # Expand k to match the shape of the PSD tensor (C, X, Y)
+    k_expanded = k.unsqueeze(0).expand(C, -1, -1)
+    
+    # 4. Calculate Spectral Complexity for each channel
+    # This is the spectral centroid: sum(k * PSD) / sum(PSD)
+    numerator = torch.sum(k_expanded * psd, dim=(-2, -1))
+    denominator = torch.sum(psd, dim=(-2, -1))
+    
+    # Add a small epsilon to the denominator to prevent division by zero on flat fields
+    chi_c = numerator / (denominator + 1e-8)
+    
+    # 5. Compute the scaling factors
+    # Find the reference complexity (mean across all 80 channels)
+    chi_ref = torch.mean(chi_c)
+    
+    # Apply the power-law scaling scheme
+    sigma_c = sigma_base * (chi_c / chi_ref)**gamma
+    
+    return sigma_c

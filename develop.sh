@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -N SI_Latent_DiT_VAE
+#PBS -N xDDC
 #PBS -l select=1:ncpus=32:ngpus=4:mem=256G
 #PBS -q develop
 #PBS -l walltime=00:10:00
@@ -9,6 +9,6 @@
 module load conda
 conda activate torch
 
-CONFIG=configs/SI_Latent_DiT_VAE.yaml
+CONFIG=configs/DDC_NCAR.yaml
 
 python train.py --config=$CONFIG

@@ -127,9 +127,13 @@ class TrainModule(L.LightningModule):
 
         return assemble_input(surface_t, upper_air_t, diagnostic_t) # b c h w
 
-    def forward(self, x, c_grid):
-        y = self.scheduler.sample(self.model, x, c_grid)
-        return y
+    def forward(self, x, c_grid, return_model_last=False):
+        if return_model_last: # special case; y is the euler step, and y_last is the output of x_pred model
+            y, y_last = self.scheduler.sample(self.model, x, c_grid, return_model_last=return_model_last)
+            return y, y_last
+        else: # normal sampling
+            y = self.scheduler.sample(self.model, x, c_grid)
+            return y
     
     def training_step(self, batch, batch_idx):
 
@@ -226,8 +230,8 @@ class TrainModule(L.LightningModule):
             forcing_input = varying_boundary_data[:, t] # b c h w
             c_grid = assemble_forcing(forcing_input, invariant) # b c h w
 
-            y = self.forward(x, c_grid)
-            surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(y, nlevels=self.nlevels)
+            y, y_last = self.forward(x, c_grid, return_model_last=True)
+            surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(y_last, nlevels=self.nlevels)
 
             # update state
             x = y

@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -N bias_SI_X
+#PBS -N bias_SI
 #PBS -l select=1:ncpus=8:ngpus=1:mem=128G
 #PBS -q develop
 #PBS -l walltime=02:30:00

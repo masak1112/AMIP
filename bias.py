@@ -41,14 +41,14 @@ def plot_predictions(pred_feat_dict, target_feat_dict, log_dir, step):
     pr_6h_pred = pred_feat_dict['PRATEsfc_24h'][0].cpu()
     pr_6h_target = target_feat_dict['PRATEsfc_24h'][0].cpu()
 
-    z500_pred = pred_feat_dict['geopotential'][0, -10, ...].cpu() # b l h w -> h w
-    z500_target = target_feat_dict['geopotential'][0, -10, ...].cpu()
-    u250_pred = pred_feat_dict['u_component_of_wind'][0, -13, ...].cpu()
-    u250_target = target_feat_dict['u_component_of_wind'][0, -13, ...].cpu()
-    t850_pred = pred_feat_dict['temperature'][0, -6, ...].cpu()
-    t850_target = target_feat_dict['temperature'][0, -6, ...].cpu()
-    q850_pred = pred_feat_dict['specific_total_water'][0, -6, ...].cpu()
-    q850_target = target_feat_dict['specific_total_water'][0, -6, ...].cpu()
+    z500_pred = pred_feat_dict['geopotential'][0, -6, ...].cpu() # b l h w -> h w
+    z500_target = target_feat_dict['geopotential'][0, -6, ...].cpu()
+    u250_pred = pred_feat_dict['u_component_of_wind'][0, -9, ...].cpu()
+    u250_target = target_feat_dict['u_component_of_wind'][0, -9, ...].cpu()
+    t850_pred = pred_feat_dict['temperature'][0, -3, ...].cpu()
+    t850_target = target_feat_dict['temperature'][0, -3, ...].cpu()
+    q850_pred = pred_feat_dict['specific_total_water'][0, -3, ...].cpu()
+    q850_target = target_feat_dict['specific_total_water'][0, -3, ...].cpu()
 
     plot_reconstruction(t2m_pred, # h w
                 t2m_target,
@@ -112,12 +112,14 @@ def main(args):
     print(f"Logging to: {path}")
     save_yaml(config, path + "config.yml")
 
-    dataconfig["data_timedelta_hours"] = dataconfig['timedelta_hours'] # set timedelta to 24h
     dataconfig['batch_size'] = 1
 
     dataset = GetDataset(dataconfig,
                          year_start=1996,
                          year_end=2001)
+
+    # Step through dataset at forecast intervals (e.g. every 4th sample for 24h steps with 6h data)
+    stride = dataconfig['timedelta_hours'] // dataconfig['data_timedelta_hours']
     
     device_index = torch.cuda.current_device()
     device = f"cuda:{device_index}"
@@ -138,9 +140,11 @@ def main(args):
     else:
         clim_nlat, clim_nlon = model.nlat, model.nlon
 
-    print(f"Processing {len(dataset)} timesteps with ensemble size {ensemble_size}...")
+    num_steps = len(dataset) // stride
+    print(f"Processing {num_steps} timesteps (stride={stride}) with ensemble size {ensemble_size}...")
 
-    plot_every = 500
+    plot_every = 50
+    num_steps = 500
 
     # per-member running mean accumulators: e c h w / e c l h w
     climatology_surface = torch.zeros((ensemble_size, len(model.surface_variables), clim_nlat, clim_nlon), device=device)
@@ -148,8 +152,9 @@ def main(args):
     climatology_diagnostic = torch.zeros((ensemble_size, len(model.diagnostic_variables), clim_nlat, clim_nlon), device=device)
 
     with torch.no_grad():
-        for batch_idx in tqdm(range(len(dataset))):
-            if batch_idx == 0:
+        for step_idx in tqdm(range(num_steps)):
+            batch_idx = step_idx * stride
+            if step_idx == 0:
                 surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data = dataset.__getitem__(batch_idx)
                 surface_t = surface_t.unsqueeze(0).to(device).expand(ensemble_size, -1, -1, -1)
                 upper_air_t = upper_air_t.unsqueeze(0).to(device).expand(ensemble_size, -1, -1, -1, -1)
@@ -165,28 +170,28 @@ def main(args):
                 varying_boundary_data = varying_boundary_data.unsqueeze(0).to(device).expand(ensemble_size, -1, -1, -1)
                 c_grid = assemble_forcing(varying_boundary_data, invariant) # e c h w
 
-            y = model.forward(x, c_grid) # e c h w / e c l h w
+            y, y_last = model.forward(x, c_grid, return_model_last=True) # e c h w / e c l h w
 
-            surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y)
+            surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y_last)
 
             surface_pred_denorm = model.n.surface_inv_transform(surface_pred)
             multilevel_pred_denorm = model.n.upper_air_inv_transform(multilevel_pred)
             diagnostic_pred_denorm = model.n.diagnostic_inv_transform(diagnostic_pred)
 
             # per-member running mean update
-            n = batch_idx + 1
+            n = step_idx + 1
             climatology_surface += (surface_pred_denorm - climatology_surface) / n
             climatology_multilevel += (multilevel_pred_denorm - climatology_multilevel) / n
             climatology_diagnostic += (diagnostic_pred_denorm - climatology_diagnostic) / n
 
             x = y
 
-            if (batch_idx) % plot_every == 0:
-                print(f"Batch {batch_idx}/{len(dataset)}")
+            if step_idx % plot_every == 0:
+                print(f"Step {step_idx}/{num_steps}")
                 # save intermediate climatology (ensemble mean)
-                torch.save(climatology_surface.mean(dim=0).cpu(), path + f"climatology_surface_{batch_idx + 1}.pt")
-                torch.save(climatology_multilevel.mean(dim=0).cpu(), path + f"climatology_multilevel_{batch_idx + 1}.pt")
-                torch.save(climatology_diagnostic.mean(dim=0).cpu(), path + f"climatology_diagnostic_{batch_idx + 1}.pt")
+                torch.save(climatology_surface.mean(dim=0).cpu(), path + f"climatology_surface_{step_idx + 1}.pt")
+                torch.save(climatology_multilevel.mean(dim=0).cpu(), path + f"climatology_multilevel_{step_idx + 1}.pt")
+                torch.save(climatology_diagnostic.mean(dim=0).cpu(), path + f"climatology_diagnostic_{step_idx + 1}.pt")
 
                 # Targets stay at full resolution
                 surface_t1_dev = surface_t1.unsqueeze(0).to(device)
@@ -216,7 +221,7 @@ def main(args):
                     pred_feat_dict[diagnostic_feat_name] = diagnostic_pred_denorm[:1, c] # 1 nlat nlon
                     target_feat_dict[diagnostic_feat_name] = diagnostic_true_denorm[:, c]
 
-                plot_predictions(pred_feat_dict, target_feat_dict, path, batch_idx + 1)
+                plot_predictions(pred_feat_dict, target_feat_dict, path, step_idx + 1)
 
     # save ensemble climatologies
     torch.save(climatology_surface.cpu(), path + "climatology_surface_ensemble.pt")

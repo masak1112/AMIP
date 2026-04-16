@@ -23,8 +23,8 @@ model:
             l_max: 45
             spectral_weight: 0.0
             noise : spherical
-            model_last: True
-            loss_form: v
+            model_last: False
+            noise_scale_path: /home/anthonyz/amip/sigma_c_lowres.pt
 
 data:
     data_dir: '/project/pedramh/AMIP/h5'
@@ -99,6 +99,6 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_no_spectral_42_2026-04-15T13-43-18/last.ckpt
-    description: no_spectral_vloss
+    description: noise_scale_finetune
     accumulate_grad_batches: 1
     optimizer: adam
