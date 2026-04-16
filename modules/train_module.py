@@ -399,6 +399,21 @@ class TrainModule(L.LightningModule):
     def configure_optimizers(self):
         if self.optimizer_name == "adam":
             optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        elif self.optimizer_name == "muon":
+            from muon import MuonWithAuxAdam
+            hidden_weights = [p for p in self.model.sa_blocks.parameters() if p.ndim >= 2]
+            hidden_gains_biases = [p for p in self.model.sa_blocks.parameters() if p.ndim < 2]
+            nonhidden_params = [*self.model.c_grid_embed.parameters(), 
+                                *self.model.patch_embed_main.parameters(),
+                                *self.model.t_embedder.parameters(),
+                                *self.model.unpatchify_layer.parameters(),]
+            param_groups = [
+                dict(params=hidden_weights, use_muon=True,
+                    lr=self.lr * 10, weight_decay=0.01),
+                dict(params=hidden_gains_biases+nonhidden_params, use_muon=False,
+                    lr=self.lr, betas=(0.9, 0.95), weight_decay=0.01),
+            ]
+            optimizer = MuonWithAuxAdam(param_groups)
         else:
             raise NotImplementedError(f"Optimizer {self.optimizer_name} not implemented")
 

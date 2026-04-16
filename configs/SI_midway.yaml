@@ -3,9 +3,9 @@ model:
     lr: 5.0e-5
     SI_X:
         model:
-            in_channels: 172 # 86*2 
-            out_channels: 86 # 13*5 + 6 + 15 
-            dim: 1280
+            in_channels: 302 # 151*2 
+            out_channels: 151 # 26*5 + 6 + 15 
+            dim: 1536
             num_heads: 16
             num_blocks: 24
             patch_size: 1
@@ -24,7 +24,7 @@ model:
             spectral_weight: 0.0
             noise : spherical
             model_last: False
-            noise_scale_path: /home/anthonyz/amip/sigma_c_lowres.pt
+            noise_scale_path: /home/anthonyz/amip/sigma_c_lowres_26.pt
 
 data:
     data_dir: '/project/pedramh/AMIP/h5'
@@ -74,14 +74,14 @@ data:
     data_timedelta_hours: 6
     timedelta_hours: 24
     has_year_zero: False
-    levels: [50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000]    
+    levels: [5, 7, 10, 20, 30, 50, 70, 100, 125, 150, 175, 200, 250, 300, 400, 500, 600, 700, 800, 850, 875, 900, 925, 950, 975, 1000]
     horizontal_resolution: [180, 360]
     predict_delta: False
     epsilon_factor: 0
     val_num_inferences: 50
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
-    batch_size: 6
+    batch_size: 2
     num_data_workers: 8
 
 training:
@@ -98,7 +98,7 @@ training:
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_no_spectral_42_2026-04-15T13-43-18/last.ckpt
-    description: noise_scale_finetune
+    checkpoint: null
+    description: large
     accumulate_grad_batches: 1
-    optimizer: adam
+    optimizer: muon

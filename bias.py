@@ -143,8 +143,8 @@ def main(args):
     num_steps = len(dataset) // stride
     print(f"Processing {num_steps} timesteps (stride={stride}) with ensemble size {ensemble_size}...")
 
-    plot_every = 50
-    num_steps = 500
+    plot_every = 500
+    #num_steps = 500
 
     # per-member running mean accumulators: e c h w / e c l h w
     climatology_surface = torch.zeros((ensemble_size, len(model.surface_variables), clim_nlat, clim_nlon), device=device)
