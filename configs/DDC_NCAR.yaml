@@ -5,9 +5,9 @@ model:
         encoder:
             downsample_factor: 4
         decoder:
-            in_channels: 172 # 86*2 
-            out_channels: 86 # 13*5 + 6 + 15 
-            model_channels: 256
+            in_channels: 302 # 86*2 
+            out_channels: 151 # 13*5 + 6 + 15 
+            model_channels: 384
             channel_mult: [1, 2, 4]
             num_res_blocks: 3
             attn_levels: [2]

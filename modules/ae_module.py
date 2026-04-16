@@ -35,7 +35,6 @@ class AutoencoderModule(L.LightningModule):
         self.n = normalizer
 
         if self.model_name == "x_DDC":
-            #from modules.models.DiT import DiT
             from modules.models.Unet import UNet
             from modules.layers.bilinear import BilinearEncoder, BilinearDecoder
             from modules.diffusion.x_DDC import DataDependentInterpolant
@@ -149,23 +148,14 @@ class AutoencoderModule(L.LightningModule):
         pr_6h_pred = pred_feat_dict['PRATEsfc_24h'][0].cpu()
         pr_6h_target = target_feat_dict['PRATEsfc_24h'][0].cpu()
 
-        # z500_pred = pred_feat_dict['geopotential'][0, -10, ...].cpu() # b l h w -> h w
-        # z500_target = target_feat_dict['geopotential'][0, -10, ...].cpu()
-        # u250_pred = pred_feat_dict['u_component_of_wind'][0, -13, ...].cpu()
-        # u250_target = target_feat_dict['u_component_of_wind'][0, -13, ...].cpu()
-        # t850_pred = pred_feat_dict['temperature'][0, -6, ...].cpu()
-        # t850_target = target_feat_dict['temperature'][0, -6, ...].cpu()
-        # q850_pred = pred_feat_dict['specific_total_water'][0, -6, ...].cpu()
-        # q850_target = target_feat_dict['specific_total_water'][0, -6, ...].cpu()
-
-        z500_pred = pred_feat_dict['geopotential'][0, -6, ...].cpu() # b l h w -> h w
-        z500_target = target_feat_dict['geopotential'][0, -6, ...].cpu()
-        u250_pred = pred_feat_dict['u_component_of_wind'][0, -9, ...].cpu()
-        u250_target = target_feat_dict['u_component_of_wind'][0, -9, ...].cpu()
-        t850_pred = pred_feat_dict['temperature'][0, -3, ...].cpu()
-        t850_target = target_feat_dict['temperature'][0, -3, ...].cpu()
-        q850_pred = pred_feat_dict['specific_total_water'][0, -3, ...].cpu()
-        q850_target = target_feat_dict['specific_total_water'][0, -3, ...].cpu()
+        z500_pred = pred_feat_dict['geopotential'][0, -10, ...].cpu() # b l h w -> h w
+        z500_target = target_feat_dict['geopotential'][0, -10, ...].cpu()
+        u250_pred = pred_feat_dict['u_component_of_wind'][0, -13, ...].cpu()
+        u250_target = target_feat_dict['u_component_of_wind'][0, -13, ...].cpu()
+        t850_pred = pred_feat_dict['temperature'][0, -6, ...].cpu()
+        t850_target = target_feat_dict['temperature'][0, -6, ...].cpu()
+        q850_pred = pred_feat_dict['specific_total_water'][0, -6, ...].cpu()
+        q850_target = target_feat_dict['specific_total_water'][0, -6, ...].cpu()
 
         plot_reconstruction(t2m_pred, # h w
                     t2m_target,
@@ -217,15 +207,10 @@ class AutoencoderModule(L.LightningModule):
         # calculate the mean loss across batch, shape b for each key, b l for multilevel keys
         t2m_loss = loss_dict['2m_temperature'].mean(0) # surface temp, mean across batch dim
         pr_6h_loss = loss_dict['PRATEsfc_24h'].mean(0) # 6-hour accumulated PRATEsfc
-        # z500_loss = loss_dict['geopotential'][..., -10].mean(0) # geopotential at level=10
-        # u250_loss = loss_dict['u_component_of_wind'][..., -13].mean(0) # u wind at level=13
-        # t850_loss = loss_dict['temperature'][..., -6].mean(0) # temp at level=6
-        # q850_loss = loss_dict['specific_total_water'][..., -6].mean(0) # specific humidity at level=6
-
-        z500_loss = loss_dict['geopotential'][..., -6].mean(0) # geopotential at level=10
-        u250_loss = loss_dict['u_component_of_wind'][..., -9].mean(0) # u wind at level=13
-        t850_loss = loss_dict['temperature'][..., -3].mean(0) # temp at level=6
-        q850_loss = loss_dict['specific_total_water'][..., -3].mean(0) # specific humidity at level=6
+        z500_loss = loss_dict['geopotential'][..., -10].mean(0) # geopotential at level=10
+        u250_loss = loss_dict['u_component_of_wind'][..., -13].mean(0) # u wind at level=13
+        t850_loss = loss_dict['temperature'][..., -6].mean(0) # temp at level=6
+        q850_loss = loss_dict['specific_total_water'][..., -6].mean(0) # specific humidity at level=6
         
         self.log('val/t2m', t2m_loss.item(), on_step=False, on_epoch=True, sync_dist=self.ddp) 
         self.log('val/pr_6h', pr_6h_loss.item(), on_step=False, on_epoch=True, sync_dist=self.ddp)
@@ -234,23 +219,59 @@ class AutoencoderModule(L.LightningModule):
         self.log('val/t850', t850_loss.item(), on_step=False, on_epoch=True, sync_dist=self.ddp)
         self.log('val/q850', q850_loss.item(), on_step=False, on_epoch=True, sync_dist=self.ddp)
     
+    def get_muon_param_groups(self):
+        """Split UNet parameters into Muon vs AdamW groups.
+
+        Muon (use_muon=True): weights (ndim >= 2) from encoder blocks, decoder
+        blocks, downsamples, upsamples, and bottleneck (mid) blocks.
+
+        AdamW (use_muon=False): all biases / 1-D params (gains, norms) from
+        those same modules, plus *all* parameters from input/output projections
+        and the timestep embedder.
+        """
+        # Modules whose >=2D weights should use Muon
+        muon_modules = [
+            self.model.enc_blocks,
+            self.model.dec_blocks,
+            self.model.downsamples,
+            self.model.upsamples,
+            self.model.mid_block1,
+            self.model.mid_attn,
+            self.model.mid_block2,
+        ]
+
+        muon_weights = []
+        adamw_from_muon_modules = []
+        for mod in muon_modules:
+            for p in mod.parameters():
+                if p.ndim >= 2:
+                    muon_weights.append(p)
+                else:
+                    adamw_from_muon_modules.append(p)
+
+        # Modules whose *all* parameters go to AdamW (input/output projections + timestep embedder)
+        adamw_modules = [
+            self.model.input_conv,
+            self.model.out_norm,
+            self.model.out_conv,
+            self.model.t_embedder,
+        ]
+        adamw_params = [p for mod in adamw_modules for p in mod.parameters()]
+        adamw_params += adamw_from_muon_modules
+
+        return [
+            dict(params=muon_weights, use_muon=True,
+                 lr=self.lr * 10, weight_decay=0.01),
+            dict(params=adamw_params, use_muon=False,
+                 lr=self.lr, betas=(0.9, 0.95), weight_decay=0.01),
+        ]
+
     def configure_optimizers(self):
         if self.optimizer_name == "adam":
             optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         elif self.optimizer_name == "muon":
             from muon import MuonWithAuxAdam
-            hidden_weights = [p for p in self.model.sa_blocks.parameters() if p.ndim >= 2]
-            hidden_gains_biases = [p for p in self.model.sa_blocks.parameters() if p.ndim < 2]
-            nonhidden_params = [*self.model.c_grid_embed.parameters(), 
-                                *self.model.patch_embed_main.parameters(),
-                                *self.model.t_embedder.parameters(),
-                                *self.model.unpatchify_layer.parameters(),]
-            param_groups = [
-                dict(params=hidden_weights, use_muon=True,
-                    lr=self.lr * 10, weight_decay=0.01),
-                dict(params=hidden_gains_biases+nonhidden_params, use_muon=False,
-                    lr=self.lr, betas=(0.9, 0.95), weight_decay=0.01),
-            ]
+            param_groups = self.get_muon_param_groups()
             optimizer = MuonWithAuxAdam(param_groups)
         else:
             raise NotImplementedError(f"Optimizer {self.optimizer_name} not implemented")

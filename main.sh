@@ -6,10 +6,6 @@
 #PBS -A UCHI0014
 #PBS -j oe
 
-export NCCL_TIMEOUT=1800
-export NCCL_P2P_DISABLE=1                                                                                                                                                                                                                                                       
-export NCCL_SHM_DISABLE=0 
-
 module load conda
 conda activate torch
 

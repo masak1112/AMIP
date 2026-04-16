@@ -85,7 +85,7 @@ def plot_result(y_pred, y, filename, num_t=5, cmap='twilight_shifted'):
     plt.savefig(filename, dpi=300)
     plt.close()
 
-def plot_bias(pred, target, save_path=None):
+def plot_bias(pred, target, save_path=None, title=""):
     # pred, target in shape nlat nlon
     bias = pred - target
     fig, axs = plt.subplots(1, 3, figsize=(15, 5))
@@ -109,6 +109,8 @@ def plot_bias(pred, target, save_path=None):
     im2 = axs[2].imshow(bias, cmap='bwr', vmin=-bias_scale, vmax=bias_scale, origin='lower')
     axs[2].set_title('Bias (Predicted - Target)')
     fig.colorbar(im2, ax=axs[2], orientation='horizontal')
+
+    fig.suptitle(title)
 
     if save_path is not None:
         plt.savefig(save_path, bbox_inches='tight', dpi=300)
