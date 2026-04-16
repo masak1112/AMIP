@@ -10,7 +10,6 @@ class AutoencoderModule(L.LightningModule):
                  config: dict,
                  normalizer= None):
         '''
-        TrainModule
         args:
             config (dict): configuration dictionary containing model, training and data configurations
             normalizer (object, optional): normalizer object for scaling input data. Defaults to None.
@@ -31,98 +30,9 @@ class AutoencoderModule(L.LightningModule):
         self.model_name = self.modelconfig["model_name"]
         self.lr = self.modelconfig["lr"]
         self.log_dir = config['training']['log_dir']
+        self.optimizer_name = config['training']['optimizer']
 
         self.n = normalizer
-
-        '''
-        if self.model_name == "AE_DIT_DDC":
-            from modules.models.DiT import DiT
-            from modules.layers.bilinear import BilinearEncoder, BilinearDecoder
-            from modules.diffusion.data_dependent_interpolant import DataDependentInterpolant
-            self.downsample = BilinearEncoder(**self.modelconfig["AE_DIT_DDC"]["encoder"])
-            self.upsample = BilinearDecoder(**self.modelconfig["AE_DIT_DDC"]["encoder"])
-            self.decoder = DiT(**self.modelconfig["AE_DIT_DDC"]["decoder"])
-            self.scheduler = DataDependentInterpolant(**self.modelconfig["AE_DIT_DDC"]["scheduler"])
-            self.diffusion = True
-
-        elif self.model_name == "Decoder_CNN":
-            from modules.models.Decoder import DecoderCNN
-            from modules.layers.bilinear import BilinearEncoder
-            from common.loss import SpectralBaseLoss, WeightedLoss
-
-            self.encoder = BilinearEncoder(**self.modelconfig["Decoder_CNN"]["encoder"])
-            self.decoder = DecoderCNN(**self.modelconfig["Decoder_CNN"]["decoder"])
-
-            self.criterion = WeightedLoss(latitude_resolution=180,
-                                longitude_resolution=360,
-                                nlevels = 26,
-                                level_weight=self.modelconfig["level_weight"],
-                                surface_variable_weight=self.modelconfig["surface_weight"],
-                                multi_level_variable_weight=self.modelconfig["multi_level_weight"],
-                                diag_variable_weight=self.modelconfig["diag_weight"])
-        
-            self.spectral_loss_weight = self.modelconfig["spectral_loss_weight"] # 0.05
-            self.spectral_criterion = SpectralBaseLoss(img_shape=(180, 360),
-                                                    z500_weight= self.modelconfig["spectral_z_weight"])
-
-        if self.model_name == "VAE_CNN":
-            from modules.models.AE import Encoder, Decoder
-            from common.loss import SpectralBaseLoss, WeightedLoss
-
-            self.kl_weight = self.modelconfig.get("kl_weight", 1e-6)
-            self.encoder = Encoder(**self.modelconfig["VAE_CNN"]["encoder"])
-            self.decoder = Decoder(**self.modelconfig["VAE_CNN"]["decoder"])
-
-            self.criterion = WeightedLoss(latitude_resolution=180,
-                                longitude_resolution=360,
-                                nlevels = 26,
-                                level_weight=self.modelconfig["level_weight"],
-                                surface_variable_weight=self.modelconfig["surface_weight"],
-                                multi_level_variable_weight=self.modelconfig["multi_level_weight"],
-                                diag_variable_weight=self.modelconfig["diag_weight"])
-
-            self.spectral_loss_weight = self.modelconfig["spectral_loss_weight"]
-            self.spectral_criterion = SpectralBaseLoss(img_shape=(180, 360),
-                                                    z500_weight= self.modelconfig["spectral_z_weight"])
-            
-        elif self.model_name == "Decoder_EDM":
-            from modules.models.AE import Encoder
-            from modules.models.DiT import cDiT
-            from modules.diffusion.edm import EDMScheduler
-
-            self.encoder = Encoder(**self.modelconfig["Decoder_EDM"]["encoder"])
-            self.decoder = cDiT(**self.modelconfig["Decoder_EDM"]["decoder"])
-            self.scheduler = EDMScheduler(**self.modelconfig["Decoder_EDM"]["scheduler"])
-            self.diffusion = True 
-
-            # load encoder weights 
-            self.initialize_encoder()
-
-        elif self.model_name == "Decoder_SI":
-            from modules.models.AE import Encoder
-            from modules.models.DiT import cDiT, PatchBoundaryRefiner
-            from modules.diffusion.stochastic_interpolant import SI_Scheduler
-
-            self.encoder = Encoder(**self.modelconfig["Decoder_SI"]["encoder"])
-            self.decoder = cDiT(**self.modelconfig["Decoder_SI"]["decoder"])
-            self.scheduler = SI_Scheduler(**self.modelconfig["Decoder_SI"]["scheduler"])
-            self.diffusion = True
-
-            refiner_cfg = self.modelconfig["Decoder_SI"].get("refiner", None)
-            
-            if refiner_cfg is not None:
-                out_channels = self.modelconfig["Decoder_SI"]["decoder"]["out_channels"]
-                self.refiner = PatchBoundaryRefiner(
-                    channels=out_channels,
-                    hidden=refiner_cfg.get("dim", 64),
-                )
-                self.refiner_weight = refiner_cfg.get("weight", 0.1)
-                self.refiner_warmup_epochs = refiner_cfg.get("warmup_epochs", 0)
-
-            # load encoder weights 
-            self.initialize_encoder()
-        
-        '''
 
         if self.model_name == "x_DDC":
             #from modules.models.DiT import DiT
@@ -131,7 +41,7 @@ class AutoencoderModule(L.LightningModule):
             from modules.diffusion.x_DDC import DataDependentInterpolant
             self.downsample = BilinearEncoder(**self.modelconfig["x_DDC"]["encoder"])
             self.upsample = BilinearDecoder(**self.modelconfig["x_DDC"]["encoder"])
-            self.decoder = UNet(**self.modelconfig["x_DDC"]["decoder"])
+            self.model = UNet(**self.modelconfig["x_DDC"]["decoder"])
             self.scheduler = DataDependentInterpolant(**self.modelconfig["x_DDC"]["scheduler"])
         else:
             raise NotImplementedError(f"Model {self.model_name} not implemented")
@@ -142,36 +52,6 @@ class AutoencoderModule(L.LightningModule):
             self.ddp = False
 
         self.save_hyperparameters()
-    
-    '''    
-    def initialize_encoder(self):
-        encoder_checkpoint = self.modelconfig[self.model_name].get("encoder_checkpoint", None)
-        if encoder_checkpoint is None:
-            raise ValueError("encoder_checkpoint must be specified in config when using a encoder")
-
-        state_dict = torch.load(encoder_checkpoint, map_location='cpu', weights_only=False)['state_dict']
-
-        # Extract encoder weights from the AutoencoderModule checkpoint
-        encoder_state_dict = {}
-        for k, v in state_dict.items():
-            if k.startswith("encoder."):
-                encoder_state_dict[k[len("encoder."):]] = v
-
-        self.encoder.load_state_dict(encoder_state_dict)
-        self.encoder.eval()
-        for param in self.encoder.parameters():
-            param.requires_grad = False
-        print(f"Loaded pretrained encoder from {encoder_checkpoint}")
-
-    # def encode(self, x):
-    #     h = self.encoder(x)
-    #     self.posterior = DiagonalGaussianDistribution(h)
-    #     if self.diffusion:
-    #         z = self.posterior.mode()  # deterministic for conditioning
-    #     else:
-    #         z = self.posterior.sample()  # stochastic for VAE training
-    #     return z
-    '''
     
     def encode(self, surface, multilevel, diagnostic):
 
@@ -184,7 +64,7 @@ class AutoencoderModule(L.LightningModule):
     def forward(self, surface, multilevel, diagnostic):
         
         z = self.encode(surface, multilevel, diagnostic)
-        y = self.scheduler.sample(self.decoder, z)
+        y = self.scheduler.sample(self.model, z)
 
         surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y, nlevels=self.nlevels)
 
@@ -197,30 +77,10 @@ class AutoencoderModule(L.LightningModule):
 
         y = assemble_input(surface_data, multilevel_data, diagnostic_data)
 
-        loss, spectral_loss = self.scheduler.compute_loss(self.decoder, z, y)
+        loss, spectral_loss = self.scheduler.compute_loss(self.model, z, y)
 
         self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
         self.log("train/spectral_loss", spectral_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
-
-        '''
-        else:
-            surface_pred, multilevel_pred, diagnostic_pred = self.forward(surface_data, multilevel_data, diagnostic_data)
-            pixel_loss = self.criterion(surface_pred, surface_data,
-                                        multilevel_pred, multilevel_data,
-                                        diagnostic_pred, diagnostic_data)
-            spectral_loss = self.spectral_criterion(surface_pred, surface_data,
-                                        multilevel_pred, multilevel_data,
-                                        diagnostic_pred, diagnostic_data)
-            kl_loss = self.posterior.kl().mean()
-
-            self.log("train/pixel_loss", pixel_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
-            self.log("train/spectral_loss", spectral_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
-            self.log("train/kl_loss", kl_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
-
-            loss = pixel_loss + self.spectral_loss_weight * spectral_loss + self.kl_weight * kl_loss
-
-        self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
-        '''
 
         return loss
 
@@ -375,8 +235,26 @@ class AutoencoderModule(L.LightningModule):
         self.log('val/q850', q850_loss.item(), on_step=False, on_epoch=True, sync_dist=self.ddp)
     
     def configure_optimizers(self):
+        if self.optimizer_name == "adam":
+            optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        elif self.optimizer_name == "muon":
+            from muon import MuonWithAuxAdam
+            hidden_weights = [p for p in self.model.sa_blocks.parameters() if p.ndim >= 2]
+            hidden_gains_biases = [p for p in self.model.sa_blocks.parameters() if p.ndim < 2]
+            nonhidden_params = [*self.model.c_grid_embed.parameters(), 
+                                *self.model.patch_embed_main.parameters(),
+                                *self.model.t_embedder.parameters(),
+                                *self.model.unpatchify_layer.parameters(),]
+            param_groups = [
+                dict(params=hidden_weights, use_muon=True,
+                    lr=self.lr * 10, weight_decay=0.01),
+                dict(params=hidden_gains_biases+nonhidden_params, use_muon=False,
+                    lr=self.lr, betas=(0.9, 0.95), weight_decay=0.01),
+            ]
+            optimizer = MuonWithAuxAdam(param_groups)
+        else:
+            raise NotImplementedError(f"Optimizer {self.optimizer_name} not implemented")
 
-        optimizer = torch.optim.Adam(self.decoder.parameters(), lr=self.lr)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
 
         return [optimizer], [scheduler]

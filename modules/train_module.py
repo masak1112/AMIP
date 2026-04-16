@@ -72,54 +72,6 @@ class TrainModule(L.LightningModule):
 
         self.save_hyperparameters()
 
-    '''
-    def initialize_vae(self):
-        vae_checkpoint = self.modelconfig['SI_Latent_DiT'].get("vae_checkpoint", None)
-        if vae_checkpoint is None:
-            raise ValueError("vae_checkpoint must be specified in config when using VAE encoder/decoder")
-
-        state_dict = torch.load(vae_checkpoint, map_location='cpu', weights_only=False)['state_dict']
-
-        encoder_state_dict = {}
-        decoder_state_dict = {}
-        for k, v in state_dict.items():
-            if k.startswith("encoder."):
-                encoder_state_dict[k[len("encoder."):]] = v
-            elif k.startswith("decoder."):
-                decoder_state_dict[k[len("decoder."):]] = v
-
-        self.encoder.load_state_dict(encoder_state_dict)
-        self.decoder.load_state_dict(decoder_state_dict)
-
-        self.encoder.eval()
-        self.decoder.eval()
-        for param in self.encoder.parameters():
-            param.requires_grad = False
-        for param in self.decoder.parameters():
-            param.requires_grad = False
-        print(f"Loaded pretrained VAE from {vae_checkpoint}")
-
-    def encode(self, x, deterministic=False):
-        h = self.encoder(x)
-        posterior = DiagonalGaussianDistribution(h, deterministic=deterministic)
-        z = posterior.sample()
-        return z
-    # x is latent state, c_grid is grid-scale conditioning (original resolution)
-        if self.model_name == "Pixel_iMF":
-            x = torch.cat([x, c_grid], dim=1) # concatenate conditioning to input for Pixel_iMF
-            y = self.model.generate(x)
-        else:
-        if self.model_name == "Pixel_iMF":
-            x = torch.cat([x, c_grid], dim=1) # concatenate conditioning to input for Pixel_iMF
-            loss, loss_ref = self.model.forward(y, x)
-            self.log("train/loss", loss_ref, on_step=True, on_epoch=True, sync_dist=self.ddp)
-            #loss, loss_dict = self.model.forward(y, x)
-            #self.log("train/loss_u", loss_dict["loss_u"], on_step=True, on_epoch=True, sync_dist=self.ddp)
-            #self.log("train/loss_v", loss_dict["loss_v"], on_step=True, on_epoch=True, sync_dist=self.ddp)
-            #self.log("train/loss_spectral", loss_dict["loss_spectral"], on_step=True, on_epoch=True, sync_dist=self.ddp)
-        else:
-    '''
-
     def preprocess(self, surface_t, upper_air_t, diagnostic_t):
         if self.downsample is not None:
             with torch.no_grad():
@@ -269,14 +221,11 @@ class TrainModule(L.LightningModule):
                                                                                  with_time=False)
                 if t in t_plot and multilevel_feat_name in plot_keys:
                     if multilevel_feat_name == 'geopotential':
-                        #l_plot = -10
-                        l_plot = -6
+                        l_plot = -10
                     elif multilevel_feat_name == 'u_component_of_wind':
-                        #l_plot = -13
-                        l_plot = -9
+                        l_plot = -13
                     elif multilevel_feat_name == 'temperature' or multilevel_feat_name == 'specific_total_water':
-                        #l_plot = -6
-                        l_plot = -3
+                        l_plot = -6
 
                     pred_feat_dict[multilevel_feat_name][:, i_plot] = multilevel_pred_denorm[:, c, l_plot]
                     target_feat_dict[multilevel_feat_name][:, i_plot] = multilevel_true_denorm[:, c, l_plot]
@@ -356,15 +305,10 @@ class TrainModule(L.LightningModule):
         # calculate the mean loss across batch, shape b t for each key, b t l for multilevel keys
         t2m_loss = loss_dict['2m_temperature'].mean(0) # surface temp, mean across batch dim
         pr_6h_loss = loss_dict['PRATEsfc_24h'].mean(0) # 6-hour accumulated PRATEsfc
-        #z500_loss = loss_dict['geopotential'][..., -10].mean(0) # geopotential at level=10
-        #u250_loss = loss_dict['u_component_of_wind'][..., -13].mean(0) # u wind at level=13
-        #t850_loss = loss_dict['temperature'][..., -6].mean(0) # temp at level=6
-        #q850_loss = loss_dict['specific_total_water'][..., -6].mean(0) 
-
-        z500_loss = loss_dict['geopotential'][..., -6].mean(0) # geopotential at level=10
-        u250_loss = loss_dict['u_component_of_wind'][..., -9].mean(0) # u wind at level=13
-        t850_loss = loss_dict['temperature'][..., -3].mean(0) # temp at level=6
-        q850_loss = loss_dict['specific_total_water'][..., -3].mean(0) 
+        z500_loss = loss_dict['geopotential'][..., -10].mean(0) # geopotential at level=10
+        u250_loss = loss_dict['u_component_of_wind'][..., -13].mean(0) # u wind at level=13
+        t850_loss = loss_dict['temperature'][..., -6].mean(0) # temp at level=6
+        q850_loss = loss_dict['specific_total_water'][..., -6].mean(0) 
         
         self.log('val/t2m_1', t2m_loss[0].item(), on_step=False, on_epoch=True, sync_dist=self.ddp) # 6 hours
         self.log('val/t2m_3', t2m_loss[2].item(), on_step=False, on_epoch=True, sync_dist=self.ddp) # 1 day
@@ -420,49 +364,3 @@ class TrainModule(L.LightningModule):
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
 
         return [optimizer], [scheduler]
-    
-'''
-    elif self.optimizer_name == "shampoo":
-            from distributed_shampoo import (
-                AdamPreconditionerConfig,
-                DDPDistributedConfig,
-                DistributedShampoo,
-            )
-
-            optimizer = DistributedShampoo(
-                self.model.parameters(),
-                lr=self.lr,
-                betas=(0.9, 0.999),
-                epsilon=1e-12,
-                weight_decay=1e-05,
-                max_preconditioner_dim=8192,
-                precondition_frequency=100,
-                use_decoupled_weight_decay=True,
-                grafting_config=AdamPreconditionerConfig(
-                    beta2=0.999,
-                    epsilon=1e-12,
-                ),
-                distributed_config=DDPDistributedConfig(
-                    communication_dtype=torch.float32,
-                    num_trainers_per_group=8,
-                    communicate_params=False,
-                ),
-            )
-        elif self.optimizer_name == "soap":
-            from distributed_shampoo import (
-                DistributedShampoo,
-                DefaultSOAPConfig,
-            )
-
-            optimizer = DistributedShampoo(
-                self.model.parameters(),
-                lr=self.lr,
-                betas=(0.9, 0.999),
-                epsilon=1e-12,
-                weight_decay=1e-06,
-                max_preconditioner_dim=8192,
-                precondition_frequency=100,
-                preconditioner_config=DefaultSOAPConfig,
-            )
-'''
-    

@@ -22,7 +22,7 @@ model:
             model_last: True 
             noise : spherical
             tau: 1.3
-            noise_scale_path: /home/anthonyz/amip/sigma_c_highres.pt
+            noise_scale_path: /home/anthonyz/amip/sigma_c_highres_26.pt
 
 data:
     data_dir: '/project/pedramh/AMIP/h5'
@@ -69,7 +69,7 @@ data:
     data_timedelta_hours: 6
     timedelta_hours: 24
     has_year_zero: False
-    levels: [50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000]   
+    levels: [5, 7, 10, 20, 30, 50, 70, 100, 125, 150, 175, 200, 250, 300, 400, 500, 600, 700, 800, 850, 875, 900, 925, 950, 975, 1000] 
     horizontal_resolution: [180, 360]
     predict_delta: False
     epsilon_factor: 0
@@ -96,4 +96,4 @@ training:
     checkpoint: null
     description: x_DDC
     accumulate_grad_batches: 1
-    optimizer: adam
+    optimizer: muon
