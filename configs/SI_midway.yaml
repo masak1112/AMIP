@@ -17,7 +17,7 @@ model:
             nlat: 45
             nlon: 90
         scheduler:
-            num_steps: 20
+            num_steps: 10
             sigma_coef: 1.0
             train_sampler: power
             l_max: 45
@@ -81,7 +81,7 @@ data:
     val_num_inferences: 50
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
-    batch_size: 2
+    batch_size: 3
     num_data_workers: 8
 
 training:
