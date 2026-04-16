@@ -7,8 +7,8 @@
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:4
 #SBATCH --cpus-per-task=4 
-#SBATCH -o midway_%x_%j.out
-#SBATCH -e midway_%x_%j.err
+#SBATCH -o DDC_%x_%j.out
+#SBATCH -e DDC_%x_%j.err
 
 ml python
 conda activate /project/pedramh/ayz/envs/torch2
@@ -18,6 +18,6 @@ conda activate /project/pedramh/ayz/envs/torch2
 export NCCL_P2P_DISABLE=1
 export NCCL_IB_DISABLE=1
 
-config_file=configs/SI_DiT.yaml
+config_file=configs/DDC_midway.yaml
 
 srun python train.py --config=$config_file
