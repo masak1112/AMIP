@@ -10,7 +10,7 @@ model:
             model_channels: 384
             channel_mult: [1, 2, 4]
             num_res_blocks: 3
-            attn_levels: [2]
+            attn_levels: []
             num_heads: 8
             t_emb_dim: 256
         scheduler:
@@ -76,7 +76,7 @@ data:
     val_num_inferences: 50 # use entire val set
     diagnostic_input: True # specific to AE model, we need diagnostic at time t, since we are training a downscaler
 
-    batch_size: 4
+    batch_size: 2
     num_data_workers: 8
 
 training:
