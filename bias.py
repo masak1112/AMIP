@@ -117,7 +117,7 @@ def main(args):
     else:
         anchor_ckpt = trainconfig["checkpoint"]
 
-    ID = 2
+    ID = 1
     directory_path = os.path.dirname(anchor_ckpt)
     path = os.path.join(directory_path, f"bias_logs_{description}_{ID}/")
 
