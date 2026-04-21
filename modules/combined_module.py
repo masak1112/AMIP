@@ -36,6 +36,7 @@ class CombinedModule(L.LightningModule):
         self.model_name = self.modelconfig.get('model_name', 'Combined')
         self.log_dir = config['training'].get('log_dir', '')
         self.plot_val = config['training'].get('plot_val', False)
+        self.ensemble_size = self.modelconfig.get('ensemble_size', 1)
 
         # Which low-res latent feeds the downscaler: Euler-updated state 'y',
         # or the model x-prediction 'y_last'.
@@ -204,7 +205,10 @@ class CombinedModule(L.LightningModule):
         nlon = self.nlon
         device = surface_t.device
 
-        invariant = self.invariant_input.expand(b, -1, -1, -1).to(device)
+        e = self.ensemble_size
+        be = b * e
+
+        invariant = self.invariant_input.expand(be, -1, -1, -1).to(device)
 
         loss_dict = {}
         t_plot = [0, 2, 4, 9]  # lead times: 1, 3, 5, 10 days (for 24h timedelta)
@@ -234,13 +238,19 @@ class CombinedModule(L.LightningModule):
                 target_feat_dict[diagnostic_feat_name] = torch.zeros((b, len(t_plot), nlat, nlon), device=device)
 
         # Low-res forecaster state: bilinearly downsampled and assembled.
-        x = self.preprocess(surface_t, upper_air_t, diagnostic_t)
+        # Ensemble members are folded into the leading batch dim so each one
+        # rolls forward independently through the stochastic forecaster.
+        surface_t_e = surface_t.repeat_interleave(e, dim=0)
+        upper_air_t_e = upper_air_t.repeat_interleave(e, dim=0)
+        diagnostic_t_e = diagnostic_t.repeat_interleave(e, dim=0)
+        x = self.preprocess(surface_t_e, upper_air_t_e, diagnostic_t_e)
 
         for t in range(nt):
-            forcing_input = varying_boundary_data[:, t]
+            forcing_input = varying_boundary_data[:, t].repeat_interleave(e, dim=0)
             c_grid = assemble_forcing(forcing_input, invariant)
 
             # y_lowres rolls the forecaster forward; y_highres is the full-res prediction.
+            # Both have leading dim b*e — individual ensemble members continue independently.
             y_lowres, y_highres = self.forward(x, c_grid, return_model_last=True)
             surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y_highres, nlevels=self.nlevels)
 
@@ -251,11 +261,16 @@ class CombinedModule(L.LightningModule):
             multilevel_target_t = targets_upper_air[:, t]
             diagnostic_target_t = targets_diagnostic[:, t]
 
+            # Denormalize then average over the ensemble dim for losses/plots.
             surface_pred_denorm = self.n.surface_inv_transform(surface_pred)
-            surface_true_denorm = self.n.surface_inv_transform(surface_target_t)
+            surface_pred_denorm = surface_pred_denorm.reshape(b, e, *surface_pred_denorm.shape[1:]).mean(dim=1)
             multilevel_pred_denorm = self.n.upper_air_inv_transform(multilevel_pred)
-            multilevel_true_denorm = self.n.upper_air_inv_transform(multilevel_target_t)
+            multilevel_pred_denorm = multilevel_pred_denorm.reshape(b, e, *multilevel_pred_denorm.shape[1:]).mean(dim=1)
             diagnostic_pred_denorm = self.n.diagnostic_inv_transform(diagnostic_pred)
+            diagnostic_pred_denorm = diagnostic_pred_denorm.reshape(b, e, *diagnostic_pred_denorm.shape[1:]).mean(dim=1)
+
+            surface_true_denorm = self.n.surface_inv_transform(surface_target_t)
+            multilevel_true_denorm = self.n.upper_air_inv_transform(multilevel_target_t)
             diagnostic_true_denorm = self.n.diagnostic_inv_transform(diagnostic_target_t)
 
             for c, surface_feat_name in enumerate(self.surface_variables):

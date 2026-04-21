@@ -4,6 +4,7 @@ model:
     #   'y'      — Euler-updated state (stochastic)
     #   'y_last' — model x-prediction (cleaner)
     downscaler_input: 'y_last'
+    ensemble_size: 8
 
     forecaster:
         model_name: SI_X
