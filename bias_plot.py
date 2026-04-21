@@ -5,8 +5,8 @@ from common.plotting import plot_bias
 from common.loss import latitude_weighted_rmse
 
 BASE_PATH = "/glade/derecho/scratch/awikner/ERA5/AMIP/"
-BIAS_LOGS = "/glade/derecho/scratch/ayz/AMIP_logs/xInterpolant/climatologies/"
-downsample = False
+BIAS_LOGS = "/glade/derecho/scratch/ayz/AMIP_logs/xInterpolant/climatologies/bias_logs_large_2005_3/"
+downsample = True
 
 # Climatology levels are stored in this order (increasing pressure)
 CLIMO_LEVELS = list(reversed([5, 7, 10, 20, 30, 50, 70, 100, 125, 150, 175, 200, 250, 300, 400, 500, 600, 700, 800, 850, 875, 900, 925, 950, 975, 1000]))
@@ -31,7 +31,7 @@ def plot_biases(base_path, variable_type, variable_name, variable_type2, variabl
     if downsample:
         climatology = climatology[::4, ::4]
 
-    bias_path = os.path.join(bias_logs, f"climatology_{variable_type2}.pt")
+    bias_path = os.path.join(bias_logs, f"climatology_{variable_type2}_1951.pt")
 
     model_climatology = torch.load(bias_path).numpy()
     model_climatology = model_climatology[variable_index] # nlat nlon

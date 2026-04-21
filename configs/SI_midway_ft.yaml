@@ -82,7 +82,7 @@ data:
     val_num_inferences: 50
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
-    batch_size: 2
+    batch_size: 4
     num_data_workers: 8
 
 training:
@@ -99,7 +99,7 @@ training:
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
+    checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_ft_42_2026-04-21T15-24-45/last.ckpt
     description: large_ft
     accumulate_grad_batches: 1
     optimizer: muon
