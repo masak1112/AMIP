@@ -53,6 +53,9 @@ def main(args):
     path = trainconfig["log_dir"] + name + "/"
     config['training']["log_dir"] = path
 
+    config['training']['devices'] = 1
+    config['training']['strategy'] = "auto"
+
     dataconfig['val_num_inferences'] = 50 
 
     os.makedirs(path, exist_ok=True) 
