@@ -162,7 +162,7 @@ def main(args):
     num_steps = len(dataset) // stride
     print(f"Processing {num_steps} timesteps (stride={stride}) with ensemble size {ensemble_size}...")
 
-    plot_every = 500
+    plot_every = 30
     plot_val = trainconfig.get("plot_val", False)
     #num_steps = 500
 
