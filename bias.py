@@ -104,7 +104,8 @@ def main(args):
     config=get_yaml(args.config)
     config, modelconfig, trainconfig, dataconfig = process_args(args, config)
 
-    seed = trainconfig["seed"]
+    ID = 3
+    seed = trainconfig["seed"] + ID
     seed_everything(seed)
     torch.set_float32_matmul_precision("high")
 
@@ -117,7 +118,6 @@ def main(args):
     else:
         anchor_ckpt = trainconfig["checkpoint"]
 
-    ID = 1
     directory_path = os.path.dirname(anchor_ckpt)
     path = os.path.join(directory_path, f"bias_logs_{description}_{ID}/")
 
