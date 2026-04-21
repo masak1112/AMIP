@@ -145,7 +145,7 @@ def main(args):
         model.load_state_dict(state_dict)
     model.eval()
 
-    ensemble_size = 1
+    ensemble_size = 2
     invariant = model.invariant_input.to(device) # 1 c nlat nlon
     invariant = invariant.expand(ensemble_size, -1, -1, -1) # e c nlat nlon
 
