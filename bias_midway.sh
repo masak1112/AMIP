@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=pi-pedramh
-#SBATCH --time=2:00:00
+#SBATCH --time=6:00:00
 #SBATCH --mem=128G
 #SBATCH -p pedramh-gpu 
 #SBATCH --nodes=1
