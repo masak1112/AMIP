@@ -117,8 +117,9 @@ def main(args):
     else:
         anchor_ckpt = trainconfig["checkpoint"]
 
+    ID = 1
     directory_path = os.path.dirname(anchor_ckpt)
-    path = os.path.join(directory_path, f"bias_logs_{description}/")
+    path = os.path.join(directory_path, f"bias_logs_{description}_{ID}/")
 
     os.makedirs(path, exist_ok=True) 
     print(f"Logging to: {path}")
