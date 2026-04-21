@@ -27,6 +27,8 @@ class TrainModule(L.LightningModule):
         self.nlat, self.nlon = self.horizontal_resolution
         self.nlevels = len(self.dataconfig['levels'])
         self.plot_val = config['training'].get('plot_val', False)
+        self.multistep_rollout = int(self.dataconfig.get('multistep_rollout', 1))
+        self.multistep_num_sample_steps = config['training'].get('multistep_num_sample_steps', None)
 
         self.modelconfig = config['model']
         self.model_name = self.modelconfig["model_name"]
@@ -96,13 +98,25 @@ class TrainModule(L.LightningModule):
         y = self.preprocess(surface_t1, upper_air_t1, diagnostic_t1)
 
         invariant = self.invariant_input.expand(surface_t.shape[0], -1, -1, -1).to(device) # b c nlat nlon
-        c_grid = assemble_forcing(varying_boundary_data, invariant) # b c h w
 
-        loss, spectral_loss = self.scheduler.compute_loss(self.model, x, c_grid, y)   
+        if self.multistep_rollout > 1:
+            # varying_boundary_data: b rollout c h w — assemble forcings per step
+            rollout = varying_boundary_data.shape[1]
+            c_grids = torch.stack(
+                [assemble_forcing(varying_boundary_data[:, step], invariant) for step in range(rollout)],
+                dim=1,
+            )  # b rollout c h w
+            loss, spectral_loss = self.scheduler.compute_multistep_loss(
+                self.model, x, c_grids, y, num_sample_steps=self.multistep_num_sample_steps,
+            )
+        else:
+            c_grid = assemble_forcing(varying_boundary_data, invariant) # b c h w
+            loss, spectral_loss = self.scheduler.compute_loss(self.model, x, c_grid, y)
+
         self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
         self.log("train/spectral_loss", spectral_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
 
-        return loss 
+        return loss
 
     def validation_step(self, batch, batch_idx, evaluate=False): 
         # each batch contains val_nsteps number of snapshots
@@ -183,7 +197,7 @@ class TrainModule(L.LightningModule):
             c_grid = assemble_forcing(forcing_input, invariant) # b c h w
 
             y, y_last = self.forward(x, c_grid, return_model_last=True)
-            surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(y_last, nlevels=self.nlevels)
+            surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(y, nlevels=self.nlevels)
 
             # update state
             x = y

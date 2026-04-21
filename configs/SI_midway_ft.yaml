@@ -17,7 +17,7 @@ model:
             nlat: 45
             nlon: 90
         scheduler:
-            num_steps: 2
+            num_steps: 10
             sigma_coef: 1.0
             train_sampler: power
             l_max: 45
@@ -69,6 +69,7 @@ data:
     mean_path: "/home/anthonyz/amip/normalize_mean.nc"
     std_path: "/home/anthonyz/amip/normalize_std.nc"
     forecast_lead_times: [1, 3, 5, 10]
+    multistep_rollout: 2
 
     calendar: 'standard'
     data_timedelta_hours: 6
@@ -81,14 +82,14 @@ data:
     val_num_inferences: 50
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
-    batch_size: 4
+    batch_size: 2
     num_data_workers: 8
 
 training:
     seed: 42
     devices: 4
     accelerator: gpu
-    strategy: ddp
+    strategy: ddp_find_unused_parameters_true
     precision: 32-true
     check_val_every_n_epoch: 1
     log_every_n_steps: 10
@@ -99,6 +100,7 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
-    description: large_2step
+    description: large_ft
     accumulate_grad_batches: 1
     optimizer: muon
+    multistep_num_sample_steps: 2

@@ -188,6 +188,7 @@ class GetDataset(Dataset):
         self.validate = validate if not self.train else False
         self.autoencoder = params.get('autoencoder', False)
         self.return_calendar = params.get('return_calendar', False)
+        self.multistep_rollout = int(params.get('multistep_rollout', 1))
 
         if not self.train and not self.params['forecast_lead_times']:
             self.params['forecast_lead_times'] = [1]
@@ -249,9 +250,10 @@ class GetDataset(Dataset):
             self.use_boundary = False
 
         # Inference index selection
+        max_step_horizon = max(max(self.params['forecast_lead_times']), self.multistep_rollout)
         max_inference_idx = (
             len(self.dates)
-            - max(self.params['forecast_lead_times']) * self.timedelta_hours // self.data_timedelta_hours
+            - max_step_horizon * self.timedelta_hours // self.data_timedelta_hours
         )
         if self.num_inferences > 0:
             self.inference_idxs = np.linspace(0, max_inference_idx, num=self.num_inferences + 1, dtype=int)
@@ -661,6 +663,8 @@ class GetDataset(Dataset):
 
         # ---- Training ----
         if self.train:
+            if self.multistep_rollout > 1 and not self.autoencoder:
+                return self._getitem_train_multistep(index, has_boundary, has_diagnostic)
             return self._getitem_train(index, has_boundary, has_diagnostic)
 
         # ---- Autoregressive inference / validation ----
@@ -744,6 +748,85 @@ class GetDataset(Dataset):
             diagnostic_t = self.diagnostic_transform(diagnostic_t)
 
         # Optional input noise
+        if self.epsilon_factor > 0.:
+            surface_t = self._add_input_noise(surface_t)
+            upper_air_t = self._add_input_noise(upper_air_t)
+
+        self._check_nans(surface_t=surface_t, upper_air_t=upper_air_t,
+                         varying_boundary_data=varying_boundary_data if has_boundary else None,
+                         surface_t1=surface_t1, upper_air_t1=upper_air_t1,
+                         diagnostic_t1=diagnostic_t1 if has_diagnostic else None,
+                         diagnostic_t=diagnostic_t if self.diagnostic_input else None)
+
+        if self.diagnostic_input:
+            return surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data
+        if has_diagnostic:
+            return surface_t, upper_air_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data
+        return surface_t, upper_air_t, surface_t1, upper_air_t1, varying_boundary_data
+
+    def _getitem_train_multistep(self, index, has_boundary, has_diagnostic):
+        """Build a multi-step training sample.
+
+        Returns the initial state, a stack of varying-boundary forcings for each
+        rollout step, and a single final target at ``t + rollout * dt``.
+        Only the final timestep is used as a supervision label — intermediate
+        states are produced autoregressively by the model.
+        """
+        rollout = self.multistep_rollout
+        start_time = self.start_date + timedelta(hours=self.dates[index])
+
+        data_in = self._get_data(start_time, out=False)
+        if has_boundary:
+            if self.diagnostic_input:
+                upper_air_t, surface_t, diagnostic_t, varying_boundary_t = self._reshape_and_mask_variables(data_in, out=False)
+            else:
+                upper_air_t, surface_t, varying_boundary_t = self._reshape_and_mask_variables(data_in, out=False)
+        else:
+            if self.diagnostic_input:
+                upper_air_t, surface_t, diagnostic_t = self._reshape_and_mask_variables(data_in, out=False)
+            else:
+                upper_air_t, surface_t = self._reshape_and_mask_variables(data_in, out=False)
+            varying_boundary_t = None
+
+        # Stack per-step boundary forcings for each of the `rollout` steps the
+        # model will roll out over (first one already loaded with the inputs).
+        if has_boundary:
+            boundary_list = [varying_boundary_t]
+            for step in range(1, rollout):
+                bnd_time = start_time + timedelta(hours=self.timedelta_hours * step)
+                bnd_raw = torch.tensor(
+                    self._get_data(bnd_time, variable_list=self.varying_boundary_variables)
+                ).to(torch.float32)
+                boundary_list.append(self._fill_mask(bnd_raw, self.varying_boundary_variables))
+            varying_boundary_data = torch.stack(
+                [self.boundary_transform(b) for b in boundary_list], dim=0
+            )  # (rollout, c, nlat, nlon)
+        else:
+            varying_boundary_data = None
+
+        # Final target only — at t + rollout * dt
+        end_time = start_time + timedelta(hours=self.timedelta_hours * rollout)
+        data_out = self._get_data(end_time, out=True)
+        if has_diagnostic:
+            upper_air_t1, surface_t1, diagnostic_t1 = self._reshape_and_mask_variables(data_out, out=True)
+        else:
+            upper_air_t1, surface_t1 = self._reshape_and_mask_variables(data_out, out=True)
+
+        if self.params['predict_delta']:
+            # delta is relative to the immediately preceding (rollout-1) target; we
+            # don't know it without loading it, so disallow delta + multistep.
+            raise NotImplementedError("predict_delta is not supported with multistep_rollout > 1")
+
+        surface_t = self.surface_transform(surface_t)
+        surface_t1 = self.surface_transform(surface_t1)
+        upper_air_t = self.upper_air_transform(upper_air_t)
+        upper_air_t1 = self.upper_air_transform(upper_air_t1)
+
+        if has_diagnostic:
+            diagnostic_t1 = self.diagnostic_transform(diagnostic_t1)
+        if self.diagnostic_input:
+            diagnostic_t = self.diagnostic_transform(diagnostic_t)
+
         if self.epsilon_factor > 0.:
             surface_t = self._add_input_noise(surface_t)
             upper_air_t = self._add_input_noise(upper_air_t)

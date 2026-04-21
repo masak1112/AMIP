@@ -51,10 +51,26 @@ class DynamicInterpolant(nn.Module):
         else:
             return self.generator(x.shape[0], x.shape[1], device=x.device)
 
+    def compute_multistep_loss(self, model, x, c_grids, y, num_sample_steps=None):
+        # x contains initial prognostic state, shape b c h w
+        # c_grids contains the forcing state for each rollout step, shape b rollout c h w
+        # y contains the final prognostic state after rollout steps, shape b c h w
+        # num_sample_steps: truncated schedule length for intermediate rollout samples
+
+        rollout = c_grids.shape[1]
+
+        x_current = x
+        if rollout > 1:
+            with torch.no_grad():
+                for step in range(rollout - 1):
+                    x_current = self.sample(model, x_current, c_grids[:, step], num_steps=num_sample_steps)
+
+        return self.compute_loss(model, x_current, c_grids[:, -1], y)
+
     def compute_loss(self, model, x, c_grid, y):
         # x contains current prognostic state
         # c_grid contains current forcing state
-        # y contains next prognostic state 
+        # y contains next prognostic state
 
         device = x.device
 
