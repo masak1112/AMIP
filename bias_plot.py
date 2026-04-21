@@ -5,8 +5,8 @@ from common.plotting import plot_bias
 from common.loss import latitude_weighted_rmse
 
 BASE_PATH = "/glade/derecho/scratch/awikner/ERA5/AMIP/"
-BIAS_LOGS = "/glade/derecho/scratch/ayz/AMIP_logs/SI_x/latent_pixel/bias_logs_SI_X_new_return_model_last_fix/"
-downsample = True
+BIAS_LOGS = "/glade/derecho/scratch/ayz/AMIP_logs/xInterpolant/climatologies/"
+downsample = False
 
 # Climatology levels are stored in this order (increasing pressure)
 CLIMO_LEVELS = list(reversed([5, 7, 10, 20, 30, 50, 70, 100, 125, 150, 175, 200, 250, 300, 400, 500, 600, 700, 800, 850, 875, 900, 925, 950, 975, 1000]))
