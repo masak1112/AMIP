@@ -7,6 +7,8 @@ import os
 # Custom imports
 from common.utils import get_yaml, save_yaml
 from modules.train_module import TrainModule
+from modules.ae_module import AutoencoderModule
+from modules.combined_module import CombinedModule
 from data.datamodule import ClimateDataModule
 
 # Lightning imports
@@ -56,10 +58,21 @@ def main(args):
     os.makedirs(path, exist_ok=True) 
     save_yaml(config, path + "config.yml")
 
+    autoencoder = dataconfig.get("autoencoder", False)
+    is_combined = modelconfig.get("model_name", "") == "Combined"
+
     datamodule = ClimateDataModule(dataconfig=dataconfig)
 
-    model = TrainModule(config,
-                        normalizer=datamodule.train_dataset)
+    if is_combined:
+        # CombinedModule loads forecaster + downscaler checkpoints internally.
+        model = CombinedModule(config,
+                               normalizer=datamodule.train_dataset)
+    elif autoencoder:
+        model = AutoencoderModule(config,
+                                  normalizer=datamodule.train_dataset)
+    else:
+        model = TrainModule(config,
+                            normalizer=datamodule.train_dataset)
     
     trainer = L.Trainer(devices = trainconfig["devices"],
                         num_nodes = trainconfig.get("num_nodes", 1),
@@ -74,13 +87,16 @@ def main(args):
                         num_sanity_val_steps=trainconfig.get("num_sanity_val_steps", 1),
                         precision=trainconfig["precision"],)
     
-    if trainconfig["checkpoint"] is not None:
+    if is_combined:
+        # Weights are already loaded inside CombinedModule; don't pass ckpt_path.
+        trainer.validate(model=model, datamodule=datamodule)
+    elif trainconfig.get("checkpoint") is not None:
         trainer.validate(model=model,
                 datamodule=datamodule,
                 ckpt_path=trainconfig["checkpoint"],
                 weights_only=False)
     else:
-        trainer.validate(model=model, 
+        trainer.validate(model=model,
                 datamodule=datamodule)
 
 if __name__ == "__main__":

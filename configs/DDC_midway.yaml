@@ -93,7 +93,7 @@ training:
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: null
+    checkpoint: /project/pedramh/ayz/AMIP_logs/x_DDC_x_DDC_42_2026-04-16T17-08-57/last.ckpt
     description: x_DDC
     accumulate_grad_batches: 1
     optimizer: muon

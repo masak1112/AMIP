@@ -10,7 +10,7 @@ model:
             model_channels: 384
             channel_mult: [1, 2, 4]
             num_res_blocks: 3
-            attn_levels: [2]
+            attn_levels: []
             num_heads: 8
             t_emb_dim: 256
         scheduler:
@@ -19,7 +19,7 @@ model:
             train_sampler: power
             l_max: 180
             spectral_weight: 0.0
-            model_last: True 
+            model_last: False
             noise : spherical
             tau: 1.3
             noise_scale_path: /glade/u/home/ayz/amip/sigma_c_highres_26.pt
@@ -93,7 +93,7 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: null
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/xDDC/last.ckpt
     description: x_DDC
     accumulate_grad_batches: 1
     optimizer: muon

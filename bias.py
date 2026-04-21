@@ -7,6 +7,7 @@ import os
 from common.utils import get_yaml, save_yaml, assemble_forcing, disassemble_input
 from common.plotting import plot_reconstruction, plot_spectrum
 from modules.train_module import TrainModule
+from modules.combined_module import CombinedModule
 from data.amip_new import GetDataset
 from tqdm import tqdm
 
@@ -102,10 +103,17 @@ def main(args):
     seed = trainconfig["seed"]
     seed_everything(seed)
     torch.set_float32_matmul_precision("high")
-    
+
+    is_combined = modelconfig.get("model_name", "") == "Combined"
+
     description = trainconfig.get("description", "")
-    checkpoint = trainconfig['checkpoint']
-    directory_path = os.path.dirname(checkpoint)
+    # Combined module bundles two checkpoints; anchor the log dir on the forecaster's.
+    if is_combined:
+        anchor_ckpt = trainconfig.get("checkpoint") or trainconfig["forecaster_checkpoint"]
+    else:
+        anchor_ckpt = trainconfig["checkpoint"]
+        
+    directory_path = os.path.dirname(anchor_ckpt)
     path = os.path.join(directory_path, f"bias_logs_{description}/")
 
     os.makedirs(path, exist_ok=True) 
@@ -124,17 +132,23 @@ def main(args):
     device_index = torch.cuda.current_device()
     device = f"cuda:{device_index}"
 
-    model = TrainModule(config,
-                        normalizer=dataset).to(device)
-    state_dict = torch.load(checkpoint, map_location=device, weights_only=False)['state_dict']
-    model.load_state_dict(state_dict)
+    if is_combined:
+        # CombinedModule loads forecaster + downscaler checkpoints internally.
+        model = CombinedModule(config, normalizer=dataset).to(device)
+    else:
+        model = TrainModule(config, normalizer=dataset).to(device)
+        state_dict = torch.load(anchor_ckpt, map_location=device, weights_only=False)['state_dict']
+        model.load_state_dict(state_dict)
     model.eval()
 
     ensemble_size = 1
     invariant = model.invariant_input.to(device) # 1 c nlat nlon
     invariant = invariant.expand(ensemble_size, -1, -1, -1) # e c nlat nlon
-    
-    if model.downsample is not None:
+
+    # Climatology resolution matches the prediction resolution:
+    # - CombinedModule outputs at full (downscaler) resolution.
+    # - Forecaster-only: low-res if a downsample is configured, else full-res.
+    if (not is_combined) and model.downsample is not None:
         downsample_factor = model.downsample.downsample_factor
         clim_nlat, clim_nlon = model.nlat // downsample_factor, model.nlon // downsample_factor
     else:
@@ -170,9 +184,11 @@ def main(args):
                 varying_boundary_data = varying_boundary_data.unsqueeze(0).to(device).expand(ensemble_size, -1, -1, -1)
                 c_grid = assemble_forcing(varying_boundary_data, invariant) # e c h w
 
-            y, y_last = model.forward(x, c_grid, return_model_last=True) # e c h w / e c l h w
+            # TrainModule: y and y_last both low-res.
+            # CombinedModule: y is low-res rollout state, y_last is full-res downscaled prediction.
+            y, y_last = model.forward(x, c_grid, return_model_last=True)
 
-            surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y_last)
+            surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y_last, nlevels=model.nlevels)
 
             surface_pred_denorm = model.n.surface_inv_transform(surface_pred)
             multilevel_pred_denorm = model.n.upper_air_inv_transform(multilevel_pred)
@@ -198,7 +214,8 @@ def main(args):
                 upper_air_t1_dev = upper_air_t1.unsqueeze(0).to(device)
                 diagnostic_t1_dev = diagnostic_t1.unsqueeze(0).to(device)
 
-                if model.downsample is not None:
+                # Match target resolution to prediction resolution.
+                if (not is_combined) and model.downsample is not None:
                     surface_t1_dev, upper_air_t1_dev, diagnostic_t1_dev = model.downsample(surface_t1_dev, upper_air_t1_dev, diagnostic_t1_dev)
 
                 surface_true_denorm = model.n.surface_inv_transform(surface_t1_dev)
