@@ -103,4 +103,4 @@ training:
     description: large_ft
     accumulate_grad_batches: 1
     optimizer: muon
-    multistep_num_sample_steps: 2
+    multistep_num_sample_steps: 5

@@ -197,7 +197,7 @@ class TrainModule(L.LightningModule):
             c_grid = assemble_forcing(forcing_input, invariant) # b c h w
 
             y, y_last = self.forward(x, c_grid, return_model_last=True)
-            surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(y, nlevels=self.nlevels)
+            surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(y_last, nlevels=self.nlevels)
 
             # update state
             x = y

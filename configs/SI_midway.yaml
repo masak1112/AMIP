@@ -17,7 +17,7 @@ model:
             nlat: 45
             nlon: 90
         scheduler:
-            num_steps: 5
+            num_steps: 10
             sigma_coef: 1.0
             train_sampler: power
             l_max: 45
