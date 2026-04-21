@@ -43,7 +43,7 @@ def plot_reconstruction(y_pred, y, filename=None, cmap='twilight_shifted'):
         plt.show()
 
 
-def plot_result(y_pred, y, filename, num_t=5, cmap='twilight_shifted'):
+def plot_result(y_pred, y, filename=None, num_t=5, cmap='twilight_shifted'):
     # y in shape [t h w], y_pred in shape [t h w]
 
     t_total, h, w = y_pred.shape
@@ -82,8 +82,11 @@ def plot_result(y_pred, y, filename, num_t=5, cmap='twilight_shifted'):
     cbar_ax = fig.add_axes([0.88, 0.15, 0.02, 0.7])
     fig.colorbar(im0, cax=cbar_ax)
     # save the figure
-    plt.savefig(filename, dpi=300)
-    plt.close()
+    if filename is not None:
+        plt.savefig(filename, dpi=300)
+        plt.close()
+    else:
+        plt.show()
 
 def plot_bias(pred, target, save_path=None, title=""):
     # pred, target in shape nlat nlon
