@@ -95,6 +95,10 @@ def plot_predictions(pred_feat_dict, target_feat_dict, log_dir, step):
                     q850_target.unsqueeze(0),
                     f'{log_dir}/q850_spectrum_{step}.png',
                     num_t=1)
+    
+def save_predictions(pred_feat_dict, target_feat_dict, log_dir, step):
+    torch.save(pred_feat_dict, f'{log_dir}/predictions_{step}.pt')
+    torch.save(target_feat_dict, f'{log_dir}/targets_{step}.pt')
 
 def main(args):
     config=get_yaml(args.config)
@@ -112,7 +116,7 @@ def main(args):
         anchor_ckpt = trainconfig.get("checkpoint") or trainconfig["forecaster_checkpoint"]
     else:
         anchor_ckpt = trainconfig["checkpoint"]
-        
+
     directory_path = os.path.dirname(anchor_ckpt)
     path = os.path.join(directory_path, f"bias_logs_{description}/")
 
@@ -158,6 +162,7 @@ def main(args):
     print(f"Processing {num_steps} timesteps (stride={stride}) with ensemble size {ensemble_size}...")
 
     plot_every = 500
+    plot_val = trainconfig.get("plot_val", False)
     #num_steps = 500
 
     # per-member running mean accumulators: e c h w / e c l h w
@@ -238,7 +243,10 @@ def main(args):
                     pred_feat_dict[diagnostic_feat_name] = diagnostic_pred_denorm[:1, c] # 1 nlat nlon
                     target_feat_dict[diagnostic_feat_name] = diagnostic_true_denorm[:, c]
 
-                plot_predictions(pred_feat_dict, target_feat_dict, path, step_idx + 1)
+                if plot_val:
+                    plot_predictions(pred_feat_dict, target_feat_dict, path, step_idx + 1)
+                
+                save_predictions(pred_feat_dict, target_feat_dict, path, step_idx + 1)
 
     # save ensemble climatologies
     torch.save(climatology_surface.cpu(), path + "climatology_surface_ensemble.pt")
