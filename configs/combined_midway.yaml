@@ -124,7 +124,15 @@ training:
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip_forecast
     description: combined
+    check_val_every_n_epoch: 1
+    log_every_n_steps: 10
+    max_epochs: 50
+    ema_decay: 0.99
+    num_sanity_val_steps: 0
     plot_val: False
+    wandb_mode: online
+    accumulate_grad_batches: 1
+    optimizer: muon
 
     # Pretrained checkpoints loaded manually inside CombinedModule
     forecaster_checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
