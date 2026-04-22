@@ -24,7 +24,7 @@ model:
                 nlat: 45
                 nlon: 90
             scheduler:
-                num_steps: 5
+                num_steps: 10
                 sigma_coef: 1.0
                 train_sampler: power
                 l_max: 45
@@ -32,6 +32,8 @@ model:
                 noise: spherical
                 model_last: False
                 integrator: euler
+                S_churn: 4.0
+                S_noise: 1.0
                 noise_scale_path: /home/anthonyz/amip/sigma_c_lowres_26.pt
 
     downscaler:
@@ -125,7 +127,7 @@ training:
     precision: 32-true
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip_forecast
-    description: combined_20
+    description: combined_10_churn
     check_val_every_n_epoch: 1
     log_every_n_steps: 10
     max_epochs: 50
