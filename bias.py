@@ -129,7 +129,7 @@ def main(args):
 
     dataset = GetDataset(dataconfig,
                          year_start=1996,
-                         year_end=2000)
+                         year_end=2001)
 
     # Step through dataset at forecast intervals (e.g. every 4th sample for 24h steps with 6h data)
     stride = dataconfig['timedelta_hours'] // dataconfig['data_timedelta_hours']

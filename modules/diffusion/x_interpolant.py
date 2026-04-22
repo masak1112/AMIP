@@ -1,12 +1,14 @@
 import torch
 import torch.nn as nn
-from modules.diffusion.utils import sample_logit_normal, power_sampler
+from modules.diffusion.utils import sample_logit_normal, power_sampler, sample_power_law
 
 class DynamicInterpolant(nn.Module):
     def __init__(self,
                  num_steps,  # this corresponds to physical time steps
                  sigma_coef=1.0,
                  train_sampler='uniform',
+                 inference_sampler='uniform',
+                 inference_rho=7.0,
                  l_max = 180,
                  spectral_weight = 0.01,
                  noise = "spherical",
@@ -18,7 +20,9 @@ class DynamicInterpolant(nn.Module):
 
         self.num_steps = num_steps
         self.sigma_coef = sigma_coef
-        self.train_sampler = train_sampler 
+        self.train_sampler = train_sampler
+        self.inference_sampler = inference_sampler
+        self.inference_rho = inference_rho
         self.model_last = model_last
         self.loss_form = loss_form
 
@@ -118,6 +122,9 @@ class DynamicInterpolant(nn.Module):
             num_steps = self.num_steps
 
         timesteps = torch.linspace(0, 1, num_steps + 1, device=x.device)
+
+        if self.inference_sampler == 'power':
+            timesteps = timesteps**self.inference_rho
 
         # start y at source distribution, which is current state
         y = x.clone()
