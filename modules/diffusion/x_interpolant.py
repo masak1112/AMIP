@@ -8,7 +8,7 @@ class DynamicInterpolant(nn.Module):
                  sigma_coef=1.0,
                  train_sampler='uniform',
                  inference_sampler='uniform',
-                 inference_rho=7.0,
+                 inference_rho=1.0,
                  l_max = 180,
                  spectral_weight = 0.01,
                  noise = "spherical",

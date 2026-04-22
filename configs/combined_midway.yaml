@@ -48,7 +48,7 @@ model:
                 num_heads: 8
                 t_emb_dim: 256
             scheduler:
-                num_steps: 10
+                num_steps: 20
                 sigma_coef: 1.0
                 train_sampler: power
                 l_max: 180
@@ -124,7 +124,7 @@ training:
     precision: 32-true
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip_forecast
-    description: combined_ft_10
+    description: combined_20
     check_val_every_n_epoch: 1
     log_every_n_steps: 10
     max_epochs: 50
@@ -136,6 +136,6 @@ training:
     optimizer: muon
 
     # Pretrained checkpoints loaded manually inside CombinedModule
-    #forecaster_checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
-    forecaster_checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_ft_42_2026-04-21T15-35-47/last.ckpt
+    forecaster_checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
+    #forecaster_checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_ft_42_2026-04-21T15-35-47/last.ckpt
     downscaler_checkpoint: /project/pedramh/ayz/AMIP_logs/x_DDC_x_DDC_42_2026-04-16T17-08-57/last.ckpt
