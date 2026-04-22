@@ -16,7 +16,7 @@ class DynamicInterpolant(nn.Module):
                  model_last = False,
                  loss_form = "x",
                  noise_scale_path = None,
-                 gamma = 0.0
+                 gamma = 0.5
                  ):
         super(DynamicInterpolant, self).__init__()
 
