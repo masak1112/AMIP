@@ -172,8 +172,8 @@ def main(args):
     model.eval()
 
     num_steps_list = [5, 10, 20]
-    inference_samplers = ["heun"]
-    state_modes = ["y", "y_last"]
+    inference_samplers = ["AB3"]
+    state_modes = ["y"]
     inference_rho = 1.0
 
     for ns in num_steps_list:

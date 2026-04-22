@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from modules.diffusion.utils import sample_logit_normal, power_sampler, sample_power_law
+from modules.diffusion.utils import sample_logit_normal, power_sampler
+from collections import deque
 
 class DynamicInterpolant(nn.Module):
     def __init__(self,
@@ -137,6 +138,10 @@ class DynamicInterpolant(nn.Module):
         else:
             num_steps_drift = num_steps
 
+        # Buffer to store drift history [v_{n-2}, v_{n-1}, v_n]
+        if self.integrator == 'AB3':
+            drift_history = deque(maxlen=3)
+
         for i in range(num_steps_drift):
             t_current = timesteps[i]
             t_next = timesteps[i + 1]
@@ -148,6 +153,31 @@ class DynamicInterpolant(nn.Module):
             # --- 1. Predictor Step (Standard Euler-Maruyama) ---
             y_pred = model(y, x, t_curr_batch, c_grid) # Predict x_1
             drift_curr = (y_pred - x) - self.sigma_coef * W_t # v_theta(t)
+
+            if self.integrator == 'AB3':
+                drift_history.append(drift_curr)
+                history_len = len(drift_history)
+
+                if history_len == 1:
+                # Step 0: Euler-Maruyama (1st Order)
+                    drift_step = drift_curr
+                    
+                elif history_len == 2:
+                    # Step 1: Adams-Bashforth 2 (2nd Order Bootstrap)
+                    # Formula: 1/2 * (3*v_n - v_{n-1})
+                    v_n = drift_history[-1]
+                    v_n_minus_1 = drift_history[-2]
+                    drift_step = 1.5 * v_n - 0.5 * v_n_minus_1
+                    
+                else:
+                    # Step 2+: Adams-Bashforth 3 (3rd Order)
+                    # Formula: 1/12 * (23*v_n - 16*v_{n-1} + 5*v_{n-2})
+                    v_n = drift_history[-1]
+                    v_n_minus_1 = drift_history[-2]
+                    v_n_minus_2 = drift_history[-3]
+                    drift_step = (23 * v_n - 16 * v_n_minus_1 + 5 * v_n_minus_2) / 12.0
+                
+                drift_curr = drift_step
             
             noise = self.get_noise(x)
             if self.noise_scales is not None:
