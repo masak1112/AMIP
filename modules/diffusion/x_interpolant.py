@@ -16,7 +16,11 @@ class DynamicInterpolant(nn.Module):
                  model_last = False,
                  loss_form = "x",
                  noise_scale_path = None,
-                 gamma = 0.5
+                 gamma = 0.5,
+                 S_churn = 0.0,
+                 t_churn_min = 0.05,
+                 t_churn_max = 0.95,
+                 S_noise = 1.0
                  ):
         super(DynamicInterpolant, self).__init__()
 
@@ -27,6 +31,10 @@ class DynamicInterpolant(nn.Module):
         self.loss_form = loss_form
         self.integrator = integrator
         self.gamma = gamma
+        self.S_churn = S_churn
+        self.t_churn_min = t_churn_min
+        self.t_churn_max = t_churn_max
+        self.S_noise = S_noise
 
         if noise == "spherical":
             from modules.diffusion.utils import SphereNoiseGenerator
@@ -190,19 +198,17 @@ class DynamicInterpolant(nn.Module):
     def sample(self, model, x, c_grid, num_steps=None, return_model_last=False):
         # x contains current prognostic state (latent space)
         # c_grid contains current forcing state (original resolution)
-
         if num_steps is None:
             num_steps = self.num_steps
 
         if self.integrator == 'ddim':
-            gamma = self.gamma 
+            gamma = self.gamma
             return self.sample_ddim(model, x, c_grid,
                                     num_steps=num_steps,
                                     gamma=gamma,
                                     return_model_last=return_model_last)
 
         timesteps = torch.linspace(0, 1, num_steps + 1, device=x.device)
-
         # start y at source distribution, which is current state
         y = x.clone()
         W_t = torch.zeros_like(x)
@@ -212,79 +218,86 @@ class DynamicInterpolant(nn.Module):
         else:
             num_steps_drift = num_steps
 
+        # --- Churn configuration (no-op if S_churn == 0) ---
+        S_churn    = getattr(self, 'S_churn',    0.0)
+        S_noise    = getattr(self, 'S_noise',    1.0)
+        t_churn_lo = getattr(self, 't_churn_min', 0.05)
+        t_churn_hi = getattr(self, 't_churn_max', 0.95)
+        a_step = min(S_churn / max(num_steps_drift, 1), 1.0) if S_churn > 0 else 0.0
+
         # Buffer to store drift history [v_{n-2}, v_{n-1}, v_n]
         if self.integrator == 'AB3':
             drift_history = deque(maxlen=3)
 
         for i in range(num_steps_drift):
             t_current = timesteps[i]
-            t_next = timesteps[i + 1]
-            dt = t_next - t_current  
-            
+            t_next    = timesteps[i + 1]
+            dt = t_next - t_current
             t_curr_batch = t_current.expand(x.shape[0])
-            t_next_batch = t_next.expand(x.shape[0])
 
-            y_pred = model(y, x, t_curr_batch, c_grid) # Predict x_1
-            drift_curr = (y_pred - x) - self.sigma_coef * W_t # v_theta(t)
+            # ================== EDM-style churn ==================
+            # Refresh part of W_t with fresh Gaussian noise of the correct scale,
+            # keeping Var(W_t) = t (marginal-preserving), then update y consistently
+            # with the interpolant y = (1-t)x_0 + t x_1 + sigma_coef*(1-t)*W_t.
+            # Skipped at i == 0 because W_0 = 0 (nothing to refresh).
+            if a_step > 0 and i > 0:
+                t_val = t_current.item()
+                if t_churn_lo <= t_val <= t_churn_hi:
+                    eps = self.get_noise(x) * S_noise
+                    if self.noise_scales is not None:
+                        eps = eps * self.noise_scales
+                    sqrt_keep = (1.0 - a_step) ** 0.5
+                    sqrt_fresh = (a_step * t_current) ** 0.5     # tensor * float
+                    W_churned = sqrt_keep * W_t + sqrt_fresh * eps
+                    churn_scale = self.sigma_coef * (1 - self.wide(t_curr_batch))
+                    y = y + churn_scale * (W_churned - W_t)
+                    W_t = W_churned
+            # =====================================================
 
-            if self.integrator == 'AB3':
+            y_pred = model(y, x, t_curr_batch, c_grid)  # Predict x_1
+            drift_curr = (y_pred - x) - self.sigma_coef * W_t  # v_theta(t)
+
+            if self.integrator == 'AB3': # don't use this with stochastic churn
                 drift_history.append(drift_curr)
                 history_len = len(drift_history)
 
                 if history_len == 1:
-                # Euler-Maruyama (1st Order)
                     drift_step = drift_curr
-                    
                 elif history_len == 2:
-                    # Adams-Bashforth 2 (2nd Order Bootstrap)
-                    # Formula: 1/2 * (3*v_n - v_{n-1})
-                    v_n = drift_history[-1]
+                    v_n         = drift_history[-1]
                     v_n_minus_1 = drift_history[-2]
-                    drift_step = 1.5 * v_n - 0.5 * v_n_minus_1
-                    
+                    drift_step  = 1.5 * v_n - 0.5 * v_n_minus_1
                 else:
-                    # Adams-Bashforth 3 (3rd Order)
-                    # Formula: 1/12 * (23*v_n - 16*v_{n-1} + 5*v_{n-2})
-                    v_n = drift_history[-1]
+                    v_n         = drift_history[-1]
                     v_n_minus_1 = drift_history[-2]
                     v_n_minus_2 = drift_history[-3]
-                    drift_step = (23 * v_n - 16 * v_n_minus_1 + 5 * v_n_minus_2) / 12.0
-                
+                    drift_step  = (23 * v_n - 16 * v_n_minus_1 + 5 * v_n_minus_2) / 12.0
                 drift_curr = drift_step
-            
+
             noise = self.get_noise(x)
             if self.noise_scales is not None:
                 noise = noise * self.noise_scales
-            
             dW = torch.sqrt(dt) * noise
-
             diffusion_scale = self.sigma_coef * (1 - self.wide(t_curr_batch))
-            
+
             # Euler predictor
             y_next_euler = y + drift_curr * dt + diffusion_scale * dW
-            W_next = W_t + dW # Advanced accumulated noise
+            W_next       = W_t + dW
 
             if self.integrator == 'heun':
-                # Evaluate model at the predicted state
+                t_next_batch = t_next.expand(x.shape[0])
                 y_pred_next = model(y_next_euler, x, t_next_batch, c_grid)
-                
-                # Use W_next to evaluate drift at the future step
-                drift_next = (y_pred_next - x) - self.sigma_coef * W_next
-                
-                # Apply trapezoidal rule to the drift
-                # Diffusion stays first-order (Euler-Maruyama level)
+                drift_next  = (y_pred_next - x) - self.sigma_coef * W_next
                 y = y + 0.5 * (drift_curr + drift_next) * dt + diffusion_scale * dW
             else:
-                # Fallback to Euler-Maruyama
                 y = y_next_euler
-            
-            W_t = W_next # Track W_t for the next iteration
+
+            W_t = W_next
 
         if return_model_last:
-            assert self.model_last is False 
+            assert self.model_last is False
             return y, y_pred
 
-        # take last step without drift/noise
         if self.model_last:
             y = model(y, x, timesteps[-2].expand(x.shape[0]), c_grid)
 
