@@ -40,7 +40,8 @@ def rollout(model, batch, device, num_steps, inference_sampler, inference_rho, s
     """
     assert state_mode in ("y", "y_last")
     model.scheduler.num_steps = num_steps
-    model.scheduler.inference_sampler = inference_sampler
+    #model.scheduler.inference_sampler = inference_sampler # timestep scheduler
+    model.scheduler.integrator = inference_sampler
     model.scheduler.inference_rho = inference_rho
 
     (
@@ -171,9 +172,9 @@ def main(args):
     model.eval()
 
     num_steps_list = [5, 10, 20]
-    inference_samplers = ["uniform", "power"]
+    inference_samplers = ["euler", "heun"]
     state_modes = ["y", "y_last"]
-    inference_rho = 0.33
+    inference_rho = 1.0
 
     for ns in num_steps_list:
         for sampler in inference_samplers:

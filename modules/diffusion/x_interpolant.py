@@ -8,6 +8,7 @@ class DynamicInterpolant(nn.Module):
                  sigma_coef=1.0,
                  train_sampler='uniform',
                  inference_sampler='uniform',
+                 integrator='euler',
                  inference_rho=1.0,
                  l_max = 180,
                  spectral_weight = 0.01,
@@ -25,6 +26,7 @@ class DynamicInterpolant(nn.Module):
         self.inference_rho = inference_rho
         self.model_last = model_last
         self.loss_form = loss_form
+        self.integrator = integrator
 
         if noise == "spherical":
             from modules.diffusion.utils import SphereNoiseGenerator
@@ -139,20 +141,41 @@ class DynamicInterpolant(nn.Module):
             t_current = timesteps[i]
             t_next = timesteps[i + 1]
             dt = t_next - t_current  
+            
+            t_curr_batch = t_current.expand(x.shape[0])
+            t_next_batch = t_next.expand(x.shape[0])
 
-            y_pred = model(y, x, t_current.expand(x.shape[0]), c_grid)
-
-            drift = (y_pred - x) - self.sigma_coef * W_t # associated drift from y_pred
-            noise = self.get_noise(x) # noise term
-
+            # --- 1. Predictor Step (Standard Euler-Maruyama) ---
+            y_pred = model(y, x, t_curr_batch, c_grid) # Predict x_1
+            drift_curr = (y_pred - x) - self.sigma_coef * W_t # v_theta(t)
+            
+            noise = self.get_noise(x)
             if self.noise_scales is not None:
                 noise = noise * self.noise_scales
-
+            
             dW = torch.sqrt(dt) * noise
+            diffusion_scale = self.sigma_coef * (1 - self.wide(t_curr_batch))
+            
+            # Temporary next state (Euler predictor)
+            y_next_euler = y + drift_curr * dt + diffusion_scale * dW
+            W_next = W_t + dW # Advanced accumulated noise
 
-            y = y + drift * dt + self.sigma_coef * (1-self.wide(t_current.expand(y.shape[0]))) * dW
-
-            W_t = W_t + dW
+            # --- 2. Corrector Step (Heun) ---
+            if self.integrator == 'heun' and i < num_steps_drift - 1:
+                # Evaluate model at the predicted state
+                y_pred_next = model(y_next_euler, x, t_next_batch, c_grid)
+                
+                # Use W_next to evaluate drift at the future step
+                drift_next = (y_pred_next - x) - self.sigma_coef * W_next
+                
+                # Apply trapezoidal rule to the drift
+                # Diffusion stays first-order (Euler-Maruyama level)
+                y = y + 0.5 * (drift_curr + drift_next) * dt + diffusion_scale * dW
+            else:
+                # Fallback to Euler-Maruyama
+                y = y_next_euler
+            
+            W_t = W_next # Track W_t for the next iteration
 
         if return_model_last:
             assert self.model_last is False 
