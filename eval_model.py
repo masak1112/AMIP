@@ -172,7 +172,7 @@ def main(args):
     model.eval()
 
     num_steps_list = [5, 10, 20]
-    inference_samplers = ["AB3"]
+    inference_samplers = ["euler"]
     state_modes = ["y"]
     inference_rho = 1.0
 

@@ -159,18 +159,18 @@ class DynamicInterpolant(nn.Module):
                 history_len = len(drift_history)
 
                 if history_len == 1:
-                # Step 0: Euler-Maruyama (1st Order)
+                # Euler-Maruyama (1st Order)
                     drift_step = drift_curr
                     
                 elif history_len == 2:
-                    # Step 1: Adams-Bashforth 2 (2nd Order Bootstrap)
+                    # Adams-Bashforth 2 (2nd Order Bootstrap)
                     # Formula: 1/2 * (3*v_n - v_{n-1})
                     v_n = drift_history[-1]
                     v_n_minus_1 = drift_history[-2]
                     drift_step = 1.5 * v_n - 0.5 * v_n_minus_1
                     
                 else:
-                    # Step 2+: Adams-Bashforth 3 (3rd Order)
+                    # Adams-Bashforth 3 (3rd Order)
                     # Formula: 1/12 * (23*v_n - 16*v_{n-1} + 5*v_{n-2})
                     v_n = drift_history[-1]
                     v_n_minus_1 = drift_history[-2]
@@ -184,14 +184,18 @@ class DynamicInterpolant(nn.Module):
                 noise = noise * self.noise_scales
             
             dW = torch.sqrt(dt) * noise
-            diffusion_scale = self.sigma_coef * (1 - self.wide(t_curr_batch))
+
+            if i == num_steps_drift - 1:
+                diffusion_scale = 0 # turn off diffusion at last timestep
+            else:
+                diffusion_scale = self.sigma_coef * (1 - self.wide(t_curr_batch))
             
             # Temporary next state (Euler predictor)
             y_next_euler = y + drift_curr * dt + diffusion_scale * dW
             W_next = W_t + dW # Advanced accumulated noise
 
             # --- 2. Corrector Step (Heun) ---
-            if self.integrator == 'heun' and i < num_steps_drift - 1:
+            if self.integrator == 'heun':
                 # Evaluate model at the predicted state
                 y_pred_next = model(y_next_euler, x, t_next_batch, c_grid)
                 
