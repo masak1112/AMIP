@@ -17,14 +17,14 @@ model:
             nlat: 45
             nlon: 90
         scheduler:
-            num_steps: 10
+            num_steps: 5
             sigma_coef: 1.0
             train_sampler: power
             l_max: 45
             spectral_weight: 0.0
             noise : spherical
             model_last: False
-            integrator: ddim
+            integrator: euler
             gamma: 0.5
             noise_scale_path: /home/anthonyz/amip/sigma_c_lowres_26.pt
 
@@ -102,6 +102,6 @@ training:
     wandb_mode: online
     checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_ft_42_2026-04-21T15-35-47/last.ckpt
-    description: large
+    description: lowres_5
     accumulate_grad_batches: 1
     optimizer: muon
