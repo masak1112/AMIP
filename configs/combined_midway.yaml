@@ -4,7 +4,7 @@ model:
     #   'y'      — Euler-updated state (stochastic)
     #   'y_last' — model x-prediction (cleaner)
     downscaler_input: 'y_last'
-    ensemble_size: 8
+    ensemble_size: 1
 
     forecaster:
         model_name: SI_X
@@ -24,7 +24,7 @@ model:
                 nlat: 45
                 nlon: 90
             scheduler:
-                num_steps: 10
+                num_steps: 5
                 sigma_coef: 1.0
                 train_sampler: power
                 l_max: 45
@@ -136,5 +136,6 @@ training:
     optimizer: muon
 
     # Pretrained checkpoints loaded manually inside CombinedModule
-    forecaster_checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
+    #forecaster_checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
+    forecaster_checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_ft_42_2026-04-21T15-35-47/last.ckpt
     downscaler_checkpoint: /project/pedramh/ayz/AMIP_logs/x_DDC_x_DDC_42_2026-04-16T17-08-57/last.ckpt

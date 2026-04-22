@@ -17,7 +17,7 @@ model:
             nlat: 45
             nlon: 90
         scheduler:
-            num_steps: 10
+            num_steps: 5
             sigma_coef: 1.0
             train_sampler: power
             l_max: 45
@@ -100,7 +100,7 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_ft_42_2026-04-21T15-35-47/last.ckpt
-    description: large_ft_10
+    description: large_ft_5
     accumulate_grad_batches: 1
     optimizer: muon
     multistep_num_sample_steps: 10
