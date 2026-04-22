@@ -124,7 +124,7 @@ training:
     precision: 32-true
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip_forecast
-    description: combined_ylast
+    description: combined_ft_5
     check_val_every_n_epoch: 1
     log_every_n_steps: 10
     max_epochs: 50
