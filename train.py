@@ -96,28 +96,22 @@ def main(args):
         model = TrainModule(config,
                             normalizer=datamodule.train_dataset)
 
-    save_every = trainconfig.get("save_every", False)
+    epoch_checkpoint = ModelCheckpoint(
+        dirpath=path,
+        filename="model_{epoch:02d}",
+        every_n_epochs=1,
+        save_top_k=-1,
+    )
 
-    if save_every: # save each epoch for bias finetuning
-        checkpoint_callback = ModelCheckpoint(
-            dirpath=path,
-            filename="model_{epoch:02d}",
-            every_n_epochs=1, # Saves every 1 epoch
-            save_top_k=-1     # Required to not overwrite previous ones if you want to keep all
-        )
-    else: # else save most recent copy
-        checkpoint_callback  = ModelCheckpoint(
-            monitor="step",
-            filename= "model_{epoch:02d}_{step}_best",
-            mode='max',
-            dirpath=path,
-            save_last=True,
-            save_top_k=1,
-            every_n_train_steps=100
-        )
+    last_checkpoint = ModelCheckpoint(
+        dirpath=path,
+        every_n_train_steps=100,
+        save_last=True,
+        save_top_k=0,
+    )
 
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
-    
+
     trainer = L.Trainer(devices = trainconfig["devices"],
                         num_nodes = trainconfig.get("num_nodes", 1),
                         accelerator = trainconfig["accelerator"],
@@ -126,7 +120,7 @@ def main(args):
                         log_every_n_steps = trainconfig["log_every_n_steps"],
                         max_epochs = trainconfig["max_epochs"],
                         default_root_dir = path,
-                        callbacks=[checkpoint_callback, lr_monitor, EMAWeightAveraging(trainconfig["ema_decay"])],
+                        callbacks=[epoch_checkpoint, last_checkpoint, lr_monitor, EMAWeightAveraging(trainconfig["ema_decay"])],
                         logger=wandb_logger,
                         accumulate_grad_batches=trainconfig.get("accumulate_grad_batches", 1),
                         num_sanity_val_steps=trainconfig.get("num_sanity_val_steps", 1),
