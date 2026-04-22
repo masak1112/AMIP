@@ -1,7 +1,8 @@
 # Default imports
 import argparse
+import time
 import torch
-import os 
+import os
 
 # Custom imports
 from common.utils import get_yaml, save_yaml, assemble_forcing, disassemble_input
@@ -9,7 +10,6 @@ from common.plotting import plot_reconstruction, plot_spectrum
 from modules.train_module import TrainModule
 from modules.combined_module import CombinedModule
 from data.amip_new import GetDataset
-from tqdm import tqdm
 from torch.utils.data import DataLoader, Subset
 
 # Lightning imports
@@ -188,8 +188,11 @@ def main(args):
     climatology_multilevel = torch.zeros((ensemble_size, len(model.multilevel_variables), model.nlevels, clim_nlat, clim_nlon), device=device)
     climatology_diagnostic = torch.zeros((ensemble_size, len(model.diagnostic_variables), clim_nlat, clim_nlon), device=device)
 
+    log_every = 10
+    start_time = time.time()
+
     with torch.no_grad():
-        for step_idx, batch in enumerate(tqdm(loader, total=num_steps)):
+        for step_idx, batch in enumerate(loader):
             # DataLoader has already added the leading batch dim (size 1).
             surface_t_b, upper_air_t_b, diagnostic_t_b, surface_t1_b, upper_air_t1_b, diagnostic_t1_b, varying_boundary_data_b = batch
 
@@ -221,6 +224,19 @@ def main(args):
             climatology_diagnostic += (diagnostic_pred_denorm - climatology_diagnostic) / n
 
             x = y
+
+            if (step_idx + 1) % log_every == 0 or step_idx == num_steps - 1:
+                elapsed = time.time() - start_time
+                steps_done = step_idx + 1
+                avg_per_step = elapsed / steps_done
+                remaining = avg_per_step * (num_steps - steps_done)
+                print(
+                    f"Step {steps_done}/{num_steps} | "
+                    f"elapsed {elapsed:.1f}s | "
+                    f"remaining {remaining:.1f}s | "
+                    f"{avg_per_step:.2f}s/step",
+                    flush=True,
+                )
 
             if step_idx % plot_every == 0:
                 print(f"Step {step_idx}/{num_steps}")
