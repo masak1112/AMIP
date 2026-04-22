@@ -10,6 +10,7 @@ from modules.train_module import TrainModule
 from modules.combined_module import CombinedModule
 from data.amip_new import GetDataset
 from tqdm import tqdm
+from torch.utils.data import DataLoader, Subset
 
 # Lightning imports
 import lightning as L
@@ -166,29 +167,42 @@ def main(args):
     plot_val = trainconfig.get("plot_val", False)
     #num_steps = 500
 
+    # Strided subset preserves date ordering for the autoregressive rollout while
+    # letting a multi-worker DataLoader prefetch HDF5 reads in parallel. The model
+    # forward is still sequential, but I/O + host->device copies overlap with compute.
+    strided_indices = list(range(0, num_steps * stride, stride))
+    strided_dataset = Subset(dataset, strided_indices)
+    num_workers = int(dataconfig.get("num_data_workers", 4))
+    loader = DataLoader(
+        strided_dataset,
+        batch_size=1,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+        persistent_workers=num_workers > 0,
+        prefetch_factor=4 if num_workers > 0 else None,
+    )
+
     # per-member running mean accumulators: e c h w / e c l h w
     climatology_surface = torch.zeros((ensemble_size, len(model.surface_variables), clim_nlat, clim_nlon), device=device)
     climatology_multilevel = torch.zeros((ensemble_size, len(model.multilevel_variables), model.nlevels, clim_nlat, clim_nlon), device=device)
     climatology_diagnostic = torch.zeros((ensemble_size, len(model.diagnostic_variables), clim_nlat, clim_nlon), device=device)
 
     with torch.no_grad():
-        for step_idx in tqdm(range(num_steps)):
-            batch_idx = step_idx * stride
-            if step_idx == 0:
-                surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data = dataset.__getitem__(batch_idx)
-                surface_t = surface_t.unsqueeze(0).to(device).expand(ensemble_size, -1, -1, -1)
-                upper_air_t = upper_air_t.unsqueeze(0).to(device).expand(ensemble_size, -1, -1, -1, -1)
-                diagnostic_t = diagnostic_t.unsqueeze(0).to(device).expand(ensemble_size, -1, -1, -1)
+        for step_idx, batch in enumerate(tqdm(loader, total=num_steps)):
+            # DataLoader has already added the leading batch dim (size 1).
+            surface_t_b, upper_air_t_b, diagnostic_t_b, surface_t1_b, upper_air_t1_b, diagnostic_t1_b, varying_boundary_data_b = batch
 
-                varying_boundary_data = varying_boundary_data.unsqueeze(0).to(device).expand(ensemble_size, -1, -1, -1)
+            varying_boundary_data = varying_boundary_data_b.to(device, non_blocking=True).expand(ensemble_size, -1, -1, -1)
+
+            if step_idx == 0:
+                surface_t = surface_t_b.to(device, non_blocking=True).expand(ensemble_size, -1, -1, -1)
+                upper_air_t = upper_air_t_b.to(device, non_blocking=True).expand(ensemble_size, -1, -1, -1, -1)
+                diagnostic_t = diagnostic_t_b.to(device, non_blocking=True).expand(ensemble_size, -1, -1, -1)
 
                 x = model.preprocess(surface_t, upper_air_t, diagnostic_t) # e c h w / e c l h w / e c h w
-                c_grid = assemble_forcing(varying_boundary_data, invariant) # e c h w
 
-            else:
-                surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data = dataset.__getitem__(batch_idx)
-                varying_boundary_data = varying_boundary_data.unsqueeze(0).to(device).expand(ensemble_size, -1, -1, -1)
-                c_grid = assemble_forcing(varying_boundary_data, invariant) # e c h w
+            c_grid = assemble_forcing(varying_boundary_data, invariant) # e c h w
 
             # TrainModule: y and y_last both low-res.
             # CombinedModule: y is low-res rollout state, y_last is full-res downscaled prediction.
@@ -216,9 +230,9 @@ def main(args):
                 torch.save(climatology_diagnostic.mean(dim=0).cpu(), path + f"climatology_diagnostic_{step_idx + 1}.pt")
 
                 # Targets stay at full resolution
-                surface_t1_dev = surface_t1.unsqueeze(0).to(device)
-                upper_air_t1_dev = upper_air_t1.unsqueeze(0).to(device)
-                diagnostic_t1_dev = diagnostic_t1.unsqueeze(0).to(device)
+                surface_t1_dev = surface_t1_b.to(device, non_blocking=True)
+                upper_air_t1_dev = upper_air_t1_b.to(device, non_blocking=True)
+                diagnostic_t1_dev = diagnostic_t1_b.to(device, non_blocking=True)
 
                 # Match target resolution to prediction resolution.
                 if (not is_combined) and model.downsample is not None:
