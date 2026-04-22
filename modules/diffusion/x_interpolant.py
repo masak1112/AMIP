@@ -220,7 +220,7 @@ class DynamicInterpolant(nn.Module):
 
         # --- Churn configuration (no-op if S_churn == 0) ---
         S_churn    = getattr(self, 'S_churn',    0.0)
-        S_noise    = getattr(self, 'S_noise',    1.0)
+        S_noise    = getattr(self, 'S_noise',    2.0)
         t_churn_lo = getattr(self, 't_churn_min', 0.05)
         t_churn_hi = getattr(self, 't_churn_max', 0.95)
         a_step = min(S_churn / max(num_steps_drift, 1), 1.0) if S_churn > 0 else 0.0
