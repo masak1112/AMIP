@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --account=pi-pedramh
 #SBATCH --time=6:00:00
-#SBATCH --mem=64G
+#SBATCH --mem=128G
 #SBATCH -p pedramh-gpu 
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=4
 #SBATCH -o bias_%x_%j.out
 #SBATCH -e bias_%x_%j.err
 
