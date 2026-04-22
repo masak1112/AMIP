@@ -20,7 +20,7 @@ class DynamicInterpolant(nn.Module):
                  S_churn = 0.0,
                  t_churn_min = 0.05,
                  t_churn_max = 0.95,
-                 S_noise = 1.0
+                 S_noise = 2.0
                  ):
         super(DynamicInterpolant, self).__init__()
 
