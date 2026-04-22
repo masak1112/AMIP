@@ -99,6 +99,6 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_ft_42_2026-04-21T15-35-47/last.ckpt
-    description: large_5_ft_actually
+    description: large_5_ft
     accumulate_grad_batches: 1
     optimizer: muon
