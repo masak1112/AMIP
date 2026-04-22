@@ -180,7 +180,7 @@ def main(args):
         for sampler in inference_samplers:
             for state_mode in state_modes:
                 for churn in churns:
-                    tag = f"ns{ns}_{sampler}_churn{churn}_state-{state_mode}"
+                    tag = f"ns{ns}_{sampler}_churn{churn}_state-{state_mode}_noise_2.0"
                     print(f"Running rollout: num_steps={ns}, sampler={sampler}, churn={churn}, state_mode={state_mode}")
 
                     y_dict, y_last_dict, target_dict = rollout(
