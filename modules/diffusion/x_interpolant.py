@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from modules.diffusion.utils import sample_logit_normal, power_sampler
+import math
 from collections import deque
 
 class DynamicInterpolant(nn.Module):
@@ -8,26 +9,24 @@ class DynamicInterpolant(nn.Module):
                  num_steps,  # this corresponds to physical time steps
                  sigma_coef=1.0,
                  train_sampler='uniform',
-                 inference_sampler='uniform',
                  integrator='euler',
-                 inference_rho=1.0,
                  l_max = 180,
                  spectral_weight = 0.01,
                  noise = "spherical",
                  model_last = False,
                  loss_form = "x",
-                 noise_scale_path = None
+                 noise_scale_path = None,
+                 gamma = 0.0
                  ):
         super(DynamicInterpolant, self).__init__()
 
         self.num_steps = num_steps
         self.sigma_coef = sigma_coef
         self.train_sampler = train_sampler
-        self.inference_sampler = inference_sampler
-        self.inference_rho = inference_rho
         self.model_last = model_last
         self.loss_form = loss_form
         self.integrator = integrator
+        self.gamma = gamma
 
         if noise == "spherical":
             from modules.diffusion.utils import SphereNoiseGenerator
@@ -116,6 +115,77 @@ class DynamicInterpolant(nn.Module):
         loss = loss + spectral_loss
 
         return loss, spectral_loss
+    
+    def sample_ddim(self, model, x, c_grid, num_steps=None, gamma=0.0,
+                    return_model_last=False):
+        """
+        DDIM-style sampler for the stochastic interpolant
+            I_t = (1-t) x_0 + t x_1 + sigma_coef * (1-t) * sqrt(t) * z.
+
+        At each step:
+        1. Predict x_hat_1 = model(y, x, t, c_grid).
+        2. Invert the interpolant to extract the noise implicit in y:
+                z_hat = (y - (1-t) x - t x_hat_1) / (sigma_coef (1-t) sqrt(t))
+        3. Mix z_hat with fresh Gaussian noise xi (variance-preserving):
+                z_next = gamma * z_hat + sqrt(1 - gamma^2) * xi
+        4. Reconstruct y at the next timestep directly from the interpolant:
+                y = (1 - t') x + t' x_hat_1 + sigma_coef (1-t') sqrt(t') * z_next
+
+        Because sigma_coef * (1-t) * sqrt(t) vanishes at t=1, the final step
+        lands exactly on x_hat_1 — no residual Brownian noise, no W_t to
+        track, no brittle cancellation. Stochastic exploration (needed for
+        high-frequency content) is preserved as long as gamma < 1.
+
+        Args:
+            gamma: noise-retention coefficient in [0, 1].
+                0.0  -> fully stochastic, fresh noise every step.
+                        Marginals match your SDE; this is the default.
+                1.0  -> deterministic (probability-flow-like).
+                ~0.5 -> "churn", often a good compromise.
+        """
+        if num_steps is None:
+            num_steps = self.num_steps
+
+        timesteps = torch.linspace(0, 1, num_steps + 1, device=x.device)
+        y = x.clone()
+        y_pred = None
+
+        g_old = gamma
+        g_new = math.sqrt(max(0.0, 1.0 - gamma * gamma))
+
+        for i in range(num_steps):
+            t_curr = timesteps[i]
+            t_next = timesteps[i + 1]
+            t_curr_batch = t_curr.expand(x.shape[0])
+
+            # 1. Predict clean target from current state.
+            y_pred = model(y, x, t_curr_batch, c_grid)
+
+            # Interpolant noise scales. sigma_curr is 0 at t=0, sigma_next is 0 at t=1.
+            sigma_curr = self.sigma_coef * (1.0 - t_curr) * torch.sqrt(t_curr)
+            sigma_next = self.sigma_coef * (1.0 - t_next) * torch.sqrt(t_next)
+
+            # Fresh noise for this step.
+            xi = self.get_noise(x)
+            if self.noise_scales is not None:
+                xi = xi * self.noise_scales
+
+            # 2 + 3. Build the noise for the next timestep.
+            if i == 0:
+                # At t=0, y == x exactly and sigma_curr == 0; no noise to invert.
+                # Seed the first marginal with full-variance fresh noise.
+                z_next = xi
+            else:
+                z_hat = (y - (1.0 - t_curr) * x - t_curr * y_pred) / sigma_curr
+                z_next = g_old * z_hat + g_new * xi
+
+            # 4. Reconstruct y at t_next. At t_next == 1, sigma_next == 0 and
+            #    y collapses to y_pred — clean termination, no extra logic needed.
+            y = (1.0 - t_next) * x + t_next * y_pred + sigma_next * z_next
+
+        if return_model_last:
+            return y, y_pred
+        return y
 
     def sample(self, model, x, c_grid, num_steps=None, return_model_last=False):
         # x contains current prognostic state (latent space)
@@ -124,10 +194,14 @@ class DynamicInterpolant(nn.Module):
         if num_steps is None:
             num_steps = self.num_steps
 
-        timesteps = torch.linspace(0, 1, num_steps + 1, device=x.device)
+        if self.integrator == 'ddim':
+            gamma = self.gamma 
+            return self.sample_ddim(model, x, c_grid,
+                                    num_steps=num_steps,
+                                    gamma=gamma,
+                                    return_model_last=return_model_last)
 
-        if self.inference_sampler == 'power':
-            timesteps = timesteps**self.inference_rho
+        timesteps = torch.linspace(0, 1, num_steps + 1, device=x.device)
 
         # start y at source distribution, which is current state
         y = x.clone()
@@ -150,7 +224,6 @@ class DynamicInterpolant(nn.Module):
             t_curr_batch = t_current.expand(x.shape[0])
             t_next_batch = t_next.expand(x.shape[0])
 
-            # --- 1. Predictor Step (Standard Euler-Maruyama) ---
             y_pred = model(y, x, t_curr_batch, c_grid) # Predict x_1
             drift_curr = (y_pred - x) - self.sigma_coef * W_t # v_theta(t)
 
@@ -185,16 +258,12 @@ class DynamicInterpolant(nn.Module):
             
             dW = torch.sqrt(dt) * noise
 
-            if i == num_steps_drift - 1:
-                diffusion_scale = 0 # turn off diffusion at last timestep
-            else:
-                diffusion_scale = self.sigma_coef * (1 - self.wide(t_curr_batch))
+            diffusion_scale = self.sigma_coef * (1 - self.wide(t_curr_batch))
             
-            # Temporary next state (Euler predictor)
+            # Euler predictor
             y_next_euler = y + drift_curr * dt + diffusion_scale * dW
             W_next = W_t + dW # Advanced accumulated noise
 
-            # --- 2. Corrector Step (Heun) ---
             if self.integrator == 'heun':
                 # Evaluate model at the predicted state
                 y_pred_next = model(y_next_euler, x, t_next_batch, c_grid)

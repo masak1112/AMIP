@@ -32,7 +32,7 @@ def init_feat_dict(b, nlat, nlon, device):
 
 
 @torch.no_grad()
-def rollout(model, batch, device, num_steps, inference_sampler, inference_rho, state_mode="y"):
+def rollout(model, batch, device, num_steps, inference_sampler, gamma, state_mode="y"):
     """Run a full 10-day autoregressive rollout and capture y / y_last / target at plot days.
 
     state_mode: "y" advances the state with the last Euler step (standard); "y_last"
@@ -42,7 +42,7 @@ def rollout(model, batch, device, num_steps, inference_sampler, inference_rho, s
     model.scheduler.num_steps = num_steps
     #model.scheduler.inference_sampler = inference_sampler # timestep scheduler
     model.scheduler.integrator = inference_sampler
-    model.scheduler.inference_rho = inference_rho
+    model.scheduler.gamma = gamma
 
     (
         surface_t, upper_air_t, diagnostic_t,
@@ -172,44 +172,45 @@ def main(args):
     model.eval()
 
     num_steps_list = [5, 10, 20]
-    inference_samplers = ["euler"]
+    inference_samplers = ["ddim"]
     state_modes = ["y"]
-    inference_rho = 1.0
+    gammas = [0.0, 0.25, 0.5, 0.75, 1.0]
 
     for ns in num_steps_list:
         for sampler in inference_samplers:
             for state_mode in state_modes:
-                tag = f"ns{ns}_{sampler}_rho{inference_rho}_state-{state_mode}"
-                print(f"Running rollout: num_steps={ns}, sampler={sampler}, rho={inference_rho}, state_mode={state_mode}")
+                for gamma in gammas:
+                    tag = f"ns{ns}_{sampler}_gamma{gamma}_state-{state_mode}"
+                    print(f"Running rollout: num_steps={ns}, sampler={sampler}, gamma={gamma}, state_mode={state_mode}")
 
-                y_dict, y_last_dict, target_dict = rollout(
-                    model, batch, device, ns, sampler, inference_rho, state_mode=state_mode
-                )
+                    y_dict, y_last_dict, target_dict = rollout(
+                        model, batch, device, ns, sampler, gamma, state_mode=state_mode
+                    )
 
-                subdir = os.path.join(output_dir, tag)
-                os.makedirs(subdir, exist_ok=True)
+                    subdir = os.path.join(output_dir, tag)
+                    os.makedirs(subdir, exist_ok=True)
 
-                # for var in PLOT_KEYS:
-                #     plot_rollout(
-                #         y_dict[var][0].cpu(),
-                #         y_last_dict[var][0].cpu(),
-                #         target_dict[var][0].cpu(),
-                #         var_name=f"{var}  [{tag}]",
-                #         out_path=os.path.join(subdir, f"{var}.png"),
-                #     )
+                    # for var in PLOT_KEYS:
+                    #     plot_rollout(
+                    #         y_dict[var][0].cpu(),
+                    #         y_last_dict[var][0].cpu(),
+                    #         target_dict[var][0].cpu(),
+                    #         var_name=f"{var}  [{tag}]",
+                    #         out_path=os.path.join(subdir, f"{var}.png"),
+                    #     )
 
-                torch.save(
-                    {
-                        "y": {k: v.cpu() for k, v in y_dict.items()},
-                        "y_last": {k: v.cpu() for k, v in y_last_dict.items()},
-                        "target": {k: v.cpu() for k, v in target_dict.items()},
-                        "num_steps": ns,
-                        "inference_sampler": sampler,
-                        "inference_rho": inference_rho,
-                        "state_mode": state_mode,
-                    },
-                    os.path.join(subdir, "rollout.pt"),
-                )
+                    torch.save(
+                        {
+                            "y": {k: v.cpu() for k, v in y_dict.items()},
+                            "y_last": {k: v.cpu() for k, v in y_last_dict.items()},
+                            "target": {k: v.cpu() for k, v in target_dict.items()},
+                            "num_steps": ns,
+                            "inference_sampler": sampler,
+                            "gamma": gamma,
+                            "state_mode": state_mode,
+                        },
+                        os.path.join(subdir, "rollout.pt"),
+                    )
 
 
 if __name__ == "__main__":
