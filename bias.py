@@ -106,7 +106,7 @@ def main(args):
     config=get_yaml(args.config)
     config, modelconfig, trainconfig, dataconfig = process_args(args, config)
 
-    ID = 1
+    ID = 3
     seed = trainconfig["seed"] + ID
     seed_everything(seed)
     torch.set_float32_matmul_precision("high")
@@ -184,8 +184,11 @@ def main(args):
         prefetch_factor=4 if num_workers > 0 else None,
     )
 
-    project = True
-    proj = SphericalSpectralProjector(nlat=clim_nlat, nlon=clim_nlon).to(device)
+    project = False 
+    if project:
+        proj = SphericalSpectralProjector(nlat=clim_nlat, nlon=clim_nlon).to(device)
+    else:
+        proj = None
 
     # per-member running mean accumulators: e c h w / e c l h w
     climatology_surface = torch.zeros((ensemble_size, len(model.surface_variables), clim_nlat, clim_nlon), device=device)
