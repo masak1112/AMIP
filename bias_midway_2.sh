@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --account=pi-pedramh
 #SBATCH --time=6:00:00
-#SBATCH --mem=128G
+#SBATCH --mem=64G
 #SBATCH -p pedramh-gpu 
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -18,6 +18,6 @@ conda activate /project/pedramh/ayz/envs/torch2
 export NCCL_P2P_DISABLE=1
 export NCCL_IB_DISABLE=1
 
-config_file=configs/SI_midway.yaml
+config_file=configs/SI_midway.yaml --checkpoint="/project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/model_epoch=33.ckpt" --description="ep_33"
 
 srun python bias.py --config=$config_file
