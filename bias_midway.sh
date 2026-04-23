@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --account=pi-pedramh
 #SBATCH --time=6:00:00
-#SBATCH --mem=128G
+#SBATCH --mem=64G
 #SBATCH -p pedramh-gpu 
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
