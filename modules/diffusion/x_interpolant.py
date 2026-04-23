@@ -212,7 +212,7 @@ class DynamicInterpolant(nn.Module):
 
         for k in range(num_steps):
             t_k = timesteps[k]
-            t_batch = torch.full((x.shape[0]), t_k, device=x.device, dtype=x.dtype)
+            t_batch = torch.full((x.shape[0],), t_k, device=x.device, dtype=x.dtype)
 
             x1_pred = model(y, x, t_batch, c_grid)
 
