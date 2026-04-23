@@ -106,7 +106,7 @@ def main(args):
     config=get_yaml(args.config)
     config, modelconfig, trainconfig, dataconfig = process_args(args, config)
 
-    ID = 4
+    ID = 1
     seed = trainconfig["seed"] + ID
     seed_everything(seed)
     torch.set_float32_matmul_precision("high")
@@ -171,7 +171,8 @@ def main(args):
     # Strided subset preserves date ordering for the autoregressive rollout while
     # letting a multi-worker DataLoader prefetch HDF5 reads in parallel. The model
     # forward is still sequential, but I/O + host->device copies overlap with compute.
-    strided_indices = list(range(0, num_steps * stride, stride))
+    start = 1
+    strided_indices = list(range(start, num_steps * stride, stride))
     strided_dataset = Subset(dataset, strided_indices)
     num_workers = int(dataconfig.get("num_data_workers", 4))
     loader = DataLoader(
