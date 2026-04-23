@@ -208,6 +208,8 @@ class DynamicInterpolant(nn.Module):
         
         ratio_batch = ratio.expand(x.shape[0], 1, 1, 1)
 
+        y = x.clone()
+
         for k in range(num_steps):
             t_k = timesteps[k]
             t_batch = torch.full((x.shape[0], 1), t_k, device=x.device, dtype=x.dtype)
