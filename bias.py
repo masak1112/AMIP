@@ -185,7 +185,7 @@ def main(args):
     )
 
     project = True
-    proj = SphericalSpectralProjector(nlat=clim_nlat, nlon=clim_nlon)
+    proj = SphericalSpectralProjector(nlat=clim_nlat, nlon=clim_nlon).to(device)
 
     # per-member running mean accumulators: e c h w / e c l h w
     climatology_surface = torch.zeros((ensemble_size, len(model.surface_variables), clim_nlat, clim_nlon), device=device)
