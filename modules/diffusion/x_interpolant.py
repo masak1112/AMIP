@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from modules.diffusion.utils import sample_logit_normal, power_sampler
+from modules.diffusion.utils import sample_logit_normal, power_sampler, get_log_uniform_t
 import math
 from collections import deque
 
@@ -17,6 +17,7 @@ class DynamicInterpolant(nn.Module):
                  loss_form = "x",
                  noise_scale_path = None,
                  gamma = 0.5,
+                 tau = 1.3,
                  S_churn = 0.0,
                  t_churn_min = 0.05,
                  t_churn_max = 0.95,
@@ -35,6 +36,7 @@ class DynamicInterpolant(nn.Module):
         self.t_churn_min = t_churn_min
         self.t_churn_max = t_churn_max
         self.S_noise = S_noise
+        self.tau = tau
 
         if noise == "spherical":
             from modules.diffusion.utils import SphereNoiseGenerator
@@ -194,19 +196,41 @@ class DynamicInterpolant(nn.Module):
         if return_model_last:
             return y, y_pred
         return y
+    
 
-    def sample(self, model, x, c_grid, num_steps=None, return_model_last=False):
+    def sample_exponential(self, model, x, c_grid, num_steps=None, return_model_last=False):
         # x contains current prognostic state (latent space)
         # c_grid contains current forcing state (original resolution)
         if num_steps is None:
             num_steps = self.num_steps
 
-        if self.integrator == 'ddim':
-            gamma = self.gamma
-            return self.sample_ddim(model, x, c_grid,
-                                    num_steps=num_steps,
-                                    gamma=gamma,
-                                    return_model_last=return_model_last)
+        timesteps, ratio = get_log_uniform_t(n_t = num_steps - 1, scale = self.tau, device = x.device)
+        
+        ratio_batch = ratio.expand(x.shape[0], 1, 1, 1)
+
+        for k in range(num_steps):
+            t_k = timesteps[k]
+            t_batch = torch.full((x.shape[0], 1), t_k, device=x.device, dtype=x.dtype)
+
+            x1_pred = model(y, x, t_batch, c_grid)
+
+            noise = self.get_noise(x)
+            if self.noise_scales is not None:
+                noise = noise * self.noise_scales
+
+            diffusion_scale = self.sigma_coef * (1-self.wide(t_batch)) * torch.sqrt((1-ratio_batch) * (1-t_batch))
+            
+            y = ratio_batch * y + (1-ratio_batch) * x1_pred + diffusion_scale * noise
+
+        if return_model_last:
+            assert self.model_last is False
+            return y, x1_pred
+
+    def sample_uniform(self, model, x, c_grid, num_steps=None, return_model_last=False):
+        # x contains current prognostic state (latent space)
+        # c_grid contains current forcing state (original resolution)
+        if num_steps is None:
+            num_steps = self.num_steps
 
         timesteps = torch.linspace(0, 1, num_steps + 1, device=x.device)
         # start y at source distribution, which is current state
@@ -220,7 +244,7 @@ class DynamicInterpolant(nn.Module):
 
         # --- Churn configuration (no-op if S_churn == 0) ---
         S_churn    = getattr(self, 'S_churn',    0.0)
-        S_noise    = getattr(self, 'S_noise',    2.0)
+        S_noise    = getattr(self, 'S_noise',    1.0)
         t_churn_lo = getattr(self, 't_churn_min', 0.05)
         t_churn_hi = getattr(self, 't_churn_max', 0.95)
         a_step = min(S_churn / max(num_steps_drift, 1), 1.0) if S_churn > 0 else 0.0
@@ -302,6 +326,22 @@ class DynamicInterpolant(nn.Module):
             y = model(y, x, timesteps[-2].expand(x.shape[0]), c_grid)
 
         return y
+    
+    def sample(self, model, x, c_grid, num_steps=None, return_model_last=False):
+        if self.integrator == 'ddim':
+            gamma = self.gamma
+            return self.sample_ddim(model, x, c_grid,
+                                    num_steps=num_steps,
+                                    gamma=gamma,
+                                    return_model_last=return_model_last)
+        elif self.integrator == 'exponential':
+            return self.sample_exponential(model, x, c_grid,
+                                     num_steps=num_steps,
+                                     return_model_last=return_model_last)
+        else:
+            return self.sample_uniform(model, x, c_grid,
+                                       num_steps=num_steps,
+                                       return_model_last=return_model_last)
 
     def forward(self, model, x, c_grid, num_steps=None):
         return self.sample(model, x, c_grid, num_steps)

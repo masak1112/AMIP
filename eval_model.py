@@ -172,15 +172,15 @@ def main(args):
     model.eval()
 
     num_steps_list = [5, 10, 20]
-    inference_samplers = ["euler"]
+    inference_samplers = ["exponential"]
     state_modes = ["y"]
-    churns = [0.5, 1.0, 2.0, 4.0]
+    churns = [0.0]
 
     for ns in num_steps_list:
         for sampler in inference_samplers:
             for state_mode in state_modes:
                 for churn in churns:
-                    tag = f"ns{ns}_{sampler}_churn{churn}_state-{state_mode}_noise_2.0"
+                    tag = f"ns{ns}_{sampler}_churn{churn}_state-{state_mode}"
                     print(f"Running rollout: num_steps={ns}, sampler={sampler}, churn={churn}, state_mode={state_mode}")
 
                     y_dict, y_last_dict, target_dict = rollout(
