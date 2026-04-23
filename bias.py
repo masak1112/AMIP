@@ -106,7 +106,7 @@ def main(args):
     config=get_yaml(args.config)
     config, modelconfig, trainconfig, dataconfig = process_args(args, config)
 
-    ID = 3
+    ID = 4
     seed = trainconfig["seed"] + ID
     seed_everything(seed)
     torch.set_float32_matmul_precision("high")
