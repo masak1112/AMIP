@@ -26,8 +26,8 @@ model:
             model_last: False
             integrator: euler
             gamma: 0.5
-            S_churn: 4.0
-            S_noise: 2.0
+            S_churn: 0.0
+            S_noise: 1.0
             noise_scale_path: /home/anthonyz/amip/sigma_c_lowres_26.pt
 
 data:
@@ -104,6 +104,6 @@ training:
     wandb_mode: online
     checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_ft_42_2026-04-21T15-35-47/last.ckpt
-    description: lowres_10_churn
+    description: lowres_10
     accumulate_grad_batches: 1
     optimizer: muon
