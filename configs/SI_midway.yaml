@@ -24,7 +24,7 @@ model:
             spectral_weight: 0.0
             noise : spherical
             model_last: False
-            integrator: euler
+            integrator: exponential
             gamma: 0.5
             S_churn: 0.0
             S_noise: 1.0
@@ -102,8 +102,9 @@ training:
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
+    checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/model_epoch=31.ckpt
+    #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_ft_42_2026-04-21T15-35-47/last.ckpt
-    description: lowres_10
+    description: lowres_exponential_10
     accumulate_grad_batches: 1
     optimizer: muon
