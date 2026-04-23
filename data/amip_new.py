@@ -260,6 +260,13 @@ class GetDataset(Dataset):
         else:
             self.inference_idxs = np.arange(0, max_inference_idx)
 
+        # Optional solstice biasing: build an oversampled index pool that
+        # repeats timesteps near Jun 21 / Dec 21. Only applied in training mode
+        # — validation/inference always use ``self.inference_idxs`` as-is.
+        self._sample_order = None
+        if self.train and params.get('solstice_bias', False):
+            self._sample_order = self._build_solstice_sample_order()
+
         # Pressure levels
         if len(params['levels']) > 0:
             self.levels = np.array(params['levels'])
@@ -472,6 +479,63 @@ class GetDataset(Dataset):
         date_range = np.arange(0., hours, hour_step)
         return date_range, start_date, end_date
 
+    def _date_offset(self, index):
+        """Return the hour-offset into ``self.dates`` for dataloader position *index*.
+
+        When solstice biasing is active, indirects through ``self._sample_order``
+        so that repeated (oversampled) positions map to the correct timestep.
+        """
+        if self._sample_order is not None:
+            return self.dates[self._sample_order[index]]
+        return self.dates[index]
+
+    def _build_solstice_sample_order(self):
+        """Build an oversampled index pool biased toward Jun 21 / Dec 21.
+
+        For each index in ``self.inference_idxs``, compute a Gaussian weight
+        based on the circular day-of-year distance to the nearest solstice and
+        repeat that index ``round(weight)`` times (minimum 1). The resulting
+        array is a valid index list into ``self.dates`` whose empirical
+        distribution is concentrated around the solstices.
+        """
+        sigma_days = float(self.params.get('solstice_bias_sigma_days', 60.0))
+        peak = float(self.params.get('solstice_bias_peak_multiplier', 2.0))
+        if peak < 1.0:
+            raise ValueError('solstice_bias_peak_multiplier must be >= 1.0')
+
+        ref_year = self.year_start
+        yr_start = self.datetime_class(ref_year, 1, 1, has_year_zero=self.has_year_zero)
+        jun_doy = (self.datetime_class(ref_year, 6, 21, has_year_zero=self.has_year_zero) - yr_start).days
+        dec_doy = (self.datetime_class(ref_year, 12, 21, has_year_zero=self.has_year_zero) - yr_start).days
+        year_len = (self.datetime_class(ref_year + 1, 1, 1, has_year_zero=self.has_year_zero) - yr_start).days
+
+        order = []
+        near_solstice = 0
+        for idx in self.inference_idxs:
+            sample_time = self.start_date + timedelta(hours=float(self.dates[idx]))
+            sample_yr_start = self.datetime_class(
+                sample_time.year, 1, 1, has_year_zero=self.has_year_zero,
+            )
+            doy = (sample_time - sample_yr_start).total_seconds() / 86400.0
+
+            d_jun = abs(doy - jun_doy); d_jun = min(d_jun, year_len - d_jun)
+            d_dec = abs(doy - dec_doy); d_dec = min(d_dec, year_len - d_dec)
+            d = min(d_jun, d_dec)
+
+            weight = 1.0 + (peak - 1.0) * np.exp(-0.5 * (d / sigma_days) ** 2)
+            repeats = max(1, int(round(weight)))
+            order.extend([int(idx)] * repeats)
+            if d <= sigma_days:
+                near_solstice += 1
+
+        order = np.array(order, dtype=np.int64)
+        print(
+            f"  Solstice biasing enabled: sigma={sigma_days}d, peak={peak}x, "
+            f"effective epoch size {len(order)} vs base {len(self.inference_idxs)} "
+            f"({near_solstice} base samples within 1 sigma of a solstice)"
+        )
+        return order
+
     # ------------------------------------------------------------------
     # Data I/O
     # ------------------------------------------------------------------
@@ -632,6 +696,8 @@ class GetDataset(Dataset):
     # ------------------------------------------------------------------
 
     def __len__(self):
+        if self._sample_order is not None:
+            return len(self._sample_order)
         return len(self.inference_idxs)
 
     def __getitem__(self, index):
@@ -676,8 +742,9 @@ class GetDataset(Dataset):
 
     def _getitem_train(self, index, has_boundary, has_diagnostic):
         """Build a single training sample (input at t, target at t+dt)."""
-        start_time = self.start_date + timedelta(hours=self.dates[index])
-        end_time = self.start_date + timedelta(hours=self.dates[index] + self.timedelta_hours)
+        hour_offset = self._date_offset(index)
+        start_time = self.start_date + timedelta(hours=hour_offset)
+        end_time = self.start_date + timedelta(hours=hour_offset + self.timedelta_hours)
 
         data_in = self._get_data(start_time, out=False)
 
@@ -773,7 +840,7 @@ class GetDataset(Dataset):
         states are produced autoregressively by the model.
         """
         rollout = self.multistep_rollout
-        start_time = self.start_date + timedelta(hours=self.dates[index])
+        start_time = self.start_date + timedelta(hours=self._date_offset(index))
 
         data_in = self._get_data(start_time, out=False)
         if has_boundary:
@@ -845,7 +912,7 @@ class GetDataset(Dataset):
 
     def _getitem_autoregressive(self, index, lead_times, has_boundary, has_diagnostic):
         """Build an autoregressive sample with multi-step boundary forcing."""
-        start_time = self.start_date + timedelta(hours=self.dates[index])
+        start_time = self.start_date + timedelta(hours=self._date_offset(index))
         data_in = self._get_data(start_time, out=False)
 
         if has_boundary:
@@ -953,7 +1020,7 @@ class GetDataset(Dataset):
 
     def _getitem_single_step(self, index, has_boundary):
         """Single-step evaluation without lead times."""
-        start_time = self.start_date + timedelta(hours=self.dates[index])
+        start_time = self.start_date + timedelta(hours=self._date_offset(index))
         data_in = self._get_data(start_time, out=False)
 
         if has_boundary:

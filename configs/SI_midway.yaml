@@ -73,6 +73,9 @@ data:
     mean_path: "/home/anthonyz/amip/normalize_mean.nc"
     std_path: "/home/anthonyz/amip/normalize_std.nc"
     forecast_lead_times: [1, 3, 5, 10]
+    solstice_bias: True
+    solstice_bias_sigma_days: 60
+    solstice_bias_peak_multiplier: 2.0
 
     calendar: 'standard'
     data_timedelta_hours: 6
@@ -102,9 +105,9 @@ training:
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/model_epoch=32.ckpt
+    checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/last.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_ft_42_2026-04-21T15-35-47/last.ckpt
-    description: lowres_10_init_1_ep_32
+    description: large_solstice
     accumulate_grad_batches: 1
     optimizer: muon
