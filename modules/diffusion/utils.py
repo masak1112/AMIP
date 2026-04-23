@@ -3,6 +3,124 @@ from einops import rearrange
 from torch_harmonics import InverseRealSHT
 import torch.nn as nn
 import torch.fft
+import torch_harmonics as th
+
+class SphericalSpectralProjector(torch.nn.Module):
+    """
+    Projects a field's angular power spectrum onto a target spectrum while
+    preserving phase. Operates in the spherical-harmonic basis, which is the
+    natural "isotropic radial shell" basis on the sphere — zonal FFT would
+    mix different total wavenumbers at different latitudes.
+
+    For each degree l, rescales all (l, m) coefficients by a common real gain
+    g(l) = sqrt(P_target(l) / P_current(l)). Phase (the direction of each
+    complex coefficient) is untouched, so spatial structure is preserved;
+    only the per-scale amplitude is corrected.
+
+    Usage
+    -----
+        proj = SphericalSpectralProjector(nlat=180, nlon=360).to(device)
+
+        # Option A: target spectrum from the current input state x_0
+        y_cal = proj.project(y_hat, target_field=x_0)
+
+        # Option B: precomputed climatological target, shape (C, lmax+1)
+        y_cal = proj.project(y_hat, target_power=clim_power)
+    """
+
+    def __init__(self, nlat, nlon, grid="equiangular", lmax=None, mmax=None):
+        super().__init__()
+        self.nlat, self.nlon = nlat, nlon
+        self.sht = th.RealSHT(nlat, nlon, lmax=lmax, mmax=mmax, grid=grid)
+        self.isht = th.InverseRealSHT(nlat, nlon, lmax=lmax, mmax=mmax, grid=grid)
+
+    @staticmethod
+    def power_per_degree(coeffs: torch.Tensor) -> torch.Tensor:
+        """
+        Total power at each degree l from real-SHT coefficients.
+
+            P(l) = |a_{l,0}|^2 + 2 * sum_{m>=1} |a_{l,m}|^2
+
+        The factor of 2 accounts for the implicit negative-m modes that
+        aren't stored because the field is real.
+
+        Parameters
+        ----------
+        coeffs : complex tensor, shape (..., lmax+1, mmax+1)
+
+        Returns
+        -------
+        power : real tensor, shape (..., lmax+1)
+        """
+        m0 = coeffs[..., :, 0].abs().pow(2)
+        m_pos = 2.0 * coeffs[..., :, 1:].abs().pow(2).sum(dim=-1)
+        return m0 + m_pos
+
+    def forward(
+        self,
+        y: torch.Tensor,
+        target_field: torch.Tensor = None,
+        target_power: torch.Tensor = None,
+        max_gain: float = None,
+        min_gain: float = 0.0,
+        floor_ratio: float = 1e-8,
+        only_boost: bool = True,
+    ) -> torch.Tensor:
+        """
+        Parameters
+        ----------
+        y : (B, C, nlat, nlon) real
+            Field(s) to correct (e.g. the model prediction x̂_1).
+        target_field : (B, C, nlat, nlon), optional
+            Field whose spectrum defines the target — typically the input
+            state x_0, since you've assumed the spectrum is stationary.
+        target_power : tensor of shape (lmax+1,), (C, lmax+1), or (B, C, lmax+1)
+            Precomputed per-degree target power (e.g. a climatology).
+            Provide exactly one of target_field / target_power.
+        max_gain, min_gain : float
+            Clip each per-degree gain g(l) to [min_gain, max_gain]. max_gain
+            stops you from amplifying shells whose current power is numerical
+            noise into something huge; sane default is 5–10.
+        floor_ratio : float
+            Lower floor on current power, as a fraction of target power,
+            before the division. Just numerical safety.
+        only_boost : bool
+            If True, g(l) is clipped to >= 1. Never reduce energy, only
+            restore it. Use this when you're confident the failure mode is
+            spectral damping and not over-prediction.
+
+        Returns
+        -------
+        y_cal : (B, C, nlat, nlon) real, spectrum-projected.
+        """
+        if (target_field is None) == (target_power is None):
+            raise ValueError("Provide exactly one of target_field or target_power.")
+
+        coeffs = self.sht(y)                              # (B, C, L+1, M+1)
+        current_power = self.power_per_degree(coeffs)     # (B, C, L+1)
+
+        if target_field is not None:
+            target_coeffs = self.sht(target_field)
+            target_power = self.power_per_degree(target_coeffs)
+
+        # Broadcast target to (B, C, L+1)
+        while target_power.dim() < current_power.dim():
+            target_power = target_power.unsqueeze(0)
+        target_power = target_power.to(current_power.dtype).expand_as(current_power)
+
+        floor = target_power * floor_ratio + 1e-30
+        gain = torch.sqrt(target_power / current_power.clamp(min=floor))
+
+        if max_gain is None:
+            max_gain = float('inf')
+
+        if only_boost:
+            gain = gain.clamp(min=max(1.0, min_gain), max=max_gain)
+        else:
+            gain = gain.clamp(min=min_gain, max=max_gain)
+
+        coeffs_cal = coeffs * gain.unsqueeze(-1)          # broadcast over m
+        return self.isht(coeffs_cal)
 
 def get_log_uniform_t(t_final = 0.999, scale=1.3, n_t = 10, device = "cpu"):
     t_s = []

@@ -10,6 +10,7 @@ from common.plotting import plot_reconstruction, plot_spectrum
 from modules.train_module import TrainModule
 from modules.combined_module import CombinedModule
 from data.amip_new import GetDataset
+from modules.diffusion.utils import SphericalSpectralProjector
 from torch.utils.data import DataLoader, Subset
 
 # Lightning imports
@@ -105,7 +106,7 @@ def main(args):
     config=get_yaml(args.config)
     config, modelconfig, trainconfig, dataconfig = process_args(args, config)
 
-    ID = 2
+    ID = 1
     seed = trainconfig["seed"] + ID
     seed_everything(seed)
     torch.set_float32_matmul_precision("high")
@@ -183,6 +184,9 @@ def main(args):
         prefetch_factor=4 if num_workers > 0 else None,
     )
 
+    project = True
+    proj = SphericalSpectralProjector(nlat=clim_nlat, nlon=clim_nlon)
+
     # per-member running mean accumulators: e c h w / e c l h w
     climatology_surface = torch.zeros((ensemble_size, len(model.surface_variables), clim_nlat, clim_nlon), device=device)
     climatology_multilevel = torch.zeros((ensemble_size, len(model.multilevel_variables), model.nlevels, clim_nlat, clim_nlon), device=device)
@@ -222,6 +226,9 @@ def main(args):
             climatology_surface += (surface_pred_denorm - climatology_surface) / n
             climatology_multilevel += (multilevel_pred_denorm - climatology_multilevel) / n
             climatology_diagnostic += (diagnostic_pred_denorm - climatology_diagnostic) / n
+
+            if project: # before next step, project spectrum of y to prior step x
+                y = proj(y, target_field=x, only_boost=True)
 
             x = y
 
