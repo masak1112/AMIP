@@ -230,10 +230,17 @@ class GetDataset(Dataset):
                 raise ValueError('ocean variables cannot be in surface variables.')
             self.surface_variables = self.surface_variables + self.ocean_variables
 
-        self.upper_air_variables = params["upper_air_variables"] 
-        self.constant_boundary_variables = params["constant_boundary_variables"] 
-        self.varying_boundary_variables = params["varying_boundary_variables"] 
+        self.upper_air_variables = params["upper_air_variables"]
+        self.constant_boundary_variables = params["constant_boundary_variables"]
+        self.varying_boundary_variables = params["varying_boundary_variables"]
         self.diagnostic_variables = params['diagnostic_variables']
+
+        # Optional: compute delta (current minus N hours prior) for a subset of
+        # surface/forcing fields and append them as additional varying-boundary
+        # channels. Used to give the model a "recent change" signal for slowly
+        # varying forcings like SST, SIC, DSWRFtoa.
+        self.delta_boundary_variables = params.get('delta_boundary_variables', [])
+        self.delta_boundary_hours = params.get('delta_boundary_hours', 720)
 
         # Date range
         self.dates, self.start_date, self.end_date = self._get_dates(
@@ -313,6 +320,15 @@ class GetDataset(Dataset):
                 self.diagnostic_variables, upper_air=False,
             )
 
+        if self.delta_boundary_variables:
+            # Use each variable's own std to scale the raw difference; delta is
+            # approximately zero-mean so no mean subtraction is applied.
+            _, self.delta_boundary_std = self._load_mean_std(
+                mean_path,
+                std_path,
+                self.delta_boundary_variables, upper_air=False,
+            )
+
         self._build_variable_lists()
 
         if self.epsilon_factor > 0.:
@@ -328,6 +344,9 @@ class GetDataset(Dataset):
         print(f"  Surface variables: {self.surface_variables}")
         print(f"  Diagnostic variables: {self.diagnostic_variables}")
         print(f"  Varying boundary variables: {self.varying_boundary_variables}")
+        if self.delta_boundary_variables:
+            print(f"  Delta boundary variables: {self.delta_boundary_variables} "
+                  f"(appended to varying boundary; {self.delta_boundary_hours}h prior)")
         print(f"  Constant boundary variables: {self.constant_boundary_variables}")
         print(f"  Pressure levels: {self.levels}")
         print(f"  Horizontal resolution: {self.params['horizontal_resolution']}")
@@ -571,6 +590,45 @@ class GetDataset(Dataset):
             return get_data_given_path(data_file_path, self.variable_list_out)
         return get_data_given_path(data_file_path, self.variable_list_in)
 
+    def _compute_calendar(self, time):
+        # Returns (second_of_day, day_of_year). DOY is 1-indexed.
+        data_year = time.year
+        seconds_into_year = int(
+            (time - self.datetime_class(data_year, 1, 1, hour=0,
+                                        has_year_zero=self.has_year_zero)).total_seconds()
+        )
+        doy = (seconds_into_year // 86400) + 1
+        sod = seconds_into_year % 86400
+        return sod, doy
+
+    def _get_delta_prior_datetime(self, current_time):
+        # Wrap forward by a full year when the prior timestep would fall before
+        # start_date so the first 30 days of the dataset use the last 30 days
+        # of year_start as a reference.
+        prior_time = current_time - timedelta(hours=self.delta_boundary_hours)
+        if prior_time < self.start_date:
+            days_in_year = (
+                self.datetime_class(self.year_start + 1, 1, 1, has_year_zero=self.has_year_zero)
+                - self.datetime_class(self.year_start, 1, 1, has_year_zero=self.has_year_zero)
+            ).days
+            prior_time = prior_time + timedelta(days=days_in_year)
+        return prior_time
+
+    def _compute_delta_boundary(self, current_time):
+        current_raw = torch.tensor(
+            self._get_data(current_time, variable_list=self.delta_boundary_variables)
+        ).to(torch.float32)
+        current_raw = self._fill_mask(current_raw, self.delta_boundary_variables)
+
+        prior_time = self._get_delta_prior_datetime(current_time)
+        prior_raw = torch.tensor(
+            self._get_data(prior_time, variable_list=self.delta_boundary_variables)
+        ).to(torch.float32)
+        prior_raw = self._fill_mask(prior_raw, self.delta_boundary_variables)
+
+        delta = current_raw - prior_raw
+        return delta / self.delta_boundary_std.reshape(-1, 1, 1)
+
     def _load_constant_boundary_data(self):
         """Load and normalize constant boundary fields (e.g. land-sea mask).
 
@@ -764,29 +822,7 @@ class GetDataset(Dataset):
             surface_t = self.surface_transform(surface_t)
             upper_air_t = self.upper_air_transform(upper_air_t)
             diagnostic_t = self.diagnostic_transform(diagnostic_t)
-
-            if self.return_calendar: 
-
-                data_year = start_time.year
-                seconds_into_year = int(
-                    (start_time - self.datetime_class(data_year, 1, 1, hour=0,
-                                                        has_year_zero=self.has_year_zero)).total_seconds()
-                )
-
-                # Using the remainder and floor division logic
-                doy = (seconds_into_year // 86400) + 1
-                sod = seconds_into_year % 86400 
-
-                varying_boundary_data = self.boundary_transform(varying_boundary_data) # co2 sst
-                co2 = varying_boundary_data[0, 0, 0] # c nlat nlon -> 1
-                varying_boundary_data = varying_boundary_data[1:, :, :] # remove co2 from boundary data and return separately
-
-                calendar = torch.tensor([sod, doy, co2], dtype=torch.float32)
-
-                return surface_t, upper_air_t, diagnostic_t, varying_boundary_data, calendar
-            
             return surface_t, upper_air_t, diagnostic_t
-
 
         data_out = self._get_data(end_time, out=True)
 
@@ -811,6 +847,10 @@ class GetDataset(Dataset):
             diagnostic_t1 = self.diagnostic_transform(diagnostic_t1)
         if has_boundary:
             varying_boundary_data = self.boundary_transform(varying_boundary_data)
+            if self.delta_boundary_variables:
+                varying_boundary_data = torch.cat(
+                    [varying_boundary_data, self._compute_delta_boundary(start_time)], dim=0,
+                )
         if self.diagnostic_input:
             diagnostic_t = self.diagnostic_transform(diagnostic_t)
 
@@ -825,6 +865,17 @@ class GetDataset(Dataset):
                          diagnostic_t1=diagnostic_t1 if has_diagnostic else None,
                          diagnostic_t=diagnostic_t if self.diagnostic_input else None)
 
+
+        if self.return_calendar:
+            sod, doy = self._compute_calendar(start_time)
+
+            co2 = varying_boundary_data[0, 0, 0] # c nlat nlon -> 1
+            varying_boundary_data = varying_boundary_data[1:, :, :] # remove co2 from boundary data and return separately
+            calendar = torch.tensor([sod, doy, co2], dtype=torch.float32)
+
+            # assume full diagnostic input for now if return_calendar is True
+            return surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data, calendar
+        
         if self.diagnostic_input:
             return surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data
         if has_diagnostic:
@@ -859,8 +910,10 @@ class GetDataset(Dataset):
         # model will roll out over (first one already loaded with the inputs).
         if has_boundary:
             boundary_list = [varying_boundary_t]
+            step_times = [start_time]
             for step in range(1, rollout):
                 bnd_time = start_time + timedelta(hours=self.timedelta_hours * step)
+                step_times.append(bnd_time)
                 bnd_raw = torch.tensor(
                     self._get_data(bnd_time, variable_list=self.varying_boundary_variables)
                 ).to(torch.float32)
@@ -868,6 +921,11 @@ class GetDataset(Dataset):
             varying_boundary_data = torch.stack(
                 [self.boundary_transform(b) for b in boundary_list], dim=0
             )  # (rollout, c, nlat, nlon)
+            if self.delta_boundary_variables:
+                delta_stack = torch.stack(
+                    [self._compute_delta_boundary(t) for t in step_times], dim=0
+                )
+                varying_boundary_data = torch.cat([varying_boundary_data, delta_stack], dim=1)
         else:
             varying_boundary_data = None
 
@@ -904,6 +962,19 @@ class GetDataset(Dataset):
                          diagnostic_t1=diagnostic_t1 if has_diagnostic else None,
                          diagnostic_t=diagnostic_t if self.diagnostic_input else None)
 
+        if self.return_calendar:
+            # Per-step calendar (T, 3): [sod, doy, co2]. Channel 0 is assumed
+            # to be global_mean_co2 (must be first in varying_boundary_variables).
+            co2_per_step = varying_boundary_data[:, 0, 0, 0].clone()
+            varying_boundary_data = varying_boundary_data[:, 1:, :, :]
+            cal = torch.empty(len(step_times), 3, dtype=torch.float32)
+            for i, t in enumerate(step_times):
+                sod, doy = self._compute_calendar(t)
+                cal[i, 0] = sod
+                cal[i, 1] = doy
+            cal[:, 2] = co2_per_step
+            return surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data, cal
+
         if self.diagnostic_input:
             return surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data
         if has_diagnostic:
@@ -929,8 +1000,10 @@ class GetDataset(Dataset):
         start_time_tensor = torch.tensor([start_time.year, start_time.month, start_time.day, start_time.hour])
 
         varying_boundary_data = [varying_boundary_t]
+        step_times = [start_time]
         for step in range(max_lead_time):
             bnd_time = start_time + timedelta(hours=self.timedelta_hours * step)
+            step_times.append(bnd_time)
             bnd_raw = torch.tensor(
                 self._get_data(bnd_time, variable_list=self.varying_boundary_variables)
             ).to(torch.float32)
@@ -938,11 +1011,27 @@ class GetDataset(Dataset):
         varying_boundary_data = torch.stack(
             [self.boundary_transform(b) for b in varying_boundary_data], dim=0
         )
+        if self.delta_boundary_variables:
+            delta_stack = torch.stack(
+                [self._compute_delta_boundary(t) for t in step_times], dim=0
+            )
+            varying_boundary_data = torch.cat([varying_boundary_data, delta_stack], dim=1)
+
+        calendar = None
+        if self.return_calendar:
+            co2_per_step = varying_boundary_data[:, 0, 0, 0].clone()
+            varying_boundary_data = varying_boundary_data[:, 1:, :, :]
+            calendar = torch.empty(len(step_times), 3, dtype=torch.float32)
+            for i, t in enumerate(step_times):
+                sod, doy = self._compute_calendar(t)
+                calendar[i, 0] = sod
+                calendar[i, 1] = doy
+            calendar[:, 2] = co2_per_step
 
         if self.validate:
             return self._getitem_validate(
                 start_time, max_lead_time, surface_t, upper_air_t, diagnostic_t,
-                varying_boundary_data, start_time_tensor, has_diagnostic,
+                varying_boundary_data, start_time_tensor, has_diagnostic, calendar,
             )
 
         # Inference only — return input + boundary
@@ -954,13 +1043,18 @@ class GetDataset(Dataset):
         self._check_nans(surface_t=surface_t, upper_air_t=upper_air_t,
                          varying_boundary_data=varying_boundary_data)
 
+        if self.return_calendar:
+            if self.diagnostic_input:
+                return surface_t, upper_air_t, diagnostic_t, varying_boundary_data, calendar
+            return surface_t, upper_air_t, varying_boundary_data, calendar
+
         if self.diagnostic_input:
             return surface_t, upper_air_t, diagnostic_t, varying_boundary_data
 
         return surface_t, upper_air_t, varying_boundary_data
 
     def _getitem_validate(self, start_time, max_lead_time, surface_t, upper_air_t, diagnostic_t,
-                          varying_boundary_data, start_time_tensor, has_diagnostic):
+                          varying_boundary_data, start_time_tensor, has_diagnostic, calendar=None):
         """Load multi-step targets for validation scoring."""
         targets_surface = []
         targets_upper_air = []
@@ -1016,6 +1110,8 @@ class GetDataset(Dataset):
             targets_delta_upper_air = torch.stack(targets_delta_upper_air, dim=0)
             result.extend([targets_delta_surface, targets_delta_upper_air])
         result.extend([varying_boundary_data, start_time_tensor])
+        if calendar is not None:
+            result.append(calendar)
         return tuple(result)
 
     def _getitem_single_step(self, index, has_boundary):
@@ -1029,7 +1125,12 @@ class GetDataset(Dataset):
                 diagnostic_t = self.diagnostic_transform(diagnostic_t)
             else:
                 upper_air_t, surface_t, varying_boundary_data = self._reshape_and_mask_variables(data_in, out=False)
-            varying_boundary_data = self.boundary_transform(varying_boundary_data).unsqueeze(0)
+            varying_boundary_data = self.boundary_transform(varying_boundary_data)
+            if self.delta_boundary_variables:
+                varying_boundary_data = torch.cat(
+                    [varying_boundary_data, self._compute_delta_boundary(start_time)], dim=0,
+                )
+            varying_boundary_data = varying_boundary_data.unsqueeze(0)
         else:
             upper_air_t, surface_t = self._reshape_and_mask_variables(data_in, out=False)
 
@@ -1038,6 +1139,16 @@ class GetDataset(Dataset):
 
         self._check_nans(surface_t=surface_t, upper_air_t=upper_air_t,
                          varying_boundary_data=varying_boundary_data if has_boundary else None)
+
+        if self.return_calendar:
+            # varying_boundary_data shape here is (1, c, nlat, nlon) after the unsqueeze.
+            co2 = varying_boundary_data[0, 0, 0, 0].clone()
+            varying_boundary_data = varying_boundary_data[:, 1:, :, :]
+            sod, doy = self._compute_calendar(start_time)
+            calendar = torch.tensor([sod, doy, co2], dtype=torch.float32)
+            if self.diagnostic_input:
+                return surface_t, upper_air_t, diagnostic_t, varying_boundary_data, calendar
+            return surface_t, upper_air_t, varying_boundary_data, calendar
 
         if self.diagnostic_input:
             return surface_t, upper_air_t, diagnostic_t, varying_boundary_data

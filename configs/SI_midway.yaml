@@ -9,13 +9,14 @@ model:
             num_heads: 16
             num_blocks: 24
             patch_size: 1
-            scalar_dim: 1
+            scalar_dim: 3
             c_grid_downsample: 4
-            c_grid_dim: 6
-            c_grid_embed_dim: 64
+            c_grid_dim: 10
+            c_grid_embed_dim: 192
             unpatch: vanilla
             nlat: 45
             nlon: 90
+            num_ca_blocks: 8
         scheduler:
             num_steps: 10
             sigma_coef: 1.0
@@ -60,22 +61,25 @@ data:
                        "mxtpr_24h"]
     constant_boundary_variables: ["geopotential_at_surface", 
                                     "land_sea_mask"]
-    varying_boundary_variables: ["DSWRFtoa", 
-                                "global_mean_co2",
+    varying_boundary_variables: ["global_mean_co2",
+                                "DSWRFtoa",
+                                "DSWRFtoa_24h_lead",
                                 "sea_surface_temperature", # has nans
                                 "sea_ice_cover"] # has nans
+    delta_boundary_variables: ["DSWRFtoa",
+                                "DSWRFtoa_24h_lead",
+                                "sea_surface_temperature",
+                                "sea_ice_cover"]
     mask_fill: {'sea_surface_temperature': 270.,
                 'sea_ice_cover': 0.}
     train_year_start: 1979
     train_year_end: 2012
     val_year_start: 2012
     val_year_end: 2013
-    mean_path: "/home/anthonyz/amip/normalize_mean.nc"
-    std_path: "/home/anthonyz/amip/normalize_std.nc"
+    mean_path: "/project/pedramh/AMIP/h5/normalize_mean.nc"
+    std_path: "/project/pedramh/AMIP/h5/normalize_std.nc"
     forecast_lead_times: [1, 3, 5, 10]
-    #solstice_bias: True
-    #solstice_bias_sigma_days: 60
-    #solstice_bias_peak_multiplier: 2.0
+    return_calendar: True
 
     calendar: 'standard'
     data_timedelta_hours: 6
@@ -109,6 +113,6 @@ training:
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/model_epoch=31.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/last.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
-    description: lowres
+    description: forcings
     accumulate_grad_batches: 1
     optimizer: muon

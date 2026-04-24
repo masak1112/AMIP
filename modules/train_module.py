@@ -5,6 +5,22 @@ from common.loss import latitude_weighted_rmse
 from common.plotting import plot_result, plot_spectrum
 from common.utils import assemble_forcing, disassemble_input, assemble_input
 
+
+class _ModelWithScalar:
+    """Thin callable that binds a per-step c_scalar onto the DiT forward.
+
+    Schedulers call ``model(x_noised, cond, t, c_grid)`` positionally; wrapping
+    lets us route calendar info through without touching scheduler signatures.
+    Update ``.c_scalar`` between rollout steps.
+    """
+    def __init__(self, model):
+        self.model = model
+        self.c_scalar = None
+
+    def __call__(self, x_noised, cond, t, c_grid=None):
+        return self.model(x_noised, cond, t, c_grid=c_grid, c_scalar=self.c_scalar)
+
+
 class TrainModule(L.LightningModule):
     def __init__(self,
                  config: dict,
@@ -29,6 +45,7 @@ class TrainModule(L.LightningModule):
         self.plot_val = config['training'].get('plot_val', False)
         self.multistep_rollout = int(self.dataconfig.get('multistep_rollout', 1))
         self.multistep_num_sample_steps = config['training'].get('multistep_num_sample_steps', None)
+        self.return_calendar = self.dataconfig.get('return_calendar', False)
 
         self.modelconfig = config['model']
         self.model_name = self.modelconfig["model_name"]
@@ -81,17 +98,27 @@ class TrainModule(L.LightningModule):
 
         return assemble_input(surface_t, upper_air_t, diagnostic_t) # b c h w
 
-    def forward(self, x, c_grid, return_model_last=False):
+    def forward(self, x, c_grid, return_model_last=False, c_scalar=None):
+        if c_scalar is not None:
+            model = _ModelWithScalar(self.model)
+            model.c_scalar = c_scalar
+        else:
+            model = self.model
+
         if return_model_last: # special case; y is the euler step, and y_last is the output of x_pred model
-            y, y_last = self.scheduler.sample(self.model, x, c_grid, return_model_last=return_model_last)
+            y, y_last = self.scheduler.sample(model, x, c_grid, return_model_last=return_model_last)
             return y, y_last
         else: # normal sampling
-            y = self.scheduler.sample(self.model, x, c_grid)
+            y = self.scheduler.sample(model, x, c_grid)
             return y
     
     def training_step(self, batch, batch_idx):
 
-        surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data = batch
+        if self.return_calendar:
+            surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data, calendar = batch
+        else:
+            surface_t, upper_air_t, diagnostic_t, surface_t1, upper_air_t1, diagnostic_t1, varying_boundary_data = batch
+            calendar = None
         device = surface_t.device
 
         x = self.preprocess(surface_t, upper_air_t, diagnostic_t)
@@ -106,12 +133,30 @@ class TrainModule(L.LightningModule):
                 [assemble_forcing(varying_boundary_data[:, step], invariant) for step in range(rollout)],
                 dim=1,
             )  # b rollout c h w
-            loss, spectral_loss = self.scheduler.compute_multistep_loss(
-                self.model, x, c_grids, y, num_sample_steps=self.multistep_num_sample_steps,
-            )
+            if self.return_calendar:
+                # Inline the multistep rollout so we can rebind c_scalar per step.
+                model = _ModelWithScalar(self.model)
+                x_current = x
+                with torch.no_grad():
+                    for step in range(rollout - 1):
+                        model.c_scalar = calendar[:, step]
+                        x_current = self.scheduler.sample(
+                            model, x_current, c_grids[:, step], num_steps=self.multistep_num_sample_steps,
+                        )
+                model.c_scalar = calendar[:, -1]
+                loss, spectral_loss = self.scheduler.compute_loss(model, x_current, c_grids[:, -1], y)
+            else:
+                loss, spectral_loss = self.scheduler.compute_multistep_loss(
+                    self.model, x, c_grids, y, num_sample_steps=self.multistep_num_sample_steps,
+                )
         else:
             c_grid = assemble_forcing(varying_boundary_data, invariant) # b c h w
-            loss, spectral_loss = self.scheduler.compute_loss(self.model, x, c_grid, y)
+            if self.return_calendar:
+                model = _ModelWithScalar(self.model)
+                model.c_scalar = calendar
+                loss, spectral_loss = self.scheduler.compute_loss(model, x, c_grid, y)
+            else:
+                loss, spectral_loss = self.scheduler.compute_loss(self.model, x, c_grid, y)
 
         self.log("train/loss", loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
         self.log("train/spectral_loss", spectral_loss, on_step=True, on_epoch=True, sync_dist=self.ddp)
@@ -140,9 +185,15 @@ class TrainModule(L.LightningModule):
     @torch.no_grad()
     def predict(self, batch):
 
-        surface_t, upper_air_t, diagnostic_t, \
-        targets_surface, targets_upper_air, targets_diagnostic, \
-        varying_boundary_data, start_time_tensor = batch
+        if self.return_calendar:
+            surface_t, upper_air_t, diagnostic_t, \
+            targets_surface, targets_upper_air, targets_diagnostic, \
+            varying_boundary_data, start_time_tensor, calendar = batch
+        else:
+            surface_t, upper_air_t, diagnostic_t, \
+            targets_surface, targets_upper_air, targets_diagnostic, \
+            varying_boundary_data, start_time_tensor = batch
+            calendar = None
 
         # surface_t, upper_air_t, diagnostic_t: b c l h w, input at t=0
         # targets_surface, targets_upper_air, targets_diagnostic: b t c l h w, target trajectories for each variable
@@ -196,7 +247,8 @@ class TrainModule(L.LightningModule):
             forcing_input = varying_boundary_data[:, t] # b c h w
             c_grid = assemble_forcing(forcing_input, invariant) # b c h w
 
-            y, y_last = self.forward(x, c_grid, return_model_last=True)
+            c_scalar_t = calendar[:, t] if calendar is not None else None
+            y, y_last = self.forward(x, c_grid, return_model_last=True, c_scalar=c_scalar_t)
             surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(y_last, nlevels=self.nlevels)
 
             # update state

@@ -58,8 +58,8 @@ data:
                        "mxtpr_24h"]
     constant_boundary_variables: ["geopotential_at_surface", 
                                     "land_sea_mask"]
-    varying_boundary_variables: ["DSWRFtoa", 
-                                "global_mean_co2",
+    varying_boundary_variables: ["global_mean_co2",
+                                "DSWRFtoa",
                                 "sea_surface_temperature", # has nans
                                 "sea_ice_cover"] # has nans
     mask_fill: {'sea_surface_temperature': 270.,
