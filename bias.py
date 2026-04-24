@@ -10,7 +10,6 @@ from common.plotting import plot_reconstruction, plot_spectrum
 from modules.train_module import TrainModule
 from modules.combined_module import CombinedModule
 from data.amip_new import GetDataset
-from modules.diffusion.utils import SphericalSpectralProjector
 from torch.utils.data import DataLoader, Subset
 
 # Lightning imports
@@ -171,7 +170,7 @@ def main(args):
     # Strided subset preserves date ordering for the autoregressive rollout while
     # letting a multi-worker DataLoader prefetch HDF5 reads in parallel. The model
     # forward is still sequential, but I/O + host->device copies overlap with compute.
-    start = 1
+    start = 0
     strided_indices = list(range(start, num_steps * stride, stride))
     strided_dataset = Subset(dataset, strided_indices)
     num_workers = int(dataconfig.get("num_data_workers", 4))

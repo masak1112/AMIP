@@ -42,7 +42,7 @@ PRESSURE_LEVEL_VARS = [
     "temperature",
     "u_component_of_wind",
     "v_component_of_wind",
-    "vertical_velocity",
+    #"vertical_velocity",
 ]
 
 LEVEL_DIM = "level"
