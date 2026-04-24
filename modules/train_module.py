@@ -411,12 +411,26 @@ class TrainModule(L.LightningModule):
             optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         elif self.optimizer_name == "muon":
             from muon import MuonWithAuxAdam
+            # sa_blocks is a ModuleList of DiTBlock + DiTCrossAttentionBlock,
+            # so cross-attention weights/biases are captured here too.
             hidden_weights = [p for p in self.model.sa_blocks.parameters() if p.ndim >= 2]
             hidden_gains_biases = [p for p in self.model.sa_blocks.parameters() if p.ndim < 2]
-            nonhidden_params = [*self.model.c_grid_embed.parameters(), 
-                                *self.model.patch_embed_main.parameters(),
-                                *self.model.t_embedder.parameters(),
-                                *self.model.unpatchify_layer.parameters(),]
+
+            # Input embeddings + unpatchify head go to Adam. Optional embedders
+            # (c_grid, scalar/calendar, cross-attn context) may be None.
+            nonhidden_modules = [
+                self.model.patch_embed_main,
+                self.model.t_embedder,
+                self.model.unpatchify_layer,
+            ]
+            if self.model.c_grid_embed is not None:
+                nonhidden_modules.append(self.model.c_grid_embed)
+            if self.model.scalar_embedder is not None:
+                nonhidden_modules.append(self.model.scalar_embedder)
+            if self.model.ca_embed is not None:
+                nonhidden_modules.append(self.model.ca_embed)
+            nonhidden_params = [p for m in nonhidden_modules for p in m.parameters()]
+
             param_groups = [
                 dict(params=hidden_weights, use_muon=True,
                     lr=self.lr * 10, weight_decay=0.01),
