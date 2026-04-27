@@ -109,7 +109,7 @@ training:
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: null
+    checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_forcings_42_2026-04-24T15-01-46/last.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/model_epoch=31.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/last.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
