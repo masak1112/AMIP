@@ -132,6 +132,8 @@ def main(args):
                          year_start=1996,
                          year_end=2001)
 
+    return_calendar = dataconfig.get('return_calendar', False)
+
     # Step through dataset at forecast intervals (e.g. every 4th sample for 24h steps with 6h data)
     stride = dataconfig['timedelta_hours'] // dataconfig['data_timedelta_hours']
     
@@ -195,7 +197,12 @@ def main(args):
     with torch.no_grad():
         for step_idx, batch in enumerate(loader):
             # DataLoader has already added the leading batch dim (size 1).
-            surface_t_b, upper_air_t_b, diagnostic_t_b, surface_t1_b, upper_air_t1_b, diagnostic_t1_b, varying_boundary_data_b = batch
+            if return_calendar:
+                surface_t_b, upper_air_t_b, diagnostic_t_b, surface_t1_b, upper_air_t1_b, diagnostic_t1_b, varying_boundary_data_b, calendar_b = batch
+                calendar = calendar_b.to(device, non_blocking=True).expand(ensemble_size, -1)
+            else:
+                surface_t_b, upper_air_t_b, diagnostic_t_b, surface_t1_b, upper_air_t1_b, diagnostic_t1_b, varying_boundary_data_b = batch
+                calendar = None
 
             varying_boundary_data = varying_boundary_data_b.to(device, non_blocking=True).expand(ensemble_size, -1, -1, -1)
 
@@ -210,7 +217,10 @@ def main(args):
 
             # TrainModule: y and y_last both low-res.
             # CombinedModule: y is low-res rollout state, y_last is full-res downscaled prediction.
-            y, y_last = model.forward(x, c_grid, return_model_last=True)
+            fwd_kwargs = {'return_model_last': True}
+            if calendar is not None:
+                fwd_kwargs['c_scalar'] = calendar
+            y, y_last = model.forward(x, c_grid, **fwd_kwargs)
 
             surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y_last, nlevels=model.nlevels)
 
