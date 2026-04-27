@@ -18,7 +18,7 @@ model:
             nlon: 90
             num_ca_blocks: 8
         scheduler:
-            num_steps: 10
+            num_steps: 20
             sigma_coef: 1.0
             train_sampler: power
             l_max: 45
