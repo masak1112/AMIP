@@ -20,4 +20,4 @@ export NCCL_IB_DISABLE=1
 
 config_file=configs/SI_midway.yaml
 
-srun python bias.py --config=$config_file --checkpoint="/project/pedramh/ayz/AMIP_logs/SI_X_forcings_42_2026-04-27T12-12-33/model_epoch=30.ckpt" --description="ep_30_forcing"
+srun python bias.py --config=$config_file --checkpoint="/project/pedramh/ayz/AMIP_logs/SI_X_forcings_42_2026-04-27T12-12-33/model_epoch=26.ckpt" --description="ep_26_forcing"
