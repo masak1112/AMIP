@@ -89,6 +89,9 @@ class TrainModule(L.LightningModule):
         else:
             self.ddp = False
 
+        if not self.ddp or self.global_rank == 0:
+            print(self.model)
+
         self.save_hyperparameters()
 
     def preprocess(self, surface_t, upper_air_t, diagnostic_t):
