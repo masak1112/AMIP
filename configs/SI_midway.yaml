@@ -17,6 +17,7 @@ model:
             nlat: 45
             nlon: 90
             num_ca_blocks: 8
+            num_output_blocks: 2
         scheduler:
             num_steps: 20
             sigma_coef: 1.0
@@ -109,7 +110,8 @@ training:
     log_dir: /project/pedramh/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_forcings_42_2026-04-27T12-12-33/last.ckpt
+    checkpoint: null
+    partial_checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_forcings_42_2026-04-28T09-32-30/last.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/model_epoch=31.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/last.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt

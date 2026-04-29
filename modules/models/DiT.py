@@ -216,7 +216,8 @@ class DiT(nn.Module):
                  c_grid_dim=0,
                  c_grid_embed_dim=4,
                  c_grid_downsample=4,
-                 num_ca_blocks = 0):
+                 num_ca_blocks = 0,
+                 num_output_blocks = 0):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -317,6 +318,10 @@ class DiT(nn.Module):
                 mlp_ratio=4,
                 dropout=dropout,
             ))
+
+        for _ in range(num_output_blocks):
+            sa_blocks.append(DiTBlock(dim, num_heads, mlp_ratio=4, dropout=dropout))
+
         self.sa_blocks = nn.ModuleList(sa_blocks)
 
         # Unpatchify
