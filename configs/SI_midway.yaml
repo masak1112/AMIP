@@ -11,7 +11,7 @@ model:
             patch_size: 1
             scalar_dim: 3
             c_grid_downsample: 4
-            c_grid_dim: 10
+            c_grid_dim: 8
             c_grid_embed_dim: 192
             unpatch: vanilla
             nlat: 45
@@ -67,9 +67,7 @@ data:
                                 "DSWRFtoa_24h_lead",
                                 "sea_surface_temperature", # has nans
                                 "sea_ice_cover"] # has nans
-    delta_boundary_variables: ["DSWRFtoa",
-                                "DSWRFtoa_24h_lead",
-                                "sea_surface_temperature",
+    delta_boundary_variables: ["sea_surface_temperature",
                                 "sea_ice_cover"]
     mask_fill: {'sea_surface_temperature': 270.,
                 'sea_ice_cover': 0.}
@@ -111,7 +109,7 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: null
-    partial_checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_forcings_42_2026-04-28T09-32-30/last.ckpt
+    partial_checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_forcings_42_2026-04-29T10-20-13/last.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/model_epoch=31.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/last.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
