@@ -3,19 +3,21 @@ model:
     lr: 5.0e-5
     SI_X:
         model:
-            in_channels: 172 # 86*2 
-            out_channels: 86 # 13*5 + 6 + 15 
-            dim: 1280
+            in_channels: 302 # 151*2 
+            out_channels: 151 # 26*5 + 6 + 15 
+            dim: 1536
             num_heads: 16
             num_blocks: 24
             patch_size: 1
-            scalar_dim: 1
+            scalar_dim: 3
             c_grid_downsample: 4
-            c_grid_dim: 6
-            c_grid_embed_dim: 64
+            c_grid_dim: 8
+            c_grid_embed_dim: 192
             unpatch: vanilla
             nlat: 45
             nlon: 90
+            num_ca_blocks: 8
+            num_output_blocks: 2
         scheduler:
             num_steps: 10
             sigma_coef: 1.0
@@ -24,6 +26,11 @@ model:
             spectral_weight: 0.0
             noise : spherical
             model_last: False
+            integrator: euler
+            gamma: 0.5
+            S_churn: 0.0
+            S_noise: 1.0
+            noise_scale_path: /glade/u/home/ayz/amip/sigma_c_lowres_26.pt
             
 data:
     data_dir: '/glade/derecho/scratch/awikner/ERA5/h5'
@@ -60,9 +67,7 @@ data:
                                 "DSWRFtoa_24h_lead",
                                 "sea_surface_temperature", # has nans
                                 "sea_ice_cover"] # has nans
-    delta_boundary_variables: ["DSWRFtoa",
-                                "DSWRFtoa_24h_lead",
-                                "sea_surface_temperature",
+    delta_boundary_variables: ["sea_surface_temperature",
                                 "sea_ice_cover"]
     mask_fill: {'sea_surface_temperature': 270.,
                 'sea_ice_cover': 0.}
@@ -79,15 +84,15 @@ data:
     data_timedelta_hours: 6
     timedelta_hours: 24
     has_year_zero: False
-    levels: [50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000]    
+    levels: [5, 7, 10, 20, 30, 50, 70, 100, 125, 150, 175, 200, 250, 300, 400, 500, 600, 700, 800, 850, 875, 900, 925, 950, 975, 1000]
     horizontal_resolution: [180, 360]
     predict_delta: False
     epsilon_factor: 0
     val_num_inferences: 50
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
-    batch_size: 1
-    num_data_workers: 8
+    batch_size: 4
+    num_data_workers: 4
 
 training:
     seed: 42
@@ -103,8 +108,8 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_x/latent_pixel/last.ckpt
-    description: SI_X_new_return_model_last_fix
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_X_forcings_42_2026-04-30T10-21-18/model_epoch=01.ckpt
+    description: forcings_01
     accumulate_grad_batches: 1
     optimizer: adam
-    plot_val: True
+    optimizer: muon

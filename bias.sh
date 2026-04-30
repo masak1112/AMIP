@@ -2,8 +2,8 @@
 #PBS -N bias_SI
 #PBS -l select=1:ncpus=8:ngpus=1:mem=128G
 #PBS -q develop
-#PBS -l walltime=06:30:00
-#PBS -A UCHI0014
+#PBS -l walltime=03:00:00
+#PBS -A URIC0009
 #PBS -j oe
 
 module load conda

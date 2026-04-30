@@ -11,7 +11,7 @@ model:
             patch_size: 1
             scalar_dim: 3
             c_grid_downsample: 4
-            c_grid_dim: 8
+            c_grid_dim: 6
             c_grid_embed_dim: 192
             unpatch: vanilla
             nlat: 45
@@ -67,8 +67,6 @@ data:
                                 "DSWRFtoa_24h_lead",
                                 "sea_surface_temperature", # has nans
                                 "sea_ice_cover"] # has nans
-    delta_boundary_variables: ["sea_surface_temperature",
-                                "sea_ice_cover"]
     mask_fill: {'sea_surface_temperature': 270.,
                 'sea_ice_cover': 0.}
     train_year_start: 1979
