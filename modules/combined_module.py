@@ -6,6 +6,21 @@ from common.plotting import plot_result, plot_spectrum
 from common.utils import assemble_forcing, assemble_input, disassemble_input
 
 
+class _ModelWithScalar:
+    """Thin callable that binds a per-step c_scalar onto the DiT forward.
+
+    Schedulers call ``model(x_noised, cond, t, c_grid)`` positionally; wrapping
+    lets us route calendar info through without touching scheduler signatures.
+    Update ``.c_scalar`` between rollout steps.
+    """
+    def __init__(self, model):
+        self.model = model
+        self.c_scalar = None
+
+    def __call__(self, x_noised, cond, t, c_grid=None):
+        return self.model(x_noised, cond, t, c_grid=c_grid, c_scalar=self.c_scalar)
+
+
 class CombinedModule(L.LightningModule):
     """Evaluation-only module combining a low-res forecaster with a downscaler.
 
@@ -37,6 +52,7 @@ class CombinedModule(L.LightningModule):
         self.log_dir = config['training'].get('log_dir', '')
         self.plot_val = config['training'].get('plot_val', False)
         self.ensemble_size = self.modelconfig.get('ensemble_size', 1)
+        self.return_calendar = self.dataconfig.get('return_calendar', False)
 
         # Which low-res latent feeds the downscaler: Euler-updated state 'y',
         # or the model x-prediction 'y_last'.
@@ -137,13 +153,15 @@ class CombinedModule(L.LightningModule):
         return assemble_input(surface_t, upper_air_t, diagnostic_t)
 
     @torch.no_grad()
-    def forward(self, x, c_grid, return_model_last=False):
+    def forward(self, x, c_grid, return_model_last=False, c_scalar=None):
         """Run the combined forecaster + downscaler pipeline.
 
         Args:
             x: low-res assembled forecaster state, shape ``(b, c, h_lr, w_lr)``.
             c_grid: low-res forcing+invariant tensor, shape ``(b, c, h_lr, w_lr)``.
             return_model_last: if True, also return the low-res rollout state.
+            c_scalar: optional per-step scalar conditioning (e.g. calendar) routed
+                to the forecaster DiT via :class:`_ModelWithScalar`.
 
         Returns:
             If ``return_model_last=False``:
@@ -153,8 +171,14 @@ class CombinedModule(L.LightningModule):
                 low-res state used to roll the forecaster forward and
                 ``y_highres`` is the downscaled full-resolution prediction.
         """
+        if c_scalar is not None:
+            forecaster_model = _ModelWithScalar(self.forecaster_model)
+            forecaster_model.c_scalar = c_scalar
+        else:
+            forecaster_model = self.forecaster_model
+
         y_lowres, y_last_lowres = self.forecaster_scheduler.sample(
-            self.forecaster_model, x, c_grid, return_model_last=True)
+            forecaster_model, x, c_grid, return_model_last=True)
 
         z_lowres = y_lowres if self.downscaler_input == 'y' else y_last_lowres
 
@@ -190,9 +214,15 @@ class CombinedModule(L.LightningModule):
         Rollout state is kept at low resolution (forecaster output ``y``); losses and
         stored predictions are at full resolution (downscaler output ``y_highres``).
         """
-        surface_t, upper_air_t, diagnostic_t, \
-        targets_surface, targets_upper_air, targets_diagnostic, \
-        varying_boundary_data, start_time_tensor = batch
+        if self.return_calendar:
+            surface_t, upper_air_t, diagnostic_t, \
+            targets_surface, targets_upper_air, targets_diagnostic, \
+            varying_boundary_data, start_time_tensor, calendar = batch
+        else:
+            surface_t, upper_air_t, diagnostic_t, \
+            targets_surface, targets_upper_air, targets_diagnostic, \
+            varying_boundary_data, start_time_tensor = batch
+            calendar = None
 
         # surface_t, upper_air_t, diagnostic_t: b c (l) h w, input at t=0 (full res)
         # targets_*: b t c (l) h w, full-res target trajectories
@@ -249,9 +279,11 @@ class CombinedModule(L.LightningModule):
             forcing_input = varying_boundary_data[:, t].repeat_interleave(e, dim=0)
             c_grid = assemble_forcing(forcing_input, invariant)
 
+            c_scalar_t = calendar[:, t].repeat_interleave(e, dim=0) if calendar is not None else None
+
             # y_lowres rolls the forecaster forward; y_highres is the full-res prediction.
             # Both have leading dim b*e — individual ensemble members continue independently.
-            y_lowres, y_highres = self.forward(x, c_grid, return_model_last=True)
+            y_lowres, y_highres = self.forward(x, c_grid, return_model_last=True, c_scalar=c_scalar_t)
             surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y_highres, nlevels=self.nlevels)
 
             x = y_lowres
