@@ -11,7 +11,7 @@ model:
             patch_size: 1
             scalar_dim: 3
             c_grid_downsample: 4
-            c_grid_dim: 8
+            c_grid_dim: 6
             c_grid_embed_dim: 192
             unpatch: vanilla
             nlat: 45
@@ -67,8 +67,6 @@ data:
                                 "DSWRFtoa_24h_lead",
                                 "sea_surface_temperature", # has nans
                                 "sea_ice_cover"] # has nans
-    delta_boundary_variables: ["sea_surface_temperature",
-                                "sea_ice_cover"]
     mask_fill: {'sea_surface_temperature': 270.,
                 'sea_ice_cover': 0.}
     train_year_start: 1979
@@ -91,8 +89,8 @@ data:
     val_num_inferences: 50
     diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
 
-    batch_size: 4
-    num_data_workers: 4
+    batch_size: 1
+    num_data_workers: 8
 
 training:
     seed: 42
@@ -108,8 +106,8 @@ training:
     log_dir: /glade/derecho/scratch/ayz/AMIP_logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_X_forcings_42_2026-04-30T10-21-18/model_epoch=01.ckpt
+    checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_X_forcings_01_42_2026-04-30T18-38-10/model_epoch=01.ckpt
     description: forcings_01
-    accumulate_grad_batches: 1
+    accumulate_grad_batches: 4
     optimizer: adam
     optimizer: muon

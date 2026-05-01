@@ -107,10 +107,11 @@ training:
     project: amip_forecast
     wandb_mode: online
     checkpoint: null
-    partial_checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_forcings_42_2026-04-29T10-20-13/last.ckpt
+    #partial_checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_forcings_42_2026-04-29T10-20-13/last.ckpt
+    checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X/last.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/model_epoch=31.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/last.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
     description: forcings
-    accumulate_grad_batches: 1
+    accumulate_grad_batches: 2
     optimizer: muon
