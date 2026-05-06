@@ -112,11 +112,7 @@ training:
     wandb_mode: online
     checkpoint: null
     #partial_checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_forcings_42_2026-04-29T10-20-13/last.ckpt
-<<<<<<< HEAD
     checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_forcings_42_2026-05-03T19-47-56/last.ckpt
-=======
-    checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_forcings_42_2026-05-01T09-46-57/last.ckpt
->>>>>>> 050e5f430762d67dc0227f5fa2d5b22688de7d42
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/model_epoch=31.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_lowres_10_churn_42_2026-04-22T20-37-39/last.ckpt
     #checkpoint: /project/pedramh/ayz/AMIP_logs/SI_X_large_42_2026-04-20T15-12-22/last.ckpt
