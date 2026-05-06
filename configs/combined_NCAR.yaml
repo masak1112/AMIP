@@ -125,7 +125,7 @@ data:
     num_data_workers: 8
 
 training:
-    seed: 42
+    seed: 43
     devices: 1
     accelerator: gpu
     strategy: auto
@@ -145,5 +145,5 @@ training:
     optimizer: muon
 
     # Pretrained checkpoints loaded manually inside CombinedModule
-    forecaster_checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_X_forcings_01_42_2026-04-30T18-38-10/model_epoch=01.ckpt
+    forecaster_checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/SI_X_forcings_42_2026-05-01T09-46-57/model_epoch=10.ckpt
     downscaler_checkpoint: /glade/derecho/scratch/ayz/AMIP_logs/x_DDC_x_DDC_42_2026-04-16T17-08-57/model_epoch=24_step=72700_best.ckpt

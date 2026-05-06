@@ -3,7 +3,7 @@
 #PBS -l select=1:ncpus=8:ngpus=1:mem=128G
 #PBS -q develop
 #PBS -l walltime=04:00:00
-#PBS -A URIC0009
+#PBS -A UCHI0018
 #PBS -j oe
 
 module load conda
@@ -11,4 +11,4 @@ conda activate torch
 
 CONFIG=configs/combined_NCAR.yaml
 
-python bias.py --config=$CONFIG --seed=1 --description="seed 1"
+python bias.py --config=$CONFIG --seed=3 --description="seed 3"

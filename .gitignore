@@ -18,3 +18,4 @@ __pycache__/
 **/.config
 **/.ipynb_checkpoints
 *.o*
+**/bias_sweep

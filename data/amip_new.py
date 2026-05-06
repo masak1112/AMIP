@@ -24,6 +24,7 @@ import cftime
 import h5py
 import numpy as np
 import torch
+import torch.nn.functional as F
 import xarray as xr
 from datetime import timedelta
 from itertools import product
@@ -62,6 +63,63 @@ def get_data_given_path(path, variables):
 def get_out_path(root_dir, year, file_idx):
     """Build the HDF5 file path for a given year and timestep index."""
     return join(root_dir, f'{year}_{file_idx:04}.h5')
+
+
+def _gaussian_kernel_2d(k, sigma, device, dtype=torch.float32):
+    ax = torch.arange(k, device=device, dtype=dtype) - (k - 1) / 2
+    g = torch.exp(-ax**2 / (2 * sigma**2))
+    g = g / g.sum()
+    return (g[:, None] * g[None, :])[None, None]
+
+
+def smooth_masked_boundary(
+    data: torch.Tensor,
+    mask: torch.Tensor,
+    sigma: float = 1.5,
+    kernel_size: int = 9,
+    n_iters: int = 10,
+    lon_circular: bool = True,
+) -> torch.Tensor:
+    """Preserve interior values exactly and produce a smooth, curved fade to 0
+    outside the mask using iterative Dirichlet diffusion.
+
+    Each iteration:
+        state <- Gaussian blur of state
+        state <- original data inside mask, blurred state outside
+
+    The interior is reset every step so it stays exact. Outside, the field
+    spreads roughly sigma * sqrt(2 * n_iters) pixels from the boundary, with
+    smooth iso-contours (no blocky 3x3 staircasing).
+
+    Parameters
+    ----------
+    data : Tensor (..., H, W). Must be 0 wherever mask == 0.
+    mask : Tensor (..., H, W), binary.
+    sigma : Std-dev of the per-step Gaussian, in pixels. Controls smoothness
+        of the contours.
+    kernel_size : Width of the Gaussian, ideally >= 6 * sigma + 1.
+    n_iters : Number of diffusion steps. Larger -> wider, softer transition.
+    lon_circular : Periodic last axis (global longitude).
+    """
+    out_dtype = data.dtype
+    *batch, H, W = data.shape
+    d = data.reshape(-1, 1, H, W).to(torch.float32)
+    m = mask.reshape(-1, 1, H, W).to(torch.float32)
+
+    kernel = _gaussian_kernel_2d(kernel_size, sigma, device=d.device)
+    p = kernel_size // 2
+    inv_m = 1.0 - m
+    d_in = d * m
+
+    state = d.clone()
+    for _ in range(n_iters):
+        lon_mode = "circular" if lon_circular else "replicate"
+        s = F.pad(state, (p, p, 0, 0), mode=lon_mode)
+        s = F.pad(s,     (0, 0, p, p), mode="replicate")
+        blurred = F.conv2d(s, kernel)
+        state = d_in + blurred * inv_m
+
+    return state.reshape(*batch, H, W).to(out_dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +247,10 @@ class GetDataset(Dataset):
         self.autoencoder = params.get('autoencoder', False)
         self.return_calendar = params.get('return_calendar', False)
         self.multistep_rollout = int(params.get('multistep_rollout', 1))
+        self.smooth_nan_boundaries = params.get('smooth_nan_boundaries', False)
+        self.smooth_sigma = float(params.get('smooth_sigma', 1.5))
+        self.smooth_kernel_size = int(params.get('smooth_kernel_size', 9))
+        self.smooth_n_iters = int(params.get('smooth_n_iters', 10))
 
         if not self.train and not self.params['forecast_lead_times']:
             self.params['forecast_lead_times'] = [1]
@@ -476,7 +538,28 @@ class GetDataset(Dataset):
                 continue
             nans = torch.isnan(data[i])
             if torch.any(nans):
-                data[i] = data[i].masked_fill(nans, self.mask_fill[var])
+                fill_val = self.mask_fill[var]
+
+                if self.smooth_nan_boundaries:
+                    # smooth_masked_boundary requires data == 0 outside the mask
+                    # and fades extended values toward 0 with distance. Center
+                    # on fill_val so the far field equals fill_val and the
+                    # blend runs from the true boundary value down to fill_val.
+                    mask = (~nans).to(torch.float32)
+                    centered = torch.where(
+                        nans, torch.zeros_like(data[i]), data[i] - fill_val,
+                    )
+                    smoothed = smooth_masked_boundary(
+                        centered, mask,
+                        sigma=self.smooth_sigma,
+                        kernel_size=self.smooth_kernel_size,
+                        n_iters=self.smooth_n_iters,
+                        lon_circular=True,
+                    )
+                    data[i] = smoothed + fill_val
+                else:
+                    data[i] = data[i].masked_fill(nans, fill_val)
+
         return data
 
     # ------------------------------------------------------------------
@@ -641,6 +724,20 @@ class GetDataset(Dataset):
             self._get_data(self.start_date, variable_list=self.constant_boundary_variables)
         ).to(torch.float32)
         raw = self._fill_mask(raw, self.constant_boundary_variables)
+
+        if self.smooth_nan_boundaries and 'land_sea_mask' in self.constant_boundary_variables:
+            # Soft coastline: keep land = 1 exactly, fade 1 -> 0 over the sea
+            # using the same Dirichlet diffusion as the masked-field smoothing.
+            lsm_idx = self.constant_boundary_variables.index('land_sea_mask')
+            lsm = raw[lsm_idx]
+            raw[lsm_idx] = smooth_masked_boundary(
+                lsm, (lsm > 0.5).to(torch.float32),
+                sigma=self.smooth_sigma,
+                kernel_size=3,
+                n_iters=self.smooth_n_iters,
+                lon_circular=True,
+            )
+
         land_mask = raw[(np.array(self.constant_boundary_variables) == 'land_sea_mask').tolist()].clone().detach()
         mean = torch.mean(raw, dim=(1, 2))
         std = torch.std(raw, dim=(1, 2))

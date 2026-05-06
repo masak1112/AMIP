@@ -31,6 +31,7 @@ def process_args(args, config):
         modelconfig["model_name"] = args.model_name
     if args.checkpoint is not None:
         trainconfig["checkpoint"] = args.checkpoint
+        trainconfig["forecaster_checkpoint"] = args.checkpoint
     if args.description is not None:
         trainconfig["description"] = args.description
     
@@ -105,7 +106,7 @@ def main(args):
     config=get_yaml(args.config)
     config, modelconfig, trainconfig, dataconfig = process_args(args, config)
 
-    ID = 1
+    ID = 0
     seed = trainconfig["seed"] + ID
     seed_everything(seed)
     torch.set_float32_matmul_precision("high")
