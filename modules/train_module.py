@@ -42,6 +42,8 @@ class TrainModule(L.LightningModule):
         self.horizontal_resolution = self.dataconfig['horizontal_resolution']
         self.nlat, self.nlon = self.horizontal_resolution
         self.nlevels = len(self.dataconfig['levels'])
+        self.nsurface = len(self.surface_variables)
+        self.ndiagnostic = len(self.diagnostic_variables)
         self.plot_val = config['training'].get('plot_val', False)
         self.multistep_rollout = int(self.dataconfig.get('multistep_rollout', 1))
         self.multistep_num_sample_steps = config['training'].get('multistep_num_sample_steps', None)
@@ -252,7 +254,8 @@ class TrainModule(L.LightningModule):
 
             c_scalar_t = calendar[:, t] if calendar is not None else None
             y, y_last = self.forward(x, c_grid, return_model_last=True, c_scalar=c_scalar_t)
-            surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(y_last, nlevels=self.nlevels)
+            surface_pred_decoded, multilevel_pred_decoded, diagnostic_pred_decoded = disassemble_input(y_last, nsurface=self.nsurface,
+                                                                                                       ndiagnostic=self.ndiagnostic, nlevels=self.nlevels)
 
             # update state
             x = y

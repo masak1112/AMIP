@@ -124,7 +124,8 @@ def main(args):
                         logger=wandb_logger,
                         accumulate_grad_batches=trainconfig.get("accumulate_grad_batches", 1),
                         num_sanity_val_steps=trainconfig.get("num_sanity_val_steps", 1),
-                        precision=trainconfig["precision"],)
+                        precision=trainconfig["precision"],
+                        fast_dev_run=args.fast_dev_run,)
     
     partial_ckpt = trainconfig.get("partial_checkpoint", None)
 
@@ -149,6 +150,7 @@ if __name__ == "__main__":
     parser.add_argument('--wandb_mode', default=None)
     parser.add_argument('--description', default=None)
     parser.add_argument('--checkpoint', default=None, help='Path to the checkpoint to resume training')
+    parser.add_argument('--fast_dev_run', action='store_true', help='Run 1 train step + 1 val step for pipeline testing')
     args = parser.parse_args()
 
     main(args)

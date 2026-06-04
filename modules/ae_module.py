@@ -24,8 +24,10 @@ class AutoencoderModule(L.LightningModule):
         self.horizontal_resolution = self.dataconfig['horizontal_resolution']
         self.nlat, self.nlon = self.horizontal_resolution
         self.nlevels = len(self.dataconfig['levels'])
+        self.nsurface = len(self.surface_variables)
+        self.ndiagnostic = len(self.diagnostic_variables)
         self.plot_val = self.config['training'].get("plot_val", False)
-
+        
         self.modelconfig = config['model']
         self.model_name = self.modelconfig["model_name"]
         self.lr = self.modelconfig["lr"]
@@ -65,7 +67,7 @@ class AutoencoderModule(L.LightningModule):
         z = self.encode(surface, multilevel, diagnostic)
         y = self.scheduler.sample(self.model, z)
 
-        surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y, nlevels=self.nlevels)
+        surface_pred, multilevel_pred, diagnostic_pred = disassemble_input(y,nsurface=self.nsurface, ndiagnostic=self.ndiagnostic, nlevels=self.nlevels)
 
         return surface_pred, multilevel_pred, diagnostic_pred
     
