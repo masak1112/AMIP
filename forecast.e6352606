@@ -1,0 +1,48 @@
+Seed set to 42
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+`Trainer(limit_train_batches=1.0)` was configured so 100% of the batches per epoch will be used..
+Initializing distributed: GLOBAL_RANK: 0, MEMBER: 1/4
+[rank: 1] Seed set to 42
+[rank: 2] Seed set to 42
+[rank: 3] Seed set to 42
+Initializing distributed: GLOBAL_RANK: 3, MEMBER: 4/4
+Initializing distributed: GLOBAL_RANK: 2, MEMBER: 3/4
+Initializing distributed: GLOBAL_RANK: 1, MEMBER: 2/4
+----------------------------------------------------------------------------------------------------
+distributed_backend=nccl
+All distributed processes registered. Starting with 4 processes
+----------------------------------------------------------------------------------------------------
+
+wandb: WARNING The anonymous setting has no effect and will be removed in a future version.
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from /glade/u/home/bgong/.netrc.
+wandb: Currently logged in as: binggong (jesswan-university-of-chicago) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: setting up run g82pxp8p
+wandb: Tracking run with wandb version 0.27.0
+wandb: Run data is saved locally in wandb/run-20260604_090026-g82pxp8p
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run SI_X_test_42_2026-06-04T08-59-47
+wandb: ⭐️ View project at https://wandb.ai/jesswan-university-of-chicago/amip_forecast
+wandb: 🚀 View run at https://wandb.ai/jesswan-university-of-chicago/amip_forecast/runs/g82pxp8p
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/callbacks/model_checkpoint.py:881: Checkpoint directory /glade/work/bgong/amip/SI_checkpoints exists and is not empty.
+Restoring states from the checkpoint path at /glade/work/bgong/amip/SI_checkpoints/last.ckpt
+Found current_model_state in the checkpoint. This will be used to initialize the model.
+LOCAL_RANK: 1 - CUDA_VISIBLE_DEVICES: [GPU-32401798-4fa1-d74b-b9bc-dc7e7ad227f2,GPU-37770967-2af4-7049-77e4-1344681fe02c,GPU-e516690e-9303-9cf6-64ac-7f3c52725a75,GPU-1ee20f47-7fee-da5d-d667-2a1ce36dd8e3]
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [GPU-32401798-4fa1-d74b-b9bc-dc7e7ad227f2,GPU-37770967-2af4-7049-77e4-1344681fe02c,GPU-e516690e-9303-9cf6-64ac-7f3c52725a75,GPU-1ee20f47-7fee-da5d-d667-2a1ce36dd8e3]
+LOCAL_RANK: 3 - CUDA_VISIBLE_DEVICES: [GPU-32401798-4fa1-d74b-b9bc-dc7e7ad227f2,GPU-37770967-2af4-7049-77e4-1344681fe02c,GPU-e516690e-9303-9cf6-64ac-7f3c52725a75,GPU-1ee20f47-7fee-da5d-d667-2a1ce36dd8e3]
+LOCAL_RANK: 2 - CUDA_VISIBLE_DEVICES: [GPU-32401798-4fa1-d74b-b9bc-dc7e7ad227f2,GPU-37770967-2af4-7049-77e4-1344681fe02c,GPU-e516690e-9303-9cf6-64ac-7f3c52725a75,GPU-1ee20f47-7fee-da5d-d667-2a1ce36dd8e3]
+Restored all states from the checkpoint at /glade/work/bgong/amip/SI_checkpoints/last.ckpt
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/training_epoch_loop.py:224: You're resuming from a checkpoint that ended before the epoch ended and your dataloader is not resumable. This can cause unreliable results if further training is done. Consider using an end-of-epoch checkpoint or make your dataloader resumable by implementing the `state_dict` / `load_state_dict` interface.
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/autograd/graph.py:882: UserWarning: The AccumulateGrad node's stream does not match the stream of the node that produced the incoming gradient. This may incur unnecessary synchronization and break CUDA graph capture if the AccumulateGrad node's stream is the default stream. This mismatch is caused by an AccumulateGrad node created prior to the current iteration being kept alive. This can happen if the autograd graph is still being kept alive by tensors such as the loss, or if you are using DDP, which will stash a reference to the node. To resolve the mismatch, delete all references to the autograd graph or ensure that DDP initialization is performed under the same stream as subsequent forwards. If the mismatch is intentional, you can use torch.autograd.graph.set_warn_on_accumulate_grad_stream_mismatch(False) to suppress this warning. (Triggered internally at /pytorch/torch/csrc/autograd/input_buffer.cpp:240.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/autograd/graph.py:882: UserWarning: The AccumulateGrad node's stream does not match the stream of the node that produced the incoming gradient. This may incur unnecessary synchronization and break CUDA graph capture if the AccumulateGrad node's stream is the default stream. This mismatch is caused by an AccumulateGrad node created prior to the current iteration being kept alive. This can happen if the autograd graph is still being kept alive by tensors such as the loss, or if you are using DDP, which will stash a reference to the node. To resolve the mismatch, delete all references to the autograd graph or ensure that DDP initialization is performed under the same stream as subsequent forwards. If the mismatch is intentional, you can use torch.autograd.graph.set_warn_on_accumulate_grad_stream_mismatch(False) to suppress this warning. (Triggered internally at /pytorch/torch/csrc/autograd/input_buffer.cpp:240.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/autograd/graph.py:882: UserWarning: The AccumulateGrad node's stream does not match the stream of the node that produced the incoming gradient. This may incur unnecessary synchronization and break CUDA graph capture if the AccumulateGrad node's stream is the default stream. This mismatch is caused by an AccumulateGrad node created prior to the current iteration being kept alive. This can happen if the autograd graph is still being kept alive by tensors such as the loss, or if you are using DDP, which will stash a reference to the node. To resolve the mismatch, delete all references to the autograd graph or ensure that DDP initialization is performed under the same stream as subsequent forwards. If the mismatch is intentional, you can use torch.autograd.graph.set_warn_on_accumulate_grad_stream_mismatch(False) to suppress this warning. (Triggered internally at /pytorch/torch/csrc/autograd/input_buffer.cpp:240.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/autograd/graph.py:882: UserWarning: The AccumulateGrad node's stream does not match the stream of the node that produced the incoming gradient. This may incur unnecessary synchronization and break CUDA graph capture if the AccumulateGrad node's stream is the default stream. This mismatch is caused by an AccumulateGrad node created prior to the current iteration being kept alive. This can happen if the autograd graph is still being kept alive by tensors such as the loss, or if you are using DDP, which will stash a reference to the node. To resolve the mismatch, delete all references to the autograd graph or ensure that DDP initialization is performed under the same stream as subsequent forwards. If the mismatch is intentional, you can use torch.autograd.graph.set_warn_on_accumulate_grad_stream_mismatch(False) to suppress this warning. (Triggered internally at /pytorch/torch/csrc/autograd/input_buffer.cpp:240.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass

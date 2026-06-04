@@ -1,0 +1,500 @@
+Seed set to 42
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+`Trainer(limit_train_batches=1.0)` was configured so 100% of the batches per epoch will be used..
+Initializing distributed: GLOBAL_RANK: 0, MEMBER: 1/4
+[rank: 1] Seed set to 42
+[rank: 2] Seed set to 42
+[rank: 3] Seed set to 42
+Initializing distributed: GLOBAL_RANK: 2, MEMBER: 3/4
+Initializing distributed: GLOBAL_RANK: 3, MEMBER: 4/4
+Initializing distributed: GLOBAL_RANK: 1, MEMBER: 2/4
+----------------------------------------------------------------------------------------------------
+distributed_backend=nccl
+All distributed processes registered. Starting with 4 processes
+----------------------------------------------------------------------------------------------------
+
+wandb: WARNING The anonymous setting has no effect and will be removed in a future version.
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from /glade/u/home/bgong/.netrc.
+wandb: Currently logged in as: binggong (jesswan-university-of-chicago) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: setting up run 10xwrp59
+wandb: Tracking run with wandb version 0.27.0
+wandb: Run data is saved locally in wandb/run-20260602_215659-10xwrp59
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run SI_X_test_42_2026-06-02T21-56-20
+wandb: ⭐️ View project at https://wandb.ai/jesswan-university-of-chicago/amip_forecast
+wandb: 🚀 View run at https://wandb.ai/jesswan-university-of-chicago/amip_forecast/runs/10xwrp59
+Restoring states from the checkpoint path at /glade/work/bgong/amip/logs/SI_X_test_42_2026-05-19T12-41-26/last.ckpt
+Found current_model_state in the checkpoint. This will be used to initialize the model.
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/callbacks/model_checkpoint.py:566: The dirpath has changed from '/glade/work/bgong/amip/logs/SI_X_test_42_2026-05-19T12-41-26' to '/glade/work/bgong/amip/logs/SI_X_test_42_2026-06-02T21-56-20', therefore `best_model_score`, `kth_best_model_path`, `kth_value`, `last_model_path` and `best_k_models` won't be reloaded. Only `best_model_path` will be reloaded.
+LOCAL_RANK: 1 - CUDA_VISIBLE_DEVICES: [GPU-39e39301-7e5d-a43a-c725-49ff65197b41,GPU-3144952d-be66-c84e-aeb4-ce3a96d9a05f,GPU-dee550f1-bbfe-153e-142a-341657eececc,GPU-ffdf8747-aab2-b937-0e90-11291e74986b]
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/callbacks/model_checkpoint.py:566: The dirpath has changed from '/glade/work/bgong/amip/logs/SI_X_test_42_2026-05-19T12-41-26' to '/glade/work/bgong/amip/logs/SI_X_test_42_2026-06-02T21-56-20', therefore `best_model_score`, `kth_best_model_path`, `kth_value`, `last_model_path` and `best_k_models` won't be reloaded. Only `best_model_path` will be reloaded.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [GPU-39e39301-7e5d-a43a-c725-49ff65197b41,GPU-3144952d-be66-c84e-aeb4-ce3a96d9a05f,GPU-dee550f1-bbfe-153e-142a-341657eececc,GPU-ffdf8747-aab2-b937-0e90-11291e74986b]
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/callbacks/model_checkpoint.py:566: The dirpath has changed from '/glade/work/bgong/amip/logs/SI_X_test_42_2026-05-19T12-41-26' to '/glade/work/bgong/amip/logs/SI_X_test_42_2026-06-02T21-56-20', therefore `best_model_score`, `kth_best_model_path`, `kth_value`, `last_model_path` and `best_k_models` won't be reloaded. Only `best_model_path` will be reloaded.
+LOCAL_RANK: 2 - CUDA_VISIBLE_DEVICES: [GPU-39e39301-7e5d-a43a-c725-49ff65197b41,GPU-3144952d-be66-c84e-aeb4-ce3a96d9a05f,GPU-dee550f1-bbfe-153e-142a-341657eececc,GPU-ffdf8747-aab2-b937-0e90-11291e74986b]
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/callbacks/model_checkpoint.py:566: The dirpath has changed from '/glade/work/bgong/amip/logs/SI_X_test_42_2026-05-19T12-41-26' to '/glade/work/bgong/amip/logs/SI_X_test_42_2026-06-02T21-56-20', therefore `best_model_score`, `kth_best_model_path`, `kth_value`, `last_model_path` and `best_k_models` won't be reloaded. Only `best_model_path` will be reloaded.
+LOCAL_RANK: 3 - CUDA_VISIBLE_DEVICES: [GPU-39e39301-7e5d-a43a-c725-49ff65197b41,GPU-3144952d-be66-c84e-aeb4-ce3a96d9a05f,GPU-dee550f1-bbfe-153e-142a-341657eececc,GPU-ffdf8747-aab2-b937-0e90-11291e74986b]
+Restored all states from the checkpoint at /glade/work/bgong/amip/logs/SI_X_test_42_2026-05-19T12-41-26/last.ckpt
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/utilities/_pytree.py:21: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/training_epoch_loop.py:224: You're resuming from a checkpoint that ended before the epoch ended and your dataloader is not resumable. This can cause unreliable results if further training is done. Consider using an end-of-epoch checkpoint or make your dataloader resumable by implementing the `state_dict` / `load_state_dict` interface.
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/autograd/graph.py:882: UserWarning: The AccumulateGrad node's stream does not match the stream of the node that produced the incoming gradient. This may incur unnecessary synchronization and break CUDA graph capture if the AccumulateGrad node's stream is the default stream. This mismatch is caused by an AccumulateGrad node created prior to the current iteration being kept alive. This can happen if the autograd graph is still being kept alive by tensors such as the loss, or if you are using DDP, which will stash a reference to the node. To resolve the mismatch, delete all references to the autograd graph or ensure that DDP initialization is performed under the same stream as subsequent forwards. If the mismatch is intentional, you can use torch.autograd.graph.set_warn_on_accumulate_grad_stream_mismatch(False) to suppress this warning. (Triggered internally at /pytorch/torch/csrc/autograd/input_buffer.cpp:240.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/autograd/graph.py:882: UserWarning: The AccumulateGrad node's stream does not match the stream of the node that produced the incoming gradient. This may incur unnecessary synchronization and break CUDA graph capture if the AccumulateGrad node's stream is the default stream. This mismatch is caused by an AccumulateGrad node created prior to the current iteration being kept alive. This can happen if the autograd graph is still being kept alive by tensors such as the loss, or if you are using DDP, which will stash a reference to the node. To resolve the mismatch, delete all references to the autograd graph or ensure that DDP initialization is performed under the same stream as subsequent forwards. If the mismatch is intentional, you can use torch.autograd.graph.set_warn_on_accumulate_grad_stream_mismatch(False) to suppress this warning. (Triggered internally at /pytorch/torch/csrc/autograd/input_buffer.cpp:240.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/autograd/graph.py:882: UserWarning: The AccumulateGrad node's stream does not match the stream of the node that produced the incoming gradient. This may incur unnecessary synchronization and break CUDA graph capture if the AccumulateGrad node's stream is the default stream. This mismatch is caused by an AccumulateGrad node created prior to the current iteration being kept alive. This can happen if the autograd graph is still being kept alive by tensors such as the loss, or if you are using DDP, which will stash a reference to the node. To resolve the mismatch, delete all references to the autograd graph or ensure that DDP initialization is performed under the same stream as subsequent forwards. If the mismatch is intentional, you can use torch.autograd.graph.set_warn_on_accumulate_grad_stream_mismatch(False) to suppress this warning. (Triggered internally at /pytorch/torch/csrc/autograd/input_buffer.cpp:240.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/autograd/graph.py:882: UserWarning: The AccumulateGrad node's stream does not match the stream of the node that produced the incoming gradient. This may incur unnecessary synchronization and break CUDA graph capture if the AccumulateGrad node's stream is the default stream. This mismatch is caused by an AccumulateGrad node created prior to the current iteration being kept alive. This can happen if the autograd graph is still being kept alive by tensors such as the loss, or if you are using DDP, which will stash a reference to the node. To resolve the mismatch, delete all references to the autograd graph or ensure that DDP initialization is performed under the same stream as subsequent forwards. If the mismatch is intentional, you can use torch.autograd.graph.set_warn_on_accumulate_grad_stream_mismatch(False) to suppress this warning. (Triggered internally at /pytorch/torch/csrc/autograd/input_buffer.cpp:240.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+[rank: 0] Received SIGTERM: 15
+[rank: 2] Received SIGTERM: 15
+[rank: 1] Received SIGTERM: 15
+[rank: 3] Received SIGTERM: 15
+[rank: 1] Received SIGTERM: 15
+[rank: 2] Received SIGTERM: 15
+[rank3]: Traceback (most recent call last):
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 48, in _call_and_handle_interrupt
+[rank3]:     return trainer.strategy.launcher.launch(trainer_fn, *args, trainer=trainer, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/strategies/launchers/subprocess_script.py", line 105, in launch
+[rank3]:     return function(*args, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 630, in _fit_impl
+[rank3]:     self._run(model, ckpt_path=ckpt_path, weights_only=weights_only)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 1079, in _run
+[rank3]:     results = self._run_stage()
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 1123, in _run_stage
+[rank3]:     self.fit_loop.run()
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/fit_loop.py", line 217, in run
+[rank3]:     self.advance()
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/fit_loop.py", line 465, in advance
+[rank3]:     self.epoch_loop.run(self._data_fetcher)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/training_epoch_loop.py", line 154, in run
+[rank3]:     self.on_advance_end(data_fetcher)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/training_epoch_loop.py", line 406, in on_advance_end
+[rank3]:     self.val_loop.run()
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/utilities.py", line 179, in _decorator
+[rank3]:     return loop_run(self, *args, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/evaluation_loop.py", line 146, in run
+[rank3]:     self._evaluation_step(batch, batch_idx, dataloader_idx, dataloader_iter)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/evaluation_loop.py", line 441, in _evaluation_step
+[rank3]:     output = call._call_strategy_hook(trainer, hook_name, *step_args)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 329, in _call_strategy_hook
+[rank3]:     output = fn(*args, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/strategies/strategy.py", line 411, in validation_step
+[rank3]:     return self._forward_redirection(self.model, self.lightning_module, "validation_step", *args, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/strategies/strategy.py", line 641, in __call__
+[rank3]:     wrapper_output = wrapper_module(*args, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+[rank3]:     return self._call_impl(*args, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+[rank3]:     return forward_call(*args, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1832, in forward
+[rank3]:     else self._run_ddp_forward(*inputs, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1657, in _run_ddp_forward
+[rank3]:     return self.module(*inputs, **kwargs)  # type: ignore[index]
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+[rank3]:     return self._call_impl(*args, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+[rank3]:     return forward_call(*args, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/strategies/strategy.py", line 634, in wrapped_forward
+[rank3]:     out = method(*_args, **_kwargs)
+[rank3]:   File "/glade/work/bgong/amip/modules/train_module.py", line 175, in validation_step
+[rank3]:     loss_dict, pred_feat_dict, target_feat_dict = self.predict(batch)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+[rank3]:     return func(*args, **kwargs)
+[rank3]:   File "/glade/work/bgong/amip/modules/train_module.py", line 258, in predict
+[rank3]:     y, y_last = self.forward(x, c_grid, return_model_last=True, c_scalar=c_scalar_t)
+[rank3]:   File "/glade/work/bgong/amip/modules/train_module.py", line 116, in forward
+[rank3]:     y, y_last = self.scheduler.sample(model, x, c_grid, return_model_last=return_model_last)
+[rank3]:   File "/glade/work/bgong/amip/modules/diffusion/x_interpolant.py", line 374, in sample
+[rank3]:     return self.sample_uniform(model, x, c_grid,
+[rank3]:   File "/glade/work/bgong/amip/modules/diffusion/x_interpolant.py", line 314, in sample_uniform
+[rank3]:     y_pred = model(y, x, t_curr_batch, c_grid)  # Predict x_1
+[rank3]:   File "/glade/work/bgong/amip/modules/train_module.py", line 21, in __call__
+[rank3]:     return self.model(x_noised, cond, t, c_grid=c_grid, c_scalar=self.c_scalar)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+[rank3]:     return self._call_impl(*args, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+[rank3]:     return forward_call(*args, **kwargs)
+[rank3]:   File "/glade/work/bgong/amip/modules/models/DiT.py", line 511, in forward
+[rank3]:     x = block(x, context, t_emb,
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+[rank3]:     return self._call_impl(*args, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+[rank3]:     return forward_call(*args, **kwargs)
+[rank3]:   File "/glade/work/bgong/amip/modules/models/DiT.py", line 178, in forward
+[rank3]:     h = self.cross_attn(h, ctx,
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+[rank3]:     return self._call_impl(*args, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+[rank3]:     return forward_call(*args, **kwargs)
+[rank3]:   File "/glade/work/bgong/amip/modules/layers/cross_attention.py", line 47, in forward
+[rank3]:     k = apply_2d_rotary_pos_emb(k, rope_cos_lat, rope_sin_lat, rope_cos_lon, rope_sin_lon)
+[rank3]:   File "/glade/work/bgong/amip/modules/layers/positional_encoding.py", line 41, in apply_2d_rotary_pos_emb
+[rank3]:     return torch.cat((apply_rotary_pos_emb(t_x, cos_freqs_x, sin_freqs_x),
+[rank3]:   File "/glade/work/bgong/amip/modules/layers/positional_encoding.py", line 29, in apply_rotary_pos_emb
+[rank3]:     return (t * cos_freqs) + (rotate_half(t) * sin_freqs)
+[rank3]:   File "/glade/work/bgong/amip/modules/layers/positional_encoding.py", line 25, in rotate_half
+[rank3]:     return torch.cat((-x2, x1), dim=-1)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/connectors/signal_connector.py", line 36, in __call__
+[rank3]:     signal_handler(signum, frame)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/connectors/signal_connector.py", line 117, in _sigterm_notifier_fn
+[rank3]:     sigterm_tensor = torch.tensor([1], device=self.trainer.strategy.root_device)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/utils/data/_utils/signal_handling.py", line 73, in handler
+[rank3]:     _error_if_any_worker_fails()
+[rank3]: RuntimeError: DataLoader worker (pid 10897) is killed by signal: Terminated. 
+
+[rank3]: During handling of the above exception, another exception occurred:
+
+[rank3]: Traceback (most recent call last):
+[rank3]:   File "/glade/work/bgong/amip/train.py", line 179, in <module>
+[rank3]:     main(args)
+[rank3]:   File "/glade/work/bgong/amip/train.py", line 160, in main
+[rank3]:     trainer.fit(model=model,
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 584, in fit
+[rank3]:     call._call_and_handle_interrupt(
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 70, in _call_and_handle_interrupt
+[rank3]:     trainer._teardown()
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 1102, in _teardown
+[rank3]:     self.strategy.teardown()
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/strategies/ddp.py", line 444, in teardown
+[rank3]:     super().teardown()
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/strategies/parallel.py", line 134, in teardown
+[rank3]:     super().teardown()
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/strategies/strategy.py", line 532, in teardown
+[rank3]:     _optimizers_to_device(self.optimizers, torch.device("cpu"))
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/fabric/utilities/optimizer.py", line 27, in _optimizers_to_device
+[rank3]:     _optimizer_to_device(opt, device)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/fabric/utilities/optimizer.py", line 41, in _optimizer_to_device
+[rank3]:     v[key] = move_data_to_device(val, device)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/fabric/utilities/apply_func.py", line 110, in move_data_to_device
+[rank3]:     return apply_to_collection(batch, dtype=_TransferableDataType, function=batch_to)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning_utilities/core/apply_func.py", line 70, in apply_to_collection
+[rank3]:     return function(data, *args, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/fabric/utilities/apply_func.py", line 104, in batch_to
+[rank3]:     data_output = data.to(device, **kwargs)
+[rank3]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/utils/data/_utils/signal_handling.py", line 73, in handler
+[rank3]:     _error_if_any_worker_fails()
+[rank3]: RuntimeError: DataLoader worker (pid 11108) is killed by signal: Terminated. 
+Traceback (most recent call last):
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 48, in _call_and_handle_interrupt
+    return trainer.strategy.launcher.launch(trainer_fn, *args, trainer=trainer, **kwargs)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/strategies/launchers/subprocess_script.py", line 105, in launch
+    return function(*args, **kwargs)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 630, in _fit_impl
+    self._run(model, ckpt_path=ckpt_path, weights_only=weights_only)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 1079, in _run
+    results = self._run_stage()
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 1123, in _run_stage
+    self.fit_loop.run()
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/fit_loop.py", line 217, in run
+    self.advance()
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/fit_loop.py", line 465, in advance
+    self.epoch_loop.run(self._data_fetcher)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/training_epoch_loop.py", line 154, in run
+    self.on_advance_end(data_fetcher)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/training_epoch_loop.py", line 406, in on_advance_end
+    self.val_loop.run()
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/utilities.py", line 179, in _decorator
+    return loop_run(self, *args, **kwargs)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/evaluation_loop.py", line 146, in run
+    self._evaluation_step(batch, batch_idx, dataloader_idx, dataloader_iter)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/evaluation_loop.py", line 441, in _evaluation_step
+    output = call._call_strategy_hook(trainer, hook_name, *step_args)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 329, in _call_strategy_hook
+    output = fn(*args, **kwargs)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/strategies/strategy.py", line 411, in validation_step
+    return self._forward_redirection(self.model, self.lightning_module, "validation_step", *args, **kwargs)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/strategies/strategy.py", line 641, in __call__
+    wrapper_output = wrapper_module(*args, **kwargs)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1832, in forward
+    else self._run_ddp_forward(*inputs, **kwargs)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1657, in _run_ddp_forward
+    return self.module(*inputs, **kwargs)  # type: ignore[index]
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/strategies/strategy.py", line 634, in wrapped_forward
+    out = method(*_args, **_kwargs)
+  File "/glade/work/bgong/amip/modules/train_module.py", line 175, in validation_step
+    loss_dict, pred_feat_dict, target_feat_dict = self.predict(batch)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "/glade/work/bgong/amip/modules/train_module.py", line 258, in predict
+    y, y_last = self.forward(x, c_grid, return_model_last=True, c_scalar=c_scalar_t)
+  File "/glade/work/bgong/amip/modules/train_module.py", line 116, in forward
+    y, y_last = self.scheduler.sample(model, x, c_grid, return_model_last=return_model_last)
+  File "/glade/work/bgong/amip/modules/diffusion/x_interpolant.py", line 374, in sample
+    return self.sample_uniform(model, x, c_grid,
+  File "/glade/work/bgong/amip/modules/diffusion/x_interpolant.py", line 314, in sample_uniform
+    y_pred = model(y, x, t_curr_batch, c_grid)  # Predict x_1
+  File "/glade/work/bgong/amip/modules/train_module.py", line 21, in __call__
+    return self.model(x_noised, cond, t, c_grid=c_grid, c_scalar=self.c_scalar)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/glade/work/bgong/amip/modules/models/DiT.py", line 514, in forward
+    x = block(x, t_emb, rope_cos_lat, rope_sin_lat, rope_cos_lon, rope_sin_lon)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/glade/work/bgong/amip/modules/models/DiT.py", line 83, in forward
+    k = apply_2d_rotary_pos_emb(k, rope_cos_lat, rope_sin_lat, rope_cos_lon, rope_sin_lon)
+  File "/glade/work/bgong/amip/modules/layers/positional_encoding.py", line 41, in apply_2d_rotary_pos_emb
+    return torch.cat((apply_rotary_pos_emb(t_x, cos_freqs_x, sin_freqs_x),
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/utils/data/_utils/signal_handling.py", line 73, in handler
+    _error_if_any_worker_fails()
+RuntimeError: DataLoader worker (pid 10953) is killed by signal: Terminated. 
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/glade/work/bgong/amip/train.py", line 179, in <module>
+    main(args)
+  File "/glade/work/bgong/amip/train.py", line 160, in main
+    trainer.fit(model=model,
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 584, in fit
+    call._call_and_handle_interrupt(
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 69, in _call_and_handle_interrupt
+    _interrupt(trainer, exception)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 78, in _interrupt
+    _call_callback_hooks(trainer, "on_exception", exception)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 228, in _call_callback_hooks
+    fn(trainer, trainer.lightning_module, *args, **kwargs)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/callbacks/progress/rich_progress.py", line 710, in on_exception
+    self._stop_progress()
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/callbacks/progress/rich_progress.py", line 668, in _stop_progress
+    self.progress.stop()
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/callbacks/progress/rich_progress.py", line 106, in stop
+    super().stop()
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/progress.py", line 1176, in stop
+    self.live.stop()
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/live.py", line 165, in stop
+    self.refresh()
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/live.py", line 276, in refresh
+    self.console.print(Control())
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/console.py", line 1731, in print
+    extend(render(renderable, render_options))
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/console.py", line 1339, in render
+    for render_output in iter_render:
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/live_render.py", line 91, in __rich_console__
+    lines = console.render_lines(renderable, options, style=style, pad=False)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/console.py", line 1379, in render_lines
+    lines = list(
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/segment.py", line 333, in split_and_crop_lines
+    for segment in segments:
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/console.py", line 1343, in render
+    yield from self.render(render_output, _options)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/console.py", line 1339, in render
+    for render_output in iter_render:
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/table.py", line 488, in __rich_console__
+    widths = self._calculate_column_widths(
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/table.py", line 529, in _calculate_column_widths
+    width_ranges = [
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/table.py", line 530, in <listcomp>
+    self._measure_column(console, options, column) for column in columns
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/table.py", line 741, in _measure_column
+    _min, _max = get_render_width(console, options, cell.renderable)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/measure.py", line 109, in get
+    get_console_width(console, options)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/padding.py", line 132, in __rich_measure__
+    measure_min, measure_max = Measurement.get(console, options, self.renderable)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/measure.py", line 109, in get
+    get_console_width(console, options)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/text.py", line 712, in __rich_measure__
+    max_text_width = max(cell_len(line) for line in lines) if lines else 0
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/text.py", line 712, in <genexpr>
+    max_text_width = max(cell_len(line) for line in lines) if lines else 0
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/cells.py", line 109, in cell_len
+    return cached_cell_len(text, unicode_version)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/cells.py", line 95, in cached_cell_len
+    return _cell_len(text, unicode_version)
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/cells.py", line 131, in _cell_len
+    return sum(
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/cells.py", line 132, in <genexpr>
+    get_character_cell_size(character, unicode_version) for character in text
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/cells.py", line 60, in get_character_cell_size
+    table = load_cell_table(unicode_version).widths
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/_unicode_data/__init__.py", line 90, in load
+    module = import_module(module_name, "rich._unicode_data")
+  File "/usr/lib64/python3.10/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+  File "<frozen importlib._bootstrap>", line 1050, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1027, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1006, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 688, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 879, in exec_module
+  File "<frozen importlib._bootstrap_external>", line 975, in get_code
+  File "<frozen importlib._bootstrap_external>", line 1074, in get_data
+  File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/utils/data/_utils/signal_handling.py", line 73, in handler
+    _error_if_any_worker_fails()
+RuntimeError: DataLoader worker (pid 11084) is killed by signal: Terminated. 
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 48, in _call_and_handle_interrupt
+[rank0]:     return trainer.strategy.launcher.launch(trainer_fn, *args, trainer=trainer, **kwargs)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/strategies/launchers/subprocess_script.py", line 105, in launch
+[rank0]:     return function(*args, **kwargs)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 630, in _fit_impl
+[rank0]:     self._run(model, ckpt_path=ckpt_path, weights_only=weights_only)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 1079, in _run
+[rank0]:     results = self._run_stage()
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 1123, in _run_stage
+[rank0]:     self.fit_loop.run()
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/fit_loop.py", line 217, in run
+[rank0]:     self.advance()
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/fit_loop.py", line 465, in advance
+[rank0]:     self.epoch_loop.run(self._data_fetcher)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/training_epoch_loop.py", line 154, in run
+[rank0]:     self.on_advance_end(data_fetcher)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/training_epoch_loop.py", line 406, in on_advance_end
+[rank0]:     self.val_loop.run()
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/utilities.py", line 179, in _decorator
+[rank0]:     return loop_run(self, *args, **kwargs)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/evaluation_loop.py", line 146, in run
+[rank0]:     self._evaluation_step(batch, batch_idx, dataloader_idx, dataloader_iter)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/loops/evaluation_loop.py", line 441, in _evaluation_step
+[rank0]:     output = call._call_strategy_hook(trainer, hook_name, *step_args)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 329, in _call_strategy_hook
+[rank0]:     output = fn(*args, **kwargs)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/strategies/strategy.py", line 411, in validation_step
+[rank0]:     return self._forward_redirection(self.model, self.lightning_module, "validation_step", *args, **kwargs)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/strategies/strategy.py", line 641, in __call__
+[rank0]:     wrapper_output = wrapper_module(*args, **kwargs)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1832, in forward
+[rank0]:     else self._run_ddp_forward(*inputs, **kwargs)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/parallel/distributed.py", line 1657, in _run_ddp_forward
+[rank0]:     return self.module(*inputs, **kwargs)  # type: ignore[index]
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/strategies/strategy.py", line 634, in wrapped_forward
+[rank0]:     out = method(*_args, **_kwargs)
+[rank0]:   File "/glade/work/bgong/amip/modules/train_module.py", line 175, in validation_step
+[rank0]:     loss_dict, pred_feat_dict, target_feat_dict = self.predict(batch)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+[rank0]:     return func(*args, **kwargs)
+[rank0]:   File "/glade/work/bgong/amip/modules/train_module.py", line 258, in predict
+[rank0]:     y, y_last = self.forward(x, c_grid, return_model_last=True, c_scalar=c_scalar_t)
+[rank0]:   File "/glade/work/bgong/amip/modules/train_module.py", line 116, in forward
+[rank0]:     y, y_last = self.scheduler.sample(model, x, c_grid, return_model_last=return_model_last)
+[rank0]:   File "/glade/work/bgong/amip/modules/diffusion/x_interpolant.py", line 374, in sample
+[rank0]:     return self.sample_uniform(model, x, c_grid,
+[rank0]:   File "/glade/work/bgong/amip/modules/diffusion/x_interpolant.py", line 314, in sample_uniform
+[rank0]:     y_pred = model(y, x, t_curr_batch, c_grid)  # Predict x_1
+[rank0]:   File "/glade/work/bgong/amip/modules/train_module.py", line 21, in __call__
+[rank0]:     return self.model(x_noised, cond, t, c_grid=c_grid, c_scalar=self.c_scalar)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/glade/work/bgong/amip/modules/models/DiT.py", line 514, in forward
+[rank0]:     x = block(x, t_emb, rope_cos_lat, rope_sin_lat, rope_cos_lon, rope_sin_lon)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1778, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/nn/modules/module.py", line 1789, in _call_impl
+[rank0]:     return forward_call(*args, **kwargs)
+[rank0]:   File "/glade/work/bgong/amip/modules/models/DiT.py", line 83, in forward
+[rank0]:     k = apply_2d_rotary_pos_emb(k, rope_cos_lat, rope_sin_lat, rope_cos_lon, rope_sin_lon)
+[rank0]:   File "/glade/work/bgong/amip/modules/layers/positional_encoding.py", line 41, in apply_2d_rotary_pos_emb
+[rank0]:     return torch.cat((apply_rotary_pos_emb(t_x, cos_freqs_x, sin_freqs_x),
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/utils/data/_utils/signal_handling.py", line 73, in handler
+[rank0]:     _error_if_any_worker_fails()
+[rank0]: RuntimeError: DataLoader worker (pid 10953) is killed by signal: Terminated. 
+
+[rank0]: During handling of the above exception, another exception occurred:
+
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/glade/work/bgong/amip/train.py", line 179, in <module>
+[rank0]:     main(args)
+[rank0]:   File "/glade/work/bgong/amip/train.py", line 160, in main
+[rank0]:     trainer.fit(model=model,
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 584, in fit
+[rank0]:     call._call_and_handle_interrupt(
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 69, in _call_and_handle_interrupt
+[rank0]:     _interrupt(trainer, exception)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 78, in _interrupt
+[rank0]:     _call_callback_hooks(trainer, "on_exception", exception)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 228, in _call_callback_hooks
+[rank0]:     fn(trainer, trainer.lightning_module, *args, **kwargs)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/callbacks/progress/rich_progress.py", line 710, in on_exception
+[rank0]:     self._stop_progress()
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/callbacks/progress/rich_progress.py", line 668, in _stop_progress
+[rank0]:     self.progress.stop()
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/lightning/pytorch/callbacks/progress/rich_progress.py", line 106, in stop
+[rank0]:     super().stop()
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/progress.py", line 1176, in stop
+[rank0]:     self.live.stop()
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/live.py", line 165, in stop
+[rank0]:     self.refresh()
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/live.py", line 276, in refresh
+[rank0]:     self.console.print(Control())
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/console.py", line 1731, in print
+[rank0]:     extend(render(renderable, render_options))
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/console.py", line 1339, in render
+[rank0]:     for render_output in iter_render:
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/live_render.py", line 91, in __rich_console__
+[rank0]:     lines = console.render_lines(renderable, options, style=style, pad=False)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/console.py", line 1379, in render_lines
+[rank0]:     lines = list(
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/segment.py", line 333, in split_and_crop_lines
+[rank0]:     for segment in segments:
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/console.py", line 1343, in render
+[rank0]:     yield from self.render(render_output, _options)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/console.py", line 1339, in render
+[rank0]:     for render_output in iter_render:
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/table.py", line 488, in __rich_console__
+[rank0]:     widths = self._calculate_column_widths(
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/table.py", line 529, in _calculate_column_widths
+[rank0]:     width_ranges = [
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/table.py", line 530, in <listcomp>
+[rank0]:     self._measure_column(console, options, column) for column in columns
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/table.py", line 741, in _measure_column
+[rank0]:     _min, _max = get_render_width(console, options, cell.renderable)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/measure.py", line 109, in get
+[rank0]:     get_console_width(console, options)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/padding.py", line 132, in __rich_measure__
+[rank0]:     measure_min, measure_max = Measurement.get(console, options, self.renderable)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/measure.py", line 109, in get
+[rank0]:     get_console_width(console, options)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/text.py", line 712, in __rich_measure__
+[rank0]:     max_text_width = max(cell_len(line) for line in lines) if lines else 0
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/text.py", line 712, in <genexpr>
+[rank0]:     max_text_width = max(cell_len(line) for line in lines) if lines else 0
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/cells.py", line 109, in cell_len
+[rank0]:     return cached_cell_len(text, unicode_version)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/cells.py", line 95, in cached_cell_len
+[rank0]:     return _cell_len(text, unicode_version)
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/cells.py", line 131, in _cell_len
+[rank0]:     return sum(
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/cells.py", line 132, in <genexpr>
+[rank0]:     get_character_cell_size(character, unicode_version) for character in text
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/cells.py", line 60, in get_character_cell_size
+[rank0]:     table = load_cell_table(unicode_version).widths
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/rich/_unicode_data/__init__.py", line 90, in load
+[rank0]:     module = import_module(module_name, "rich._unicode_data")
+[rank0]:   File "/usr/lib64/python3.10/importlib/__init__.py", line 126, in import_module
+[rank0]:     return _bootstrap._gcd_import(name[level:], package, level)
+[rank0]:   File "<frozen importlib._bootstrap>", line 1050, in _gcd_import
+[rank0]:   File "<frozen importlib._bootstrap>", line 1027, in _find_and_load
+[rank0]:   File "<frozen importlib._bootstrap>", line 1006, in _find_and_load_unlocked
+[rank0]:   File "<frozen importlib._bootstrap>", line 688, in _load_unlocked
+[rank0]:   File "<frozen importlib._bootstrap_external>", line 879, in exec_module
+[rank0]:   File "<frozen importlib._bootstrap_external>", line 975, in get_code
+[rank0]:   File "<frozen importlib._bootstrap_external>", line 1074, in get_data
+[rank0]:   File "/glade/work/bgong/.venv/lib64/python3.10/site-packages/torch/utils/data/_utils/signal_handling.py", line 73, in handler
+[rank0]:     _error_if_any_worker_fails()
+[rank0]: RuntimeError: DataLoader worker (pid 11084) is killed by signal: Terminated. 
