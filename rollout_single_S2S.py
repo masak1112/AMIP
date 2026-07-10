@@ -502,7 +502,8 @@ def main(args):
         t0 = time.time()
         print(f"[{k+1}/{len(start_dates)}] {date_tag}: rolling out "
               f"{n_ensemble} members x {lead_time} steps ...", flush=True)
-
+        
+        
         surf_arr, multi_arr, diag_arr = rollout_ensemble(
             model=model,
             dataset=dataset,
