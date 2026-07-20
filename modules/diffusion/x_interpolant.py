@@ -21,7 +21,9 @@ class DynamicInterpolant(nn.Module):
                  S_churn = 0.0,
                  t_churn_min = 0.05,
                  t_churn_max = 0.95,
-                 S_noise = 2.0
+                 S_noise = 2.0,
+                 crps_weight = 0.0,
+                 crps_alpha = 0.95,
                  ):
         super(DynamicInterpolant, self).__init__()
 
@@ -37,6 +39,9 @@ class DynamicInterpolant(nn.Module):
         self.t_churn_max = t_churn_max
         self.S_noise = S_noise
         self.tau = tau
+
+        self.crps_weight = crps_weight
+        self.crps_alpha = crps_alpha
 
         if noise == "spherical":
             from modules.diffusion.utils import SphereNoiseGenerator
@@ -117,33 +122,38 @@ class DynamicInterpolant(nn.Module):
 
         return self.compute_loss(model, x_current, c_grids[:, -1], y)
 
+    def _sample_t(self, batch_size, device):
+        if self.train_sampler == 'logit_normal':
+            return sample_logit_normal(batch_size, device=device)
+        elif self.train_sampler == 'power':
+            return power_sampler(batch_size, p=2.0, device=device)
+        elif self.train_sampler == 'uniform':
+            return torch.rand(batch_size, device=device)
+
+    def _forward_sample(self, model, x, c_grid, y, t=None):
+        # Draws one noised interpolant sample and returns (pred_y, y, W_t, t)
+        device = x.device
+        if t is None:
+            t = self.wide(self._sample_t(x.shape[0], device=device))
+
+        noise = self.get_noise(x)
+        noise = self._apply_noise_scales(noise)
+
+        W_t = torch.sqrt(t) * noise
+        X_t = (1 - t) * x + t * y + (1 - t) * self.sigma_coef * W_t
+
+        pred_y = model(X_t, x, t.squeeze(dim=[1, 2, 3]), c_grid)
+        return pred_y, W_t, t
+
     def compute_loss(self, model, x, c_grid, y):
         # x contains current prognostic state
         # c_grid contains current forcing state
         # y contains next prognostic state
 
-        device = x.device
-
-        noise = self.get_noise(x)
-
-        noise = self._apply_noise_scales(noise)
-
-        # sample timestep
-        if self.train_sampler == 'logit_normal':
-            t = sample_logit_normal(x.shape[0], device=device)
-        elif self.train_sampler == 'power':
-            t = power_sampler(x.shape[0], p=2.0, device=device)
-        elif self.train_sampler == 'uniform':
-            t = torch.rand(x.shape[0], device=device)
-
-        t = self.wide(t) 
-        W_t = torch.sqrt(t) * noise
-        X_t = (1-t) * x + t * y + (1-t) * self.sigma_coef * W_t
-
-        pred_y = model(X_t, x, t.squeeze(dim=[1, 2, 3]), c_grid)
+        pred_y, W_t, t = self._forward_sample(model, x, c_grid, y)
 
         if self.loss_form == 'x':
-            loss = ((pred_y - y) ** 2).sum(dim=[1, 2, 3]).mean() 
+            loss = ((pred_y - y) ** 2).sum(dim=[1, 2, 3]).mean()
         elif self.loss_form == 'v': # this is trivial, since additive terms cancel before gradient computation
             # construct target
             target = (y - x) - self.sigma_coef * W_t
@@ -156,6 +166,19 @@ class DynamicInterpolant(nn.Module):
             spectral_loss = 0
 
         loss = loss + spectral_loss
+
+        if self.crps_weight > 0:
+            # Second, independently-noised sample at the same timestep gives a
+            # 2-member ensemble so we can estimate the (almost-)fair CRPS
+            # (ACE2S, Appendix A) directly on the assembled model output.
+            pred_y2, _, _ = self._forward_sample(model, x, c_grid, y, t=t)
+
+            spread_factor = 1.0 - (1.0 - self.crps_alpha) / 2.0
+            crps = (0.5 * (torch.abs(pred_y - y) + torch.abs(pred_y2 - y))
+                    - spread_factor * 0.5 * torch.abs(pred_y - pred_y2))
+            crps_loss = self.crps_weight * crps.sum(dim=[1, 2, 3]).mean()
+
+            loss = loss + crps_loss
 
         return loss, spectral_loss
     

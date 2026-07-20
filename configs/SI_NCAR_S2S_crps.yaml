@@ -1,0 +1,100 @@
+model:
+    model_name: SI_X
+    lr: 5.0e-5
+    SI_X:
+        model:
+            in_channels: 278 # 151*2
+            out_channels: 139 # 26*5 + 6 + 15
+            dim: 1536
+            num_heads: 16
+            num_blocks: 24
+            patch_size: 1
+            scalar_dim: 2 # day of year and time of day
+            c_grid_downsample: 4
+            c_grid_dim: 3 # number of forcing vars
+            c_grid_embed_dim: 192
+            unpatch: vanilla
+            nlat: 45
+            nlon: 90
+            num_ca_blocks: 8
+            num_output_blocks: 2
+        scheduler:
+            num_steps: 10
+            sigma_coef: 1.0
+            train_sampler: power
+            l_max: 45
+            spectral_weight: 0.0
+            noise : spherical
+            model_last: False
+            integrator: euler
+            gamma: 0.5
+            S_churn: 0.0
+            S_noise: 1.0
+            crps_weight: 1.0
+            crps_alpha: 0.95
+
+
+data:
+    data_dir: '/glade/derecho/scratch/awikner/ERA5/h5'
+    upper_air_variables: ["temperature",
+                  "u_component_of_wind",
+                  "v_component_of_wind",
+                  "geopotential",
+                  "specific_total_water"]
+    surface_variables: ["skin_temperature",
+                     "surface_pressure",
+                     "2m_temperature",
+                     "2m_specific_humidity",
+                     "10m_u_component_of_wind",
+                     "10m_v_component_of_wind",
+                     "sea_surface_temperature",
+                     "sea_ice_cover"]
+    diagnostic_variables: ["PRATEsfc_24h"] #total precipitation 24h
+    constant_boundary_variables: ["geopotential_at_surface",
+                                 "land_sea_mask"]
+    varying_boundary_variables: ["DSWRFtoa"]  #replace this time led TOa] #
+    mask_fill: {'sea_surface_temperature': 270.,
+                'sea_ice_cover': 0.}
+    train_year_start: 1979
+    train_year_end: 2012
+    val_year_start: 2012
+    val_year_end: 2013
+    mean_path: "/glade/work/bgong/amip/normalize_mean_new.nc"
+    std_path: "/glade/work/bgong/amip/normalize_std_new.nc"
+    forecast_lead_times: [1, 3, 5, 10]
+    return_calendar: True
+    smooth_nan_boundaries: True
+    calendar: 'standard'
+    data_timedelta_hours: 6
+    timedelta_hours: 24
+    has_year_zero: False
+    levels: [5, 7, 10, 20, 30, 50, 70, 100, 125, 150, 175, 200, 250, 300, 400, 500, 600, 700, 800, 850, 875, 900, 925, 950, 975, 1000]
+    horizontal_resolution: [180, 360]
+    predict_delta: False
+    epsilon_factor: 0
+    val_num_inferences: 50
+    diagnostic_input: True # specific to SI models, we need a source distribution for diagnostics
+    batch_size: 1
+    num_data_workers: 8
+
+training:
+    seed: 42
+    devices: 4
+    accelerator: gpu
+    strategy: ddp
+    precision: 32-true
+    check_val_every_n_epoch: 1
+    log_every_n_steps: 10
+    max_epochs: 50
+    debug_one_step_then_val: False
+    ema_decay: 0.99
+    num_sanity_val_steps: 0
+    log_dir: /glade/work/bgong/amip/logs/
+    project: amip_forecast
+    wandb_mode: online
+    checkpoint: null
+    partial_checkpoint: /glade/work/bgong/amip/SI_checkpoints/last.ckpt
+    description: crps_finetune
+    accumulate_grad_batches: 4
+    optimizer: adam
+    optimizer: muon
