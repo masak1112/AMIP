@@ -8,6 +8,7 @@ __pycache__/
 **/misc
 **/assets
 **.log
+**.nc
 **/_output
 **/feat
 **/obj
