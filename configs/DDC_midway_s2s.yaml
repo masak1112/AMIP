@@ -80,7 +80,7 @@ training:
     log_dir: /project/pedramh/bing/amip/logs/
     project: amip_forecast
     wandb_mode: online
-    checkpoint: Null
+    checkpoint: "/project/pedramh/bing/amip/logs/x_DDC_x_DDC_midway_42_2026-06-05T20-13-33/model_epoch=23.ckpt"
     description: x_DDC_midway
     accumulate_grad_batches: 1
     optimizer: muon
